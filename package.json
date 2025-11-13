@@ -9,7 +9,14 @@
     "lint": "next lint",
     "prisma:migrate": "prisma migrate dev",
     "prisma:generate": "prisma generate",
-    "prisma:studio": "prisma studio"
+    "prisma:studio": "prisma studio",
+    "prepare": "husky",
+    "check": "tsc --noEmit",
+    "test": "jest --maxWorkers=75%",
+    "test:ci": "jest --maxWorkers=50% --ci --coverage",
+    "test:watch": "jest --watch --maxWorkers=50%",
+    "test:changed": "jest --onlyChanged",
+    "format": "prettier --write . --ignore-unknown"
   },
   "dependencies": {
     "@ai-sdk/openai": "^1.0.10",
@@ -22,6 +29,7 @@
     "bcryptjs": "^3.0.3",
     "better-auth": "^1.3.34",
     "dotenv": "^17.2.3",
+    "husky": "^9.1.7",
     "llama-cloud-services": "^0.3.10",
     "llamaindex": "^0.12.0",
     "next": "^15.1.6",
