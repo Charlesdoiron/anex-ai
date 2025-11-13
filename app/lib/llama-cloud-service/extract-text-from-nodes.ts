@@ -81,9 +81,6 @@ export function deduplicateRetrievalNodes(retrievalNodes: any[]): any[] {
     }
   }
 
-  console.log(
-    `✅ Deduplicated nodes: ${retrievalNodes.length} -> ${deduplicated.length}`
-  );
   return deduplicated;
 }
 
@@ -126,14 +123,12 @@ export function truncateContextByRelevance(
         return (node?.text || node?.getText?.() || "").trim();
       })
       .filter((text) => text && text.length > 0);
-    
-    const extractedText = texts.length > 0
-      ? texts.join("\n\n").substring(0, maxLength)
-      : "Aucun résultat trouvé dans le document.";
-    
-    console.log(
-      `✅ Truncated context (fallback): ${extractedText.length} chars (max: ${maxLength}, nodes used: ${texts.length}/${retrievalNodes.length})`
-    );
+
+    const extractedText =
+      texts.length > 0
+        ? texts.join("\n\n").substring(0, maxLength)
+        : "Aucun résultat trouvé dans le document.";
+
     return extractedText;
   }
 
@@ -174,10 +169,6 @@ export function truncateContextByRelevance(
     texts.length > 0
       ? texts.join("\n\n")
       : "Résultats trouvés mais contenu texte non disponible.";
-
-  console.log(
-    `✅ Truncated context: ${extractedText.length} chars (max: ${maxLength}, nodes used: ${texts.length}/${sortedNodes.length}, filtered from ${retrievalNodes.length} nodes with minScore: ${minScore})`
-  );
 
   return extractedText;
 }

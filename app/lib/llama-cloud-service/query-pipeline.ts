@@ -6,6 +6,7 @@ interface QueryPipelineOptions {
   enable_reranking?: boolean;
   rerank_top_n?: number;
   alpha?: number;
+  file_ids?: string[]; // Filter by specific file IDs
 }
 
 export async function queryPipeline(
@@ -17,30 +18,43 @@ export async function queryPipeline(
     throw new Error("Pipeline ID is required");
   }
 
-  console.log("🔍 Querying pipeline", pipelineId);
-  console.log("🔍 Query", query);
-  console.log("🔍 Options", options);
-
   const {
     dense_similarity_top_k = 20,
     sparse_similarity_top_k = 20,
     enable_reranking = true,
     rerank_top_n = 10,
     alpha = 0.5, // Hybrid retrieval: 0.5 balances dense and sparse
+    file_ids,
   } = options || {};
 
   try {
+    const body: any = {
+      query: query,
+      dense_similarity_top_k,
+      sparse_similarity_top_k,
+      enable_reranking,
+      rerank_top_n,
+      alpha,
+    };
+
+    // Add file_ids filter if provided
+    if (file_ids && file_ids.length > 0) {
+      body.search_filters = {
+        filters: [
+          {
+            key: "file_id",
+            value: file_ids,
+            operator: "in",
+          },
+        ],
+      };
+      console.log("🔍 Filtering by file IDs:", file_ids);
+    }
+
     const results = await runSearchApiV1PipelinesPipelineIdRetrievePost({
       headers: { Authorization: `Bearer ${process.env.LLAMA_CLOUD_API_KEY}` },
       path: { pipeline_id: pipelineId },
-      body: {
-        query: query,
-        dense_similarity_top_k,
-        sparse_similarity_top_k,
-        enable_reranking,
-        rerank_top_n,
-        alpha,
-      },
+      body,
     });
 
     if (results.error) {
@@ -49,8 +63,6 @@ export async function queryPipeline(
         `Failed to query pipeline: ${JSON.stringify(results.error)}`
       );
     }
-
-    console.log("✅ Results", results.data);
     return results.data;
   } catch (error) {
     console.error("❌ Error querying pipeline", error);

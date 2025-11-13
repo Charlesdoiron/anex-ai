@@ -46,7 +46,8 @@ export async function POST(req: NextRequest) {
     }
 
     const pipelineFiles = await addFileToPipeline(file, pipelineId);
-    console.log("✅ File added to pipeline", pipelineFiles);
+    const fileId = pipelineFiles.file_id;
+    console.log("✅ File added to pipeline", pipelineFiles.file_id);
 
     // Wait for file indexing to complete
     console.log("⏳ Waiting for file indexing...");
@@ -69,20 +70,18 @@ export async function POST(req: NextRequest) {
       "Quelles sont les conditions de garnissement des locaux ?",
     ];
 
-    // Query with enhanced retrieval parameters
+    // Query with enhanced retrieval parameters + file filtering
     const retrievalOptions = {
       dense_similarity_top_k: 20,
       sparse_similarity_top_k: 20,
       enable_reranking: true,
       rerank_top_n: 10,
       alpha: 0.5, // Hybrid retrieval
+      file_ids: [fileId], // Only query the file we just uploaded
     };
-
-    console.log("🔍 Querying with enhanced retrieval parameters");
     const results = await Promise.all(
       queries.map((query) => queryPipeline(pipelineId, query, retrievalOptions))
     );
-    console.log("✅ Results", JSON.stringify(results, null, 2));
 
     // Process each query with its own context
     interface QueryContextData {

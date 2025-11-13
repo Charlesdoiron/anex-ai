@@ -70,20 +70,9 @@ export async function generateAnswerFromContext(
       Math.floor(maxTokens / contextsToProcess.length)
     );
 
-    console.log(
-      `🔍 Processing ${contextsToProcess.length} queries with ${tokensPerQuery} tokens per query`
-    );
-
     // Generate answers for all queries with their specific contexts
     const answers = await Promise.all(
       contextsToProcess.map(async ({ query, context: queryContext }, index) => {
-        console.log(
-          `🔍 Processing query ${index + 1}/${
-            contextsToProcess.length
-          }: ${query.substring(0, 50)}...`
-        );
-        console.log(`📄 Context length: ${queryContext.length} chars`);
-
         const completion = await openai.chat.completions.create({
           model,
           messages: [
@@ -102,11 +91,7 @@ export async function generateAnswerFromContext(
         });
 
         const answer = completion.choices[0]?.message?.content || null;
-        console.log(
-          `✅ Answer for query ${index + 1}: ${
-            answer ? answer.substring(0, 100) : "null"
-          }...`
-        );
+
         return { query, answer, index };
       })
     );

@@ -10,8 +10,17 @@ export async function addFileToPipeline(pdfFile: File, pipelineId: string) {
     }
 
     console.log("🔍 Adding file to pipeline", pipelineId);
-    const fileBlob = new Blob([pdfFile]);
-    console.log("🔍 Uploading file to pipeline", fileBlob);
+
+    // Use original filename with timestamp to ensure uniqueness
+    const timestamp = Date.now();
+    const originalName = pdfFile.name.replace(/\.pdf$/i, "");
+    const uniqueFileName = `${originalName}_${timestamp}.pdf`;
+
+    // Create a new File object with the unique name
+    const fileBlob = new File([pdfFile], uniqueFileName, {
+      type: pdfFile.type,
+    });
+    console.log("🔍 Uploading file to pipeline:", uniqueFileName);
 
     const file = await uploadFileApiV1FilesPost({
       headers: { Authorization: `Bearer ${process.env.LLAMA_CLOUD_API_KEY}` },
@@ -51,8 +60,11 @@ export async function addFileToPipeline(pdfFile: File, pipelineId: string) {
       );
     }
 
-    console.log("✅ File added to pipeline", response.data);
-    return response.data;
+    console.log("✅ File added to pipeline", response.data.id);
+    return {
+      ...response.data,
+      file_id: file.data.id, // Return the file_id for filtering queries
+    };
   } catch (error) {
     console.error("❌ Error adding file to pipeline", error);
     throw error;
