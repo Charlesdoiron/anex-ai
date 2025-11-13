@@ -21,7 +21,7 @@ export async function queryPipeline(
   const {
     dense_similarity_top_k = 20,
     sparse_similarity_top_k = 20,
-    enable_reranking = true,
+    enable_reranking = true, // Disabled by default due to HuggingFace endpoint issues
     rerank_top_n = 10,
     alpha = 0.5, // Hybrid retrieval: 0.5 balances dense and sparse
     file_ids,

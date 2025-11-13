@@ -17,7 +17,7 @@ export async function createPipeline() {
     });
 
     // Look for a pipeline with the specific normal name
-    const pipelineName = "anex-ai-dev";
+    const pipelineName = "anex-ai-dev-1";
     const normalPipeline = existingPipelines.data?.find(
       (p: any) => p.name === pipelineName
     );

@@ -5,9 +5,15 @@ import {
 import { AnswerWithQuery } from "./generate-answer";
 
 export interface QueryAnswer {
+  id: string;
   query: string;
   answer: string;
   sources: SourceInfo[];
+  metadata?: {
+    expectedFormat: string;
+    requiredFields?: string[];
+    context?: string;
+  };
 }
 
 interface ExtractionResponse {
@@ -17,10 +23,18 @@ interface ExtractionResponse {
   pipelineId: string;
 }
 
+export interface QueryMetadata {
+  id: string;
+  expectedType: string;
+  requiredFields?: string[];
+  context?: string;
+}
+
 export function formatExtractionResponse(
   answers: AnswerWithQuery[],
   queryRetrievalNodes: any[][],
-  pipelineId: string
+  pipelineId: string,
+  queryMetadata?: QueryMetadata[]
 ): ExtractionResponse {
   const results: QueryAnswer[] = answers.map((answerWithQuery, index) => {
     const retrievalNodes = queryRetrievalNodes[index] || [];
@@ -32,10 +46,18 @@ export function formatExtractionResponse(
         source.score > 0.4
     );
 
+    const metadata = queryMetadata?.[index];
+
     return {
+      id: metadata?.id || `query_${index}`,
       query: answerWithQuery.query,
       answer: answerWithQuery.answer || "Aucune réponse trouvée.",
       sources,
+      metadata: metadata
+        ? {
+            expectedFormat: metadata.expectedType,
+          }
+        : undefined,
     };
   });
 

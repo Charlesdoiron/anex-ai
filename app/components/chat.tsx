@@ -9,6 +9,7 @@ import { InputArea } from "./chat/input-area";
 import { MessageWithSources } from "./chat/types";
 import { usePdfHandler } from "./chat/hooks/use-pdf-handler";
 import { useDataExtraction } from "./chat/hooks/use-data-extraction";
+import { ProcessingStatus } from "./chat/processing-status";
 
 export function Chat() {
   const {
@@ -29,9 +30,11 @@ export function Chat() {
   const {
     uploadedPdf,
     isProcessingPdf,
+    processingStatus,
     fileInputRef,
     handleFileSelect,
     removePdf,
+    handleDevModeExtraction, // DEV MODE
   } = usePdfHandler({
     setMessages: setMessages as (
       messages:
@@ -40,14 +43,15 @@ export function Chat() {
     ) => void,
   });
 
-  const { isExtractingData, handleExtractData } = useDataExtraction({
-    messages: messages as MessageWithSources[],
-    setMessages: setMessages as (
-      messages:
-        | MessageWithSources[]
-        | ((messages: MessageWithSources[]) => MessageWithSources[])
-    ) => void,
-  });
+  const { isExtractingData, extractionStatus, handleExtractData } =
+    useDataExtraction({
+      messages: messages as MessageWithSources[],
+      setMessages: setMessages as (
+        messages:
+          | MessageWithSources[]
+          | ((messages: MessageWithSources[]) => MessageWithSources[])
+      ) => void,
+    });
 
   async function handleFormSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -69,6 +73,8 @@ export function Chat() {
 
   return (
     <div className="flex h-screen bg-white dark:bg-[#343541]">
+      <ProcessingStatus status={processingStatus || extractionStatus} />
+
       <Sidebar isOpen={sidebarOpen} onNewChat={handleClearChat} />
 
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -98,6 +104,11 @@ export function Chat() {
           isLoading={isLoading}
           isProcessingPdf={isProcessingPdf}
           fileInputRef={fileInputRef}
+          onDevModeExtract={
+            process.env.NEXT_PUBLIC_USE_DEV_MODE === "true"
+              ? handleDevModeExtraction
+              : undefined
+          }
         />
       </div>
     </div>

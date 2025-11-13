@@ -14,6 +14,7 @@ interface InputAreaProps {
   isLoading: boolean;
   isProcessingPdf: boolean;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
+  onDevModeExtract?: () => void; // DEV MODE: optional dev mode handler
 }
 
 export function InputArea({
@@ -27,6 +28,7 @@ export function InputArea({
   isLoading,
   isProcessingPdf,
   fileInputRef,
+  onDevModeExtract,
 }: InputAreaProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -64,6 +66,31 @@ export function InputArea({
           />
 
           <div className="mb-2 ml-2 flex gap-1 items-center">
+            {/* DEV MODE: Show dev button if handler provided */}
+            {onDevModeExtract && (
+              <button
+                type="button"
+                onClick={onDevModeExtract}
+                disabled={isLoading || isProcessingPdf}
+                className="p-2 text-orange-600 dark:text-orange-400 hover:bg-orange-100 dark:hover:bg-orange-900/30 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-label="Dev Mode: Query pre-parsed file"
+                title="🚀 Dev Mode: Query pre-parsed file"
+              >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M13 10V3L4 14h7v7l9-11h-7z"
+                  />
+                </svg>
+              </button>
+            )}
             <label
               htmlFor="pdf-upload"
               className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"

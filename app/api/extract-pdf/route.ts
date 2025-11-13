@@ -9,74 +9,93 @@ import {
 } from "@/app/lib/llama-cloud-service/extract-text-from-nodes";
 import { generateAnswerFromContext } from "@/app/lib/llama-cloud-service/generate-answer";
 import { formatExtractionResponse } from "@/app/lib/llama-cloud-service/format-extraction-response";
+import { bailQueries } from "@/app/lib/queries/bail-queries";
 
 export const maxDuration = 600; // 10 minutes for large PDFs
 
+// ============================================
+// DEV MODE: Set these to bypass PDF upload
+// ============================================
+const USE_DEV_MODE = process.env.USE_DEV_MODE === "true";
+const DEV_PIPELINE_ID = process.env.DEV_PIPELINE_ID; // Your existing pipeline ID
+const DEV_FILE_ID = process.env.DEV_FILE_ID; // Your already parsed file ID
+const DEV_PAGE_COUNT = parseInt(process.env.DEV_PAGE_COUNT || "20"); // Estimated page count
+// ============================================
+
 export async function POST(req: NextRequest) {
   try {
-    const formData = await req.formData();
-    const file = formData.get("file") as File;
-
-    if (!file) {
-      return NextResponse.json({ error: "No file provided" }, { status: 400 });
-    }
-
     let pipelineId: string | undefined;
-    try {
-      pipelineId = await createPipeline();
-    } catch (error) {
-      console.error("Pipeline creation error:", error);
-      return NextResponse.json(
-        {
-          error: "Failed to create or reuse pipeline",
-          message:
-            error instanceof Error
-              ? error.message
-              : "Unknown error. You may have reached the pipeline limit.",
-        },
-        { status: 500 }
+    let fileId: string;
+    let pageCount: number;
+
+    // ============================================
+    // DEV MODE: Use hardcoded pipeline and file
+    // ============================================
+    if (USE_DEV_MODE && DEV_PIPELINE_ID && DEV_FILE_ID) {
+      console.log("🚀 DEV MODE: Using existing pipeline and file");
+      pipelineId = DEV_PIPELINE_ID;
+      fileId = DEV_FILE_ID;
+      pageCount = DEV_PAGE_COUNT;
+      console.log(`📋 Pipeline ID: ${pipelineId}`);
+      console.log(`📄 File ID: ${fileId}`);
+      console.log(`📊 Page count: ${pageCount}`);
+    }
+    // ============================================
+    // PRODUCTION MODE: Upload and index file
+    // ============================================
+    else {
+      const formData = await req.formData();
+      const file = formData.get("file") as File;
+
+      if (!file) {
+        return NextResponse.json(
+          { error: "No file provided" },
+          { status: 400 }
+        );
+      }
+
+      try {
+        pipelineId = await createPipeline();
+      } catch (error) {
+        console.error("Pipeline creation error:", error);
+        return NextResponse.json(
+          {
+            error: "Failed to create or reuse pipeline",
+            message:
+              error instanceof Error
+                ? error.message
+                : "Unknown error. You may have reached the pipeline limit.",
+          },
+          { status: 500 }
+        );
+      }
+
+      if (!pipelineId) {
+        return NextResponse.json(
+          { error: "Failed to create pipeline: no ID returned" },
+          { status: 500 }
+        );
+      }
+
+      const pipelineFiles = await addFileToPipeline(file, pipelineId);
+      fileId = pipelineFiles.file_id;
+      console.log("✅ File added to pipeline", pipelineFiles.file_id);
+
+      // Wait for file indexing to complete
+      console.log("⏳ Waiting for file indexing...");
+      const indexingStart = Date.now();
+      const indexResult = await waitForPipelineFilesIndexing(
+        pipelineId,
+        300000
+      ); // 5 minutes for larger PDFs
+      pageCount = indexResult.pageCount;
+      console.log(
+        `✅ Indexing completed in ${(Date.now() - indexingStart) / 1000}s`
       );
     }
 
-    if (!pipelineId) {
-      return NextResponse.json(
-        { error: "Failed to create pipeline: no ID returned" },
-        { status: 500 }
-      );
-    }
-
-    const pipelineFiles = await addFileToPipeline(file, pipelineId);
-    const fileId = pipelineFiles.file_id;
-    console.log("✅ File added to pipeline", pipelineFiles.file_id);
-
-    // Wait for file indexing to complete
-    console.log("⏳ Waiting for file indexing...");
-    const indexingStart = Date.now();
-    const { pageCount } = await waitForPipelineFilesIndexing(
-      pipelineId,
-      300000
-    ); // 5 minutes for larger PDFs
-    console.log(
-      `✅ Indexing completed in ${(Date.now() - indexingStart) / 1000}s`
-    );
-
-    const queries = [
-      "Quel est le régime juridique du bail parmi l’un des suivants : commercial, civil, précaire, dérogatoire, à construire, à construction ou en BEFA ?",
-      "Quel est le nom du bailleur et ses coordonnées (courriel, téléphone, adresse,siret) ?",
-      "Quel est le nom du représentant du bailleur  le cas échéant et ses coordonnées (capital, adresse,représentant légal) ?",
-      "Quel est le nom du preneur et ses coordonnées (courriel, représentant légal, adresse,siret) ?",
-      "Quelles sont les conditions ou informations liées à la pose d'une enseigne ?",
-      "Quelle est la destination des locaux ?",
-      "Quelle est la désignation des locaux ?",
-      "Quelle est l'adresse des locaux ?",
-      "Quelle est l'année de construction de l'immeuble ?",
-      "Quels sont les étages des locaux ?",
-      "Quels sont les numéros de lots ?",
-      "Quelle est la surface des locaux, trouver la surface totale des locaux et faire le calcul de la surface de chaque local   (en m²) ?",
-      "Les locaux sont-ils cloisonnés ? C'est à dire, y a-t-il des cloisons entre les locaux ? Des cloisons qui séparent les locaux ? Répondre par « oui » ou « non » en précisant, vérifier si les locaux sont cloisonnés et si oui, donner le nombre de locaux cloisonnés et la surface de chaque local cloisonné (en m²) ?",
-      "Les locaux sont-ils équipés avec du mobilier ? C'est à dire, y a-t-il des meubles, des équipements, des machines, etc. Répondre par « oui » ou « non » en précisant",
-      "Quelles sont les conditions de garnissement des locaux ?",
-    ];
+    // Extract query strings from structured queries
+    const queries = bailQueries.map((q) => q.query);
 
     // Scale retrieval parameters based on document size
     // Small docs (1-20 pages): baseline parameters
@@ -86,7 +105,7 @@ export async function POST(req: NextRequest) {
     const retrievalOptions = {
       dense_similarity_top_k: 20 * scaleFactor,
       sparse_similarity_top_k: 20 * scaleFactor,
-      enable_reranking: true,
+      enable_reranking: true, // Disabled - HuggingFace endpoint issues
       rerank_top_n: 10 * scaleFactor,
       alpha: 0.5, // Hybrid retrieval
       file_ids: [fileId], // Only query the file we just uploaded
@@ -150,6 +169,12 @@ export async function POST(req: NextRequest) {
       maxTokens: queries.length > 10 ? 2000 : queries.length > 5 ? 1500 : 1000,
     });
 
+    // Prepare query metadata for structured response
+    const queryMetadata = bailQueries.map((q) => ({
+      id: q.id,
+      expectedType: q.expectedType,
+    }));
+
     if (!answers) {
       // Fallback to extracted text if generation fails
       const fallbackAnswers = queryContexts.map(
@@ -162,7 +187,8 @@ export async function POST(req: NextRequest) {
       const response = formatExtractionResponse(
         fallbackAnswers,
         queryContexts.map((qc) => qc.retrievalNodes),
-        pipelineId
+        pipelineId,
+        queryMetadata
       );
       return NextResponse.json(response, { status: 200 });
     }
@@ -173,7 +199,8 @@ export async function POST(req: NextRequest) {
     const response = formatExtractionResponse(
       answers,
       queryRetrievalNodes,
-      pipelineId
+      pipelineId,
+      queryMetadata
     );
 
     return NextResponse.json(response, { status: 200 });

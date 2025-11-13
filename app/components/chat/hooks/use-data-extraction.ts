@@ -17,10 +17,12 @@ export function useDataExtraction({
   setMessages,
 }: UseDataExtractionProps) {
   const [isExtractingData, setIsExtractingData] = useState(false);
+  const [extractionStatus, setExtractionStatus] = useState<string | null>(null);
 
   async function handleExtractData() {
     console.log("Extract data button clicked");
     setIsExtractingData(true);
+    setExtractionStatus("🔍 Préparation de l'extraction...");
     try {
       const userMessage: MessageWithSources = {
         id: Date.now().toString(),
@@ -35,6 +37,7 @@ export function useDataExtraction({
         currentMessages.length
       );
 
+      setExtractionStatus("📡 Connexion à l'API...");
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: {
@@ -47,6 +50,7 @@ export function useDataExtraction({
       });
 
       console.log("Response status:", response.status, response.ok);
+      setExtractionStatus("💭 Génération de la réponse...");
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -209,11 +213,13 @@ export function useDataExtraction({
       ]);
     } finally {
       setIsExtractingData(false);
+      setExtractionStatus(null);
     }
   }
 
   return {
     isExtractingData,
+    extractionStatus,
     handleExtractData,
   };
 }
