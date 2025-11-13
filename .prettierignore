@@ -1,0 +1,13 @@
+node_modules
+.next
+out
+build
+dist
+coverage
+*.lock
+package-lock.json
+bun.lock
+.husky
+public
+prisma/migrations
+
