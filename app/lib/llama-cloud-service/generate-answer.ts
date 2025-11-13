@@ -65,9 +65,12 @@ export async function generateAnswerFromContext(
     }
 
     // Calculate maxTokens per query based on total queries
+    const minTokensPerQuery = 80;
+    const maxTokensPerQuery = 150;
+    const baseTokensPerQuery = Math.floor(maxTokens / contextsToProcess.length);
     const tokensPerQuery = Math.max(
-      500,
-      Math.floor(maxTokens / contextsToProcess.length)
+      minTokensPerQuery,
+      Math.min(baseTokensPerQuery, maxTokensPerQuery)
     );
 
     console.log(
@@ -90,11 +93,11 @@ export async function generateAnswerFromContext(
             {
               role: "system",
               content:
-                "Tu es un assistant d'extraction de données précises. Ton rôle est d'extraire UNIQUEMENT les informations qui répondent directement à la question posée. Extrais les données EXACTES et LITTÉRALES du document, sans approximation, résumé ou interprétation. Si une donnée n'est pas présente dans le contexte, réponds uniquement 'null'. Ne copie pas tout le contexte, seulement les informations pertinentes à la question.",
+                "Tu es un assistant d'extraction de données précises. Réponds par une phrase concise (maximum 3 lignes et 280 caractères) contenant UNIQUEMENT les informations qui répondent directement à la question. Extrais les données EXACTES et LITTÉRALES du document, sans approximation ni reformulation. Si une donnée n'est pas présente dans le contexte, réponds uniquement 'null'. Ne copie jamais l'intégralité du contexte.",
             },
             {
               role: "user",
-              content: `Question: ${query}\n\nContexte du document:\n${queryContext}\n\nIMPORTANT: Extrais UNIQUEMENT les informations qui répondent directement à la question. Copie mot pour mot les données pertinentes sans les modifier, résumer ou reformuler. Ne copie pas tout le contexte, seulement ce qui est nécessaire pour répondre à la question. Si la donnée exacte n'est pas présente dans le contexte, réponds uniquement 'null'.`,
+              content: `Question: ${query}\n\nContexte du document:\n${queryContext}\n\nIMPORTANT: Extrais UNIQUEMENT les informations qui répondent directement à la question. Copie mot pour mot les données pertinentes sans les modifier, résumer ou reformuler. Ne copie pas tout le contexte, seulement ce qui est nécessaire pour répondre à la question. Limite absolument ta réponse à 280 caractères. Si la donnée exacte n'est pas présente dans le contexte, réponds uniquement 'null'.`,
             },
           ],
           temperature,

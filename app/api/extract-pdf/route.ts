@@ -9,6 +9,7 @@ import {
 } from "@/app/lib/llama-cloud-service/extract-text-from-nodes";
 import { generateAnswerFromContext } from "@/app/lib/llama-cloud-service/generate-answer";
 import { formatExtractionResponse } from "@/app/lib/llama-cloud-service/format-extraction-response";
+import { auditLeaseQueries } from "@/app/prompt/audit-lease-queries";
 
 export const maxDuration = 300;
 
@@ -50,24 +51,11 @@ export async function POST(req: NextRequest) {
 
     // Wait for file indexing to complete
     console.log("⏳ Waiting for file indexing...");
-    await waitForPipelineFilesIndexing(pipelineId, 120000); // 2 minutes max wait
+    await waitForPipelineFilesIndexing(pipelineId, 600000); // 10 minutes max wait
 
-    const queries = [
-      "Quel est le nom du bailleur et ses coordonnées (courriel, téléphone, adresse,siret) ?",
-      "Quel est le nom du représentant du bailleur  le cas échéant et ses coordonnées (capital, adresse,représentant légal) ?",
-      "Quel est le nom du preneur et ses coordonnées (courriel, représentant légal, adresse,siret) ?",
-      "Quelles sont les conditions ou informations liées à la pose d'une enseigne ?",
-      "Quelle est la destination des locaux ?",
-      "Quelle est la désignation des locaux ?",
-      "Quelle est l'adresse des locaux ?",
-      "Quelle est l'année de construction de l'immeuble ?",
-      "Quels sont les étages des locaux ?",
-      "Quels sont les numéros de lots ?",
-      "Quelle est la surface des locaux (en m²) ?",
-      "Les locaux sont-ils cloisonnés ? Répondre par « oui » ou « non » en précisant",
-      "Les locaux sont-ils équipés avec du mobilier ? Répondre par « oui » ou « non » en précisant",
-      "Quelles sont les conditions de garnissement des locaux ?",
-    ];
+    const queries = Object.values(auditLeaseQueries).flatMap(
+      (sectionQueries) => sectionQueries
+    );
 
     // Query with enhanced retrieval parameters
     const retrievalOptions = {

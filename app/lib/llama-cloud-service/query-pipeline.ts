@@ -29,31 +29,61 @@ export async function queryPipeline(
     alpha = 0.5, // Hybrid retrieval: 0.5 balances dense and sparse
   } = options || {};
 
-  try {
-    const results = await runSearchApiV1PipelinesPipelineIdRetrievePost({
-      headers: { Authorization: `Bearer ${process.env.LLAMA_CLOUD_API_KEY}` },
-      path: { pipeline_id: pipelineId },
-      body: {
-        query: query,
-        dense_similarity_top_k,
-        sparse_similarity_top_k,
-        enable_reranking,
-        rerank_top_n,
-        alpha,
-      },
-    });
+  const maxAttempts = 5;
+  const baseDelayMs = 1000;
 
-    if (results.error) {
-      console.error("❌ Query pipeline error:", results.error);
-      throw new Error(
-        `Failed to query pipeline: ${JSON.stringify(results.error)}`
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const results = await runSearchApiV1PipelinesPipelineIdRetrievePost({
+        headers: { Authorization: `Bearer ${process.env.LLAMA_CLOUD_API_KEY}` },
+        path: { pipeline_id: pipelineId },
+        body: {
+          query,
+          dense_similarity_top_k,
+          sparse_similarity_top_k,
+          enable_reranking,
+          rerank_top_n,
+          alpha,
+        },
+      });
+
+      if (results.error) {
+        console.error(
+          `❌ Query pipeline error (attempt ${attempt}/${maxAttempts}):`,
+          results.error
+        );
+        if (attempt === maxAttempts) {
+          throw new Error(
+            `Failed to query pipeline: ${JSON.stringify(results.error)}`
+          );
+        }
+      } else {
+        console.log("✅ Results", results.data);
+        return results.data;
+      }
+    } catch (error) {
+      console.error(
+        `❌ Error querying pipeline (attempt ${attempt}/${maxAttempts}):`,
+        error
       );
+      if (attempt === maxAttempts) {
+        throw error;
+      }
     }
 
-    console.log("✅ Results", results.data);
-    return results.data;
-  } catch (error) {
-    console.error("❌ Error querying pipeline", error);
-    throw error;
+    const backoffMs = Math.min(
+      baseDelayMs * 2 ** (attempt - 1),
+      10000
+    );
+    const jitterMs = Math.floor(Math.random() * 300);
+    const delayMs = backoffMs + jitterMs;
+    console.log(`⏳ Retrying pipeline query in ${delayMs}ms...`);
+    await wait(delayMs);
   }
+
+  throw new Error("Failed to query pipeline after multiple attempts");
+}
+
+async function wait(durationMs: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, durationMs));
 }
