@@ -10,7 +10,7 @@ import {
 import { generateAnswerFromContext } from "@/app/lib/llama-cloud-service/generate-answer";
 import { formatExtractionResponse } from "@/app/lib/llama-cloud-service/format-extraction-response";
 
-export const maxDuration = 300;
+export const maxDuration = 600; // 10 minutes for large PDFs
 
 export async function POST(req: NextRequest) {
   try {
@@ -51,9 +51,17 @@ export async function POST(req: NextRequest) {
 
     // Wait for file indexing to complete
     console.log("⏳ Waiting for file indexing...");
-    await waitForPipelineFilesIndexing(pipelineId, 120000); // 2 minutes max wait
+    const indexingStart = Date.now();
+    const { pageCount } = await waitForPipelineFilesIndexing(
+      pipelineId,
+      300000
+    ); // 5 minutes for larger PDFs
+    console.log(
+      `✅ Indexing completed in ${(Date.now() - indexingStart) / 1000}s`
+    );
 
     const queries = [
+      "Quel est le régime juridique du bail parmi l’un des suivants : commercial, civil, précaire, dérogatoire, à construire, à construction ou en BEFA ?",
       "Quel est le nom du bailleur et ses coordonnées (courriel, téléphone, adresse,siret) ?",
       "Quel est le nom du représentant du bailleur  le cas échéant et ses coordonnées (capital, adresse,représentant légal) ?",
       "Quel est le nom du preneur et ses coordonnées (courriel, représentant légal, adresse,siret) ?",
@@ -64,21 +72,28 @@ export async function POST(req: NextRequest) {
       "Quelle est l'année de construction de l'immeuble ?",
       "Quels sont les étages des locaux ?",
       "Quels sont les numéros de lots ?",
-      "Quelle est la surface des locaux (en m²) ?",
-      "Les locaux sont-ils cloisonnés ? Répondre par « oui » ou « non » en précisant",
-      "Les locaux sont-ils équipés avec du mobilier ? Répondre par « oui » ou « non » en précisant",
+      "Quelle est la surface des locaux, trouver la surface totale des locaux et faire le calcul de la surface de chaque local   (en m²) ?",
+      "Les locaux sont-ils cloisonnés ? C'est à dire, y a-t-il des cloisons entre les locaux ? Des cloisons qui séparent les locaux ? Répondre par « oui » ou « non » en précisant, vérifier si les locaux sont cloisonnés et si oui, donner le nombre de locaux cloisonnés et la surface de chaque local cloisonné (en m²) ?",
+      "Les locaux sont-ils équipés avec du mobilier ? C'est à dire, y a-t-il des meubles, des équipements, des machines, etc. Répondre par « oui » ou « non » en précisant",
       "Quelles sont les conditions de garnissement des locaux ?",
     ];
 
-    // Query with enhanced retrieval parameters + file filtering
+    // Scale retrieval parameters based on document size
+    // Small docs (1-20 pages): baseline parameters
+    // Medium docs (21-50 pages): increased parameters
+    // Large docs (51+ pages): maximum parameters
+    const scaleFactor = pageCount <= 20 ? 1 : pageCount <= 50 ? 2 : 3;
     const retrievalOptions = {
-      dense_similarity_top_k: 20,
-      sparse_similarity_top_k: 20,
+      dense_similarity_top_k: 20 * scaleFactor,
+      sparse_similarity_top_k: 20 * scaleFactor,
       enable_reranking: true,
-      rerank_top_n: 10,
+      rerank_top_n: 10 * scaleFactor,
       alpha: 0.5, // Hybrid retrieval
       file_ids: [fileId], // Only query the file we just uploaded
     };
+    console.log(
+      `📊 Document size: ${pageCount} pages, using scale factor: ${scaleFactor}x`
+    );
     const results = await Promise.all(
       queries.map((query) => queryPipeline(pipelineId, query, retrievalOptions))
     );
@@ -100,13 +115,22 @@ export async function POST(req: NextRequest) {
         // Deduplicate nodes for this query
         const deduplicatedNodes = deduplicateRetrievalNodes(retrievalNodes);
 
-        // Use relevance-based truncation with stricter filtering
-        const maxContextLength = 4000; // Reduced per-query context
-        const minScore = 0.5; // Only include nodes with score >= 0.5
+        // Scale context length and adjust score threshold based on document size
+        // Larger docs need more context and can tolerate lower scores
+        const maxContextLength = 4000 * scaleFactor;
+        const minScore = pageCount <= 20 ? 0.5 : pageCount <= 50 ? 0.4 : 0.3;
         const context = truncateContextByRelevance(
           deduplicatedNodes,
           maxContextLength,
           minScore
+        );
+
+        console.log(
+          `📝 Query ${index + 1}: ${
+            deduplicatedNodes.length
+          } nodes after dedup, context length: ${
+            context.length
+          } chars, minScore: ${minScore}`
         );
 
         return {

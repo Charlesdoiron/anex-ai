@@ -23,89 +23,95 @@ export function usePdfHandler({ setMessages }: UsePdfHandlerProps) {
       const formData = new FormData();
       formData.append("file", file);
 
-      const endpoint = "/api/extract-pdf";
-      const response = await fetch(endpoint, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to process PDF");
-      }
-
-      const result = await response.json();
-      console.log("📄 PDF upload result:", result);
-
       const userMessage: MessageWithSources = {
         id: Date.now().toString(),
         role: "user",
         content: `Uploaded PDF: ${file.name}`,
       };
 
+      // Add user message immediately
+      setMessages((prev) => [...prev, userMessage]);
+
+      // Add processing indicator
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `processing-${Date.now()}`,
+          role: "assistant",
+          content: "⏳ Processing PDF...",
+        },
+      ]);
+
+      const response = await fetch("/api/extract-pdf", {
+        method: "POST",
+        body: formData,
+      });
+
+      // Remove processing indicator
+      setMessages((prev) =>
+        prev.filter((msg) => !msg.id.startsWith("processing-"))
+      );
+
       const assistantMessages: MessageWithSources[] = [];
 
-      if (
-        result.results &&
-        Array.isArray(result.results) &&
-        result.results.length > 0
-      ) {
-        console.log("✅ Displaying results, count:", result.results.length);
+      if (response.ok) {
+        const result = await response.json();
+        console.log("📄 PDF extraction result:", result);
 
-        result.results.forEach((queryResult: any, index: number) => {
-          const content = `**Q: ${queryResult.query}**\n${
-            queryResult.answer || "Aucune réponse trouvée."
-          }`;
+        if (
+          result.results &&
+          Array.isArray(result.results) &&
+          result.results.length > 0
+        ) {
+          result.results.forEach((queryResult: any, index: number) => {
+            const content = `**Q: ${queryResult.query}**\n${
+              queryResult.answer || "Aucune réponse trouvée."
+            }`;
 
-          let answerSources: SourceInfo[] = [];
-          if (
-            queryResult.sources &&
-            Array.isArray(queryResult.sources) &&
-            queryResult.sources.length > 0
-          ) {
-            const uniqueSources = queryResult.sources.filter(
-              (source: any, idx: number, self: any[]) =>
-                idx ===
-                self.findIndex(
-                  (s: any) =>
-                    s.pageNumber === source.pageNumber &&
-                    s.fileName === source.fileName
-                )
-            );
+            let answerSources: SourceInfo[] = [];
+            if (
+              queryResult.sources &&
+              Array.isArray(queryResult.sources) &&
+              queryResult.sources.length > 0
+            ) {
+              const uniqueSources = queryResult.sources.filter(
+                (source: any, idx: number, self: any[]) =>
+                  idx ===
+                  self.findIndex(
+                    (s: any) =>
+                      s.pageNumber === source.pageNumber &&
+                      s.fileName === source.fileName
+                  )
+              );
 
-            answerSources = uniqueSources.map((source: any) => ({
-              pageNumber: source.pageNumber,
-              fileName: source.fileName,
-              score: source.score,
-              startCharIdx: source.startCharIdx,
-              endCharIdx: source.endCharIdx,
-              metadata: source.metadata,
-            }));
-          }
+              answerSources = uniqueSources.map((source: any) => ({
+                pageNumber: source.pageNumber,
+                fileName: source.fileName,
+                score: source.score,
+                startCharIdx: source.startCharIdx,
+                endCharIdx: source.endCharIdx,
+                metadata: source.metadata,
+              }));
+            }
 
-          assistantMessages.push({
-            id: `pdf-result-${Date.now()}-${index}`,
-            role: "assistant",
-            content,
-            sources: answerSources.length > 0 ? answerSources : undefined,
+            assistantMessages.push({
+              id: `result-${Date.now()}-${index}`,
+              role: "assistant",
+              content,
+              sources: answerSources.length > 0 ? answerSources : undefined,
+            });
           });
-        });
-      } else if (result.message) {
-        console.log("📝 Displaying message:", result.message);
-        assistantMessages.push({
-          id: `pdf-results-${Date.now()}`,
-          role: "assistant",
-          content: result.message,
-        });
+        }
       } else {
-        console.warn("⚠️ No results or message in response:", result);
+        const errorMsg = await response.text();
         assistantMessages.push({
-          id: `pdf-results-${Date.now()}`,
+          id: `error-${Date.now()}`,
           role: "assistant",
-          content: "PDF traité mais aucun résultat de requête disponible.",
+          content: `❌ **Error**: ${errorMsg}`,
         });
       }
 
-      setMessages((prev) => [...prev, userMessage, ...assistantMessages]);
+      setMessages((prev) => [...prev, ...assistantMessages]);
       setUploadedPdf(null);
     } catch (error) {
       console.error("PDF upload error:", error);

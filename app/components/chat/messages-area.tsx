@@ -26,7 +26,7 @@ export function MessagesArea({ messages, isLoading }: MessagesAreaProps) {
           </h1>
         </div>
       ) : (
-        <div className="max-w-3xl mx-auto px-4 py-6">
+        <div className="max-w-7xl mx-auto px-4 py-6">
           {messages.map((message) => (
             <MessageItem key={message.id} message={message} />
           ))}

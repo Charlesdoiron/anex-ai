@@ -16,9 +16,15 @@ export async function createPipeline() {
       },
     });
 
-    if (existingPipelines.data && existingPipelines.data.length > 0) {
-      console.log("✅ Reusing existing pipeline", existingPipelines.data[0].id);
-      return existingPipelines.data[0].id;
+    // Look for a pipeline with the specific normal name
+    const pipelineName = "anex-ai-dev";
+    const normalPipeline = existingPipelines.data?.find(
+      (p: any) => p.name === pipelineName
+    );
+
+    if (normalPipeline) {
+      console.log("✅ Reusing existing pipeline", normalPipeline.id);
+      return normalPipeline.id;
     } else {
       console.log("❌ No existing pipeline found");
       const pipeline = await createPipelineApiV1PipelinesPost({
@@ -29,7 +35,7 @@ export async function createPipeline() {
           project_id: process.env.LLAMA_CLOUD_PROJECT_ID,
         },
         body: {
-          name: `anex-ai-dev`,
+          name: pipelineName,
           transform_config: {},
         },
       });

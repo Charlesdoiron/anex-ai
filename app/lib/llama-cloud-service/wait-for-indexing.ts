@@ -7,7 +7,7 @@ export async function waitForPipelineFilesIndexing(
   pipelineId: string,
   maxWaitTimeMs: number = 60000,
   pollIntervalMs: number = 2000
-): Promise<void> {
+): Promise<{ pageCount: number }> {
   const startTime = Date.now();
 
   while (Date.now() - startTime < maxWaitTimeMs) {
@@ -33,8 +33,12 @@ export async function waitForPipelineFilesIndexing(
     );
 
     if (allSuccess && files.length > 0) {
-      console.log("✅ All files indexed successfully");
-      return;
+      const totalPages = files.reduce(
+        (sum, file) => sum + (file.indexed_page_count || 0),
+        0
+      );
+      console.log(`✅ All files indexed successfully (${totalPages} pages)`);
+      return { pageCount: totalPages };
     }
 
     const hasError = files.some(
