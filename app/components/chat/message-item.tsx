@@ -1,11 +1,11 @@
-"use client";
+"use client"
 
-import ReactMarkdown from "react-markdown";
-import remarkBreaks from "remark-breaks";
-import { MessageWithSources } from "./types";
+import ReactMarkdown from "react-markdown"
+import remarkBreaks from "remark-breaks"
+import { MessageWithSources } from "./types"
 
 interface MessageItemProps {
-  message: MessageWithSources;
+  message: MessageWithSources
 }
 
 export function MessageItem({ message }: MessageItemProps) {
@@ -20,19 +20,11 @@ export function MessageItem({ message }: MessageItemProps) {
       <div className="flex gap-4 p-4">
         <div className="flex-shrink-0 w-8 h-8 rounded-sm flex items-center justify-center  dark:bg-[#19c37d] text-white text-xs font-semibold">
           {message.role === "user" ? (
-            <svg
-              className="w-5 h-5"
-              fill="#033a17"
-              viewBox="0 0 24 24"
-            >
+            <svg className="w-5 h-5" fill="#033a17" viewBox="0 0 24 24">
               <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
             </svg>
           ) : (
-            <svg
-              className="w-5 h-5"
-              fill="#033a17"
-              viewBox="0 0 24 24"
-            >
+            <svg className="w-5 h-5" fill="#033a17" viewBox="0 0 24 24">
               <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
             </svg>
           )}
@@ -61,9 +53,9 @@ export function MessageItem({ message }: MessageItemProps) {
                     `Page ${source.pageNumber}`,
                 ]
                   .filter(Boolean)
-                  .join(" - ");
+                  .join(" - ")
 
-                if (!sourceLabel) return null;
+                if (!sourceLabel) return null
 
                 return (
                   <button
@@ -90,13 +82,12 @@ export function MessageItem({ message }: MessageItemProps) {
                     </svg>
                     {sourceLabel}
                   </button>
-                );
+                )
               })}
             </div>
           )}
         </div>
       </div>
     </div>
-  );
+  )
 }
-

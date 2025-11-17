@@ -1,15 +1,15 @@
-"use client";
+"use client"
 
 interface ProcessingStatusProps {
-  status: string | null;
-  progress?: number;
+  status: string | null
+  progress?: number
 }
 
 export function ProcessingStatus({ status, progress }: ProcessingStatusProps) {
-  if (!status) return null;
+  if (!status) return null
 
   return (
-    <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50 animate-in fade-in slide-in-from-top-2 duration-300">
+    <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 animate-in fade-in duration-300">
       <div className="bg-white dark:bg-[#40414f] px-6 py-4 rounded-2xl shadow-lg dark:shadow-xl border border-gray-300 dark:border-gray-700 min-w-[300px]">
         <div className="flex items-center gap-3">
           {/* Spinner */}
@@ -53,6 +53,5 @@ export function ProcessingStatus({ status, progress }: ProcessingStatusProps) {
         </div>
       </div>
     </div>
-  );
+  )
 }
-

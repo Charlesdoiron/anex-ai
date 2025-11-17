@@ -1,72 +1,76 @@
-"use client";
+"use client"
 
-import { useState, useRef } from "react";
-import { MessageWithSources } from "../types";
-import { SourceInfo } from "@/app/lib/llama-cloud-service/extract-text-from-nodes";
+import { useState, useRef } from "react"
+import { MessageWithSources } from "../types"
+import { SourceInfo } from "@/app/lib/llama-cloud-service/extract-text-from-nodes"
 
 interface UsePdfHandlerProps {
   setMessages: (
     messages:
       | MessageWithSources[]
       | ((messages: MessageWithSources[]) => MessageWithSources[])
-  ) => void;
+  ) => void
+  onExtractionComplete?: () => void
 }
 
-export function usePdfHandler({ setMessages }: UsePdfHandlerProps) {
-  const [uploadedPdf, setUploadedPdf] = useState<File | null>(null);
-  const [isProcessingPdf, setIsProcessingPdf] = useState(false);
-  const [processingStatus, setProcessingStatus] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+export function usePdfHandler({
+  setMessages,
+  onExtractionComplete,
+}: UsePdfHandlerProps) {
+  const [uploadedPdf, setUploadedPdf] = useState<File | null>(null)
+  const [isProcessingPdf, setIsProcessingPdf] = useState(false)
+  const [processingStatus, setProcessingStatus] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // ============================================
   // DEV MODE: Trigger extraction without file upload
   // ============================================
   async function handleDevModeExtraction() {
-    setIsProcessingPdf(true);
-    setProcessingStatus("🚀 Mode développement: connexion au pipeline...");
+    setIsProcessingPdf(true)
+    setProcessingStatus("🚀 Mode développement: connexion au pipeline...")
     try {
       // Create a dummy FormData (backend will ignore it in dev mode)
-      const formData = new FormData();
-      const dummyFile = new Blob(["dev"], { type: "application/pdf" });
-      formData.append("file", dummyFile, "dev-mode.pdf");
+      const formData = new FormData()
+      const dummyFile = new Blob(["dev"], { type: "application/pdf" })
+      formData.append("file", dummyFile, "dev-mode.pdf")
 
-      const userMessage: MessageWithSources = {
-        id: Date.now().toString(),
-        role: "user",
-        content: "🚀 Dev Mode: Using pre-parsed file from LlamaCloud",
-      };
+      // const userMessage: MessageWithSources = {
+      //   id: Date.now().toString(),
+      //   role: "user",
+      //   content: "🚀 Dev Mode: Using pre-parsed file from LlamaCloud",
+      // }
 
-      // Add user message immediately
-      setMessages((prev) => [...prev, userMessage]);
+      // // Add user message immediately
+      // setMessages((prev) => [...prev, userMessage])
 
-      // Add processing indicator
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `processing-${Date.now()}`,
-          role: "assistant",
-          content: "⏳ Querying pre-parsed document...",
-        },
-      ]);
+      // // Add processing indicator
+      // setMessages((prev) => [
+      //   ...prev,
+      //   {
+      //     id: `processing-${Date.now()}`,
+      //     role: "assistant",
+      //     content: "⏳ Querying pre-parsed document...",
+      //   },
+      // ])
 
-      setProcessingStatus("🔍 Interrogation du document pré-analysé...");
+      setProcessingStatus("🔍 Interrogation du document pré-analysé...")
       const response = await fetch("/api/extract-pdf", {
         method: "POST",
         body: formData,
-      });
-      
-      setProcessingStatus("📊 Analyse des résultats...");
+      })
+
+      setProcessingStatus("📊 Analyse des résultats...")
 
       // Remove processing indicator
       setMessages((prev) =>
         prev.filter((msg) => !msg.id.startsWith("processing-"))
-      );
+      )
 
-      const assistantMessages: MessageWithSources[] = [];
+      const assistantMessages: MessageWithSources[] = []
 
       if (response.ok) {
-        const result = await response.json();
-        console.log("📄 PDF extraction result:", result);
+        const result = await response.json()
+        console.log("📄 PDF extraction result:", result)
 
         if (
           result.results &&
@@ -76,9 +80,9 @@ export function usePdfHandler({ setMessages }: UsePdfHandlerProps) {
           result.results.forEach((queryResult: any, index: number) => {
             const content = `**Q: ${queryResult.query}**\n${
               queryResult.answer || "Aucune réponse trouvée."
-            }`;
+            }`
 
-            let answerSources: SourceInfo[] = [];
+            let answerSources: SourceInfo[] = []
             if (
               queryResult.sources &&
               Array.isArray(queryResult.sources) &&
@@ -92,7 +96,7 @@ export function usePdfHandler({ setMessages }: UsePdfHandlerProps) {
                       s.pageNumber === source.pageNumber &&
                       s.fileName === source.fileName
                   )
-              );
+              )
 
               answerSources = uniqueSources.map((source: any) => ({
                 pageNumber: source.pageNumber,
@@ -101,7 +105,7 @@ export function usePdfHandler({ setMessages }: UsePdfHandlerProps) {
                 startCharIdx: source.startCharIdx,
                 endCharIdx: source.endCharIdx,
                 metadata: source.metadata,
-              }));
+              }))
             }
 
             assistantMessages.push({
@@ -109,21 +113,26 @@ export function usePdfHandler({ setMessages }: UsePdfHandlerProps) {
               role: "assistant",
               content,
               sources: answerSources.length > 0 ? answerSources : undefined,
-            });
-          });
+            })
+          })
         }
       } else {
-        const errorMsg = await response.text();
+        const errorMsg = await response.text()
         assistantMessages.push({
           id: `error-${Date.now()}`,
           role: "assistant",
           content: `❌ **Error**: ${errorMsg}`,
-        });
+        })
       }
 
-      setMessages((prev) => [...prev, ...assistantMessages]);
+      setMessages((prev) => [...prev, ...assistantMessages])
+
+      // Notify parent component that extraction is complete
+      if (onExtractionComplete) {
+        onExtractionComplete()
+      }
     } catch (error) {
-      console.error("Dev mode extraction error:", error);
+      console.error("Dev mode extraction error:", error)
       setMessages((prev) => [
         ...prev,
         {
@@ -133,29 +142,29 @@ export function usePdfHandler({ setMessages }: UsePdfHandlerProps) {
             error instanceof Error ? error.message : "Unknown error"
           }`,
         },
-      ]);
+      ])
     } finally {
-      setIsProcessingPdf(false);
-      setProcessingStatus(null);
+      setIsProcessingPdf(false)
+      setProcessingStatus(null)
     }
   }
   // ============================================
 
   async function handlePdfUpload(file: File) {
-    setIsProcessingPdf(true);
-    setProcessingStatus("📤 Téléversement du PDF...");
+    setIsProcessingPdf(true)
+    setProcessingStatus("📤 Téléversement du PDF...")
     try {
-      const formData = new FormData();
-      formData.append("file", file);
+      const formData = new FormData()
+      formData.append("file", file)
 
       const userMessage: MessageWithSources = {
         id: Date.now().toString(),
         role: "user",
         content: `Uploaded PDF: ${file.name}`,
-      };
+      }
 
       // Add user message immediately
-      setMessages((prev) => [...prev, userMessage]);
+      setMessages((prev) => [...prev, userMessage])
 
       // Add processing indicator
       setMessages((prev) => [
@@ -165,26 +174,26 @@ export function usePdfHandler({ setMessages }: UsePdfHandlerProps) {
           role: "assistant",
           content: "⏳ Processing PDF...",
         },
-      ]);
+      ])
 
-      setProcessingStatus("🔄 Analyse du document en cours...");
+      setProcessingStatus("🔄 Analyse du document en cours...")
       const response = await fetch("/api/extract-pdf", {
         method: "POST",
         body: formData,
-      });
-      
-      setProcessingStatus("📊 Extraction des informations...");
+      })
+
+      setProcessingStatus("📊 Extraction des informations...")
 
       // Remove processing indicator
       setMessages((prev) =>
         prev.filter((msg) => !msg.id.startsWith("processing-"))
-      );
+      )
 
-      const assistantMessages: MessageWithSources[] = [];
+      const assistantMessages: MessageWithSources[] = []
 
       if (response.ok) {
-        const result = await response.json();
-        console.log("📄 PDF extraction result:", result);
+        const result = await response.json()
+        console.log("📄 PDF extraction result:", result)
 
         if (
           result.results &&
@@ -194,9 +203,9 @@ export function usePdfHandler({ setMessages }: UsePdfHandlerProps) {
           result.results.forEach((queryResult: any, index: number) => {
             const content = `**Q: ${queryResult.query}**\n${
               queryResult.answer || "Aucune réponse trouvée."
-            }`;
+            }`
 
-            let answerSources: SourceInfo[] = [];
+            let answerSources: SourceInfo[] = []
             if (
               queryResult.sources &&
               Array.isArray(queryResult.sources) &&
@@ -210,7 +219,7 @@ export function usePdfHandler({ setMessages }: UsePdfHandlerProps) {
                       s.pageNumber === source.pageNumber &&
                       s.fileName === source.fileName
                   )
-              );
+              )
 
               answerSources = uniqueSources.map((source: any) => ({
                 pageNumber: source.pageNumber,
@@ -219,7 +228,7 @@ export function usePdfHandler({ setMessages }: UsePdfHandlerProps) {
                 startCharIdx: source.startCharIdx,
                 endCharIdx: source.endCharIdx,
                 metadata: source.metadata,
-              }));
+              }))
             }
 
             assistantMessages.push({
@@ -227,22 +236,28 @@ export function usePdfHandler({ setMessages }: UsePdfHandlerProps) {
               role: "assistant",
               content,
               sources: answerSources.length > 0 ? answerSources : undefined,
-            });
-          });
+            })
+          })
         }
       } else {
-        const errorMsg = await response.text();
+        const errorMsg = await response.text()
         assistantMessages.push({
           id: `error-${Date.now()}`,
           role: "assistant",
           content: `❌ **Error**: ${errorMsg}`,
-        });
+        })
       }
 
-      setMessages((prev) => [...prev, ...assistantMessages]);
-      setUploadedPdf(null);
+      setMessages((prev) => [...prev, ...assistantMessages])
+
+      // Notify parent component that extraction is complete
+      if (response.ok && onExtractionComplete) {
+        onExtractionComplete()
+      }
+
+      setUploadedPdf(null)
     } catch (error) {
-      console.error("PDF upload error:", error);
+      console.error("PDF upload error:", error)
       setMessages((prev) => [
         ...prev,
         {
@@ -252,35 +267,35 @@ export function usePdfHandler({ setMessages }: UsePdfHandlerProps) {
             error instanceof Error ? error.message : "Unknown error"
           }`,
         },
-      ]);
-      setUploadedPdf(null);
+      ])
+      setUploadedPdf(null)
     } finally {
-      setIsProcessingPdf(false);
-      setProcessingStatus(null);
+      setIsProcessingPdf(false)
+      setProcessingStatus(null)
     }
   }
 
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
+    const file = e.target.files?.[0]
     if (file && file.type === "application/pdf") {
-      setUploadedPdf(file);
-      console.log("PDF selected:", file.name);
-      await handlePdfUpload(file);
+      setUploadedPdf(file)
+      console.log("PDF selected:", file.name)
+      await handlePdfUpload(file)
       if (fileInputRef.current) {
-        fileInputRef.current.value = "";
+        fileInputRef.current.value = ""
       }
     } else if (file) {
-      alert("Please select a PDF file");
+      alert("Please select a PDF file")
       if (fileInputRef.current) {
-        fileInputRef.current.value = "";
+        fileInputRef.current.value = ""
       }
     }
   }
 
   function removePdf() {
-    setUploadedPdf(null);
+    setUploadedPdf(null)
     if (fileInputRef.current) {
-      fileInputRef.current.value = "";
+      fileInputRef.current.value = ""
     }
   }
 
@@ -292,6 +307,5 @@ export function usePdfHandler({ setMessages }: UsePdfHandlerProps) {
     handleFileSelect,
     removePdf,
     handleDevModeExtraction, // DEV MODE: expose dev mode extraction
-  };
+  }
 }
-
