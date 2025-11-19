@@ -36,17 +36,59 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const lastUserMessage = [...messages]
+  const normalizedMessages = messages.map((msg: any) => {
+    // Vercel AI SDK shape: { role, parts: [{ text }] }
+    if (Array.isArray(msg.parts)) {
+      const partsText = msg.parts
+        .map((part: any) => {
+          if (typeof part === "string") {
+            return part
+          }
+          if (part?.text) {
+            return part.text
+          }
+          if (part?.content) {
+            return part.content
+          }
+          return ""
+        })
+        .join(" ")
+      return {
+        role: msg.role,
+        content: partsText,
+      }
+    }
+
+    if (typeof msg.content === "string") {
+      return msg
+    }
+
+    if (Array.isArray(msg.content)) {
+      const textParts = msg.content
+        .map((part: any) => {
+          if (typeof part === "string") {
+            return part
+          }
+          if (part?.text) {
+            return part.text
+          }
+          if (part?.content) {
+            return part.content
+          }
+          return ""
+        })
+        .join(" ")
+      return { role: msg.role, content: textParts }
+    }
+
+    return { role: msg.role, content: String(msg.content ?? "") }
+  })
+
+  const lastUserMessage = [...normalizedMessages]
     .reverse()
     .find((msg) => msg.role === "user")
   const userQuestion =
-    typeof lastUserMessage?.content === "string"
-      ? lastUserMessage.content
-      : Array.isArray(lastUserMessage?.content)
-        ? lastUserMessage?.content
-            .map((part: any) => part?.text ?? "")
-            .join(" ")
-        : ""
+    typeof lastUserMessage?.content === "string" ? lastUserMessage.content : ""
 
   const shouldUseRag = Boolean(documentId && userQuestion.trim())
   const modelName = shouldUseRag ? RAG_CONFIG.responsesModel : "gpt-4o-mini"
@@ -86,11 +128,6 @@ export async function POST(req: NextRequest) {
                 description:
                   "Requête de recherche en français, décrivant précisément l'information recherchée dans le bail (ex: 'loyer mensuel', 'durée du bail', 'conditions de résiliation')",
               },
-              limit: {
-                type: "number",
-                description:
-                  "Nombre maximum de passages à retourner (défaut: 5)",
-              },
             },
             required: ["query"],
             additionalProperties: false,
@@ -105,8 +142,11 @@ export async function POST(req: NextRequest) {
     const stream = new ReadableStream({
       async start(controller) {
         try {
-          await handleConversation(
-            messages,
+          await handleConversation({
+            conversationItems: normalizedMessages.map((msg) => ({
+              role: msg.role,
+              content: msg.content,
+            })),
             instructions,
             tools,
             modelName,
@@ -114,8 +154,8 @@ export async function POST(req: NextRequest) {
             extractData,
             documentId,
             controller,
-            encoder
-          )
+            encoder,
+          })
           controller.close()
         } catch (error) {
           console.error("Stream error:", error)
@@ -143,76 +183,97 @@ export async function POST(req: NextRequest) {
   }
 }
 
-async function handleConversation(
-  inputMessages: any[],
-  instructions: string,
-  tools: any[] | undefined,
-  modelName: string,
-  isGpt5: boolean,
-  extractData: boolean,
-  documentId: string | undefined,
-  controller: ReadableStreamDefaultController,
-  encoder: TextEncoder,
-  previousResponseId?: string
-) {
-  const requestConfig: any = {
-    model: modelName,
-    input: inputMessages,
-    instructions,
-    stream: true,
-  }
+type ConversationItem =
+  | {
+      role: "user" | "assistant" | "system"
+      content: string
+    }
+  | {
+      type: "function_call_output"
+      call_id: string
+      output: string
+    }
+  | {
+      type: string
+      [key: string]: any
+    }
 
-  if (tools) {
-    requestConfig.tools = tools
-    requestConfig.tool_choice = "auto"
-  }
+interface HandleConversationArgs {
+  conversationItems: ConversationItem[]
+  instructions: string
+  tools: any[] | undefined
+  modelName: string
+  isGpt5: boolean
+  extractData: boolean
+  documentId: string | undefined
+  controller: ReadableStreamDefaultController
+  encoder: TextEncoder
+}
 
-  if (previousResponseId) {
-    requestConfig.previous_response_id = previousResponseId
-  }
-
-  if (!isGpt5) {
-    requestConfig.temperature = extractData ? 0.1 : 0.3
-  }
-
-  const stream = isGpt5
-    ? await openai.responses.create(requestConfig)
-    : await openai.chat.completions.create({
-        model: modelName,
-        messages: [{ role: "system", content: instructions }, ...inputMessages],
-        temperature: extractData ? 0.1 : 0.3,
-        stream: true,
+async function handleConversation({
+  conversationItems,
+  instructions,
+  tools,
+  modelName,
+  isGpt5,
+  extractData,
+  documentId,
+  controller,
+  encoder,
+}: HandleConversationArgs) {
+  if (isGpt5) {
+    while (true) {
+      const { toolCalls, outputItems } = await streamResponses({
+        conversationItems,
+        instructions,
+        tools,
+        modelName,
+        controller,
+        encoder,
       })
 
-  let responseId: string | undefined
-  let toolCalls: any[] = []
-  let currentToolCall: any = null
-
-  for await (const event of stream as any) {
-    if (isGpt5) {
-      if (event.type === "response.output_item.added") {
-        if (event.item.type === "function_call") {
-          currentToolCall = {
-            call_id: event.item.call_id,
-            name: event.item.name,
-            arguments: "",
-          }
-        }
-      } else if (event.type === "response.function_call_arguments.delta") {
-        if (currentToolCall) {
-          currentToolCall.arguments += event.delta
-        }
-      } else if (event.type === "response.function_call_arguments.done") {
-        if (currentToolCall) {
-          toolCalls.push(currentToolCall)
-          currentToolCall = null
-        }
-      } else if (event.type === "response.output_text.delta") {
-        controller.enqueue(encoder.encode(`0:${JSON.stringify(event.delta)}\n`))
-      } else if (event.type === "response.done") {
-        responseId = event.response.id
+      if (outputItems.length > 0) {
+        conversationItems.push(...outputItems)
       }
-    } else {
+
+      if (!toolCalls.length) {
+        break
+      }
+
+      if (!documentId) {
+        controller.enqueue(
+          encoder.encode(
+            `0:${JSON.stringify(
+              "Impossible d'accéder au document pour exécuter l'outil RAG."
+            )}\n`
+          )
+        )
+        break
+      }
+
+      for (const toolCall of toolCalls) {
+        const toolOutput = await handleToolCall(toolCall, documentId)
+        conversationItems.push(toolOutput)
+      }
+    }
+  } else {
+    const baseMessages = conversationItems
+      .filter(
+        (
+          item
+        ): item is { role: "user" | "assistant" | "system"; content: string } =>
+          "role" in item && typeof item.content === "string"
+      )
+      .map((item) => ({ role: item.role, content: item.content }))
+
+    const stream = await openai.chat.completions.create({
+      model: modelName,
+      messages: [{ role: "system", content: instructions }, ...baseMessages],
+      temperature: extractData ? 0.1 : 0.3,
+      stream: true,
+    })
+
+    for await (const event of stream) {
       if (event.choices[0]?.delta?.content) {
         controller.enqueue(
           encoder.encode(
@@ -222,47 +283,139 @@ async function handleConversation(
       }
     }
   }
+}
 
-  if (toolCalls.length > 0 && documentId) {
-    for (const toolCall of toolCalls) {
-      if (toolCall.name === "retrieve_chunks") {
-        const args = JSON.parse(toolCall.arguments)
-        const results = await searchService.search(args.query, {
-          documentId,
-          limit: args.limit || 5,
-          minScore: 0.3,
-        })
+async function streamResponses({
+  conversationItems,
+  instructions,
+  tools,
+  modelName,
+  controller,
+  encoder,
+}: {
+  conversationItems: ConversationItem[]
+  instructions: string
+  tools?: any[]
+  modelName: string
+  controller: ReadableStreamDefaultController
+  encoder: TextEncoder
+}): Promise<{ toolCalls: any[]; outputItems: any[] }> {
+  const requestConfig: any = {
+    model: modelName,
+    input: conversationItems,
+    instructions,
+    stream: true,
+  }
 
-        const context = results
-          .map((result, idx) => {
-            const pageTag =
-              typeof result.pageNumber === "number"
-                ? `[Page ${result.pageNumber}]`
-                : "[Page inconnue]"
-            const score = result.score?.toFixed(2) || "?"
-            return `Passage ${idx + 1} ${pageTag} (pertinence: ${score}):\n${result.text}`
-          })
-          .join("\n\n---\n\n")
+  if (tools) {
+    requestConfig.tools = tools
+    requestConfig.tool_choice = "auto"
+  }
 
-        inputMessages.push({
-          type: "function_call_output",
-          call_id: toolCall.call_id,
-          output: context || "Aucun passage pertinent trouvé.",
-        })
+  const stream = await openai.responses.create(requestConfig)
+
+  const outputItems: any[] = []
+  const toolCalls: any[] = []
+  const partialItems = new Map<number, any>()
+
+  for await (const event of stream as any) {
+    switch (event.type) {
+      case "response.output_item.added":
+        partialItems.set(event.output_index, event.item)
+        break
+      case "response.function_call_arguments.delta": {
+        const item = partialItems.get(event.output_index)
+        if (item) {
+          item.arguments = (item.arguments || "") + event.delta
+        }
+        break
+      }
+      case "response.output_text.delta":
+        controller.enqueue(encoder.encode(`0:${JSON.stringify(event.delta)}\n`))
+        break
+      case "response.output_item.done": {
+        const finalItem = event.item
+        outputItems.push(finalItem)
+        if (finalItem.type === "function_call") {
+          toolCalls.push(finalItem)
+        }
+        partialItems.delete(event.output_index)
+        break
+      }
+      default:
+        break
+    }
+  }
+
+  return { toolCalls, outputItems }
+}
+
+async function handleToolCall(
+  toolCall: any,
+  documentId: string
+): Promise<ConversationItem> {
+  if (toolCall.name !== "retrieve_chunks") {
+    return {
+      type: "function_call_output",
+      call_id: toolCall.call_id,
+      output: "Outil inconnu.",
+    }
+  }
+
+  try {
+    const args = JSON.parse(toolCall.arguments || "{}")
+    const query = typeof args.query === "string" ? args.query.trim() : ""
+
+    if (!query) {
+      return {
+        type: "function_call_output",
+        call_id: toolCall.call_id,
+        output:
+          "La requête RAG est vide. Reformule la question de l'utilisateur pour lancer une recherche.",
       }
     }
 
-    await handleConversation(
-      inputMessages,
-      instructions,
-      tools,
-      modelName,
-      isGpt5,
-      extractData,
+    const results = await searchService.search(query, {
       documentId,
-      controller,
-      encoder,
-      responseId
-    )
+      limit: 5,
+      minScore: 0.3,
+    })
+
+    if (!results.length) {
+      return {
+        type: "function_call_output",
+        call_id: toolCall.call_id,
+        output:
+          "Aucun passage pertinent trouvé dans le bail pour cette requête.",
+      }
+    }
+
+    const formatted = results
+      .map((result, idx) => {
+        const pageTag =
+          typeof result.pageNumber === "number"
+            ? `Page ${result.pageNumber}`
+            : "Page inconnue"
+        const score = result.score?.toFixed(2) ?? "?"
+        return `Passage ${idx + 1} (${pageTag}, pertinence ${score}):\n${
+          result.text
+        }`
+      })
+      .join("\n\n---\n\n")
+
+    return {
+      type: "function_call_output",
+      call_id: toolCall.call_id,
+      output: formatted,
+    }
+  } catch (error) {
+    console.error("RAG tool execution failed:", error)
+    return {
+      type: "function_call_output",
+      call_id: toolCall.call_id,
+      output: `Erreur lors de la recherche RAG: ${
+        error instanceof Error ? error.message : "inconnue"
+      }`,
+    }
   }
 }
