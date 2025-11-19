@@ -22,7 +22,7 @@ const EXTRACTION_MODEL =
   process.env.OPENAI_EXTRACTION_MODEL?.trim() || "gpt-5-mini"
 const EXTRACTION_CONCURRENCY = Math.max(
   1,
-  Number(process.env.EXTRACTION_CONCURRENCY || "2")
+  Number(process.env.EXTRACTION_CONCURRENCY || "6")
 )
 
 export type ProgressCallback = (progress: ExtractionProgress) => void
@@ -86,6 +86,7 @@ export class ExtractionService {
         extractionDate,
         rawText: pdfData.text,
         pageCount: pdfData.pageCount,
+        usedOcrEngine: pdfData.usedOcrEngine,
       }
 
       const totalSections = EXTRACTION_PROMPTS.length

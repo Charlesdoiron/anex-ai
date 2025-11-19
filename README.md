@@ -15,10 +15,10 @@ An intelligent document extraction system for French commercial lease agreements
 
 ### Extraction Pipeline
 
-1. **PDF Text Extraction** (`pdf-parse`)
-   - Pure JavaScript implementation
-   - No canvas dependency
-   - Works on ARM64 and x86_64
+1. **PDF Text Extraction**
+   - **Phase 1**: `pdf-parse` (Pure JS, fast)
+   - **Phase 2**: Tesseract OCR (if text density is low)
+   - **Phase 3**: GPT Vision Fallback (if OCR fails, uses `gpt-5-nano`)
 
 2. **Structured Extraction** (OpenAI Responses API)
    - Uses `gpt-5-mini` model
@@ -133,6 +133,14 @@ SKIP_AUTH=true
 
 # Database
 DATABASE_URL=postgresql://...
+
+# OCR Configuration
+PDF_OCR_BINARY_PATH=tesseract
+PDF_OCR_LANG=fra+eng
+PDF_OCR_CONCURRENCY=4
+PDF_ENABLE_VISION_OCR=true
+OPENAI_VISION_MODEL=gpt-5-nano
+EXTRACTION_CONCURRENCY=6
 ```
 
 ## Development
@@ -173,6 +181,7 @@ curl -X POST http://localhost:3000/api/extract-lease \
 - **TypeScript** - Type safety
 - **OpenAI GPT-5** - Structured extraction
 - **pdf-parse** - PDF text extraction
+- **Tesseract OCR** - Local OCR engine
 - **Prisma** - Database ORM (optional)
 - **Better Auth** - Authentication
 
@@ -204,7 +213,7 @@ app/
 - [ ] Batch processing
 - [ ] Export to Excel/Word
 - [ ] Custom extraction templates
-- [ ] OCR for scanned documents
+- [x] OCR for scanned documents
 
 ## Notes
 

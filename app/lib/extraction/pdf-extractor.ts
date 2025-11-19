@@ -1,10 +1,12 @@
 /**
  * PDF text extraction using pdf-parse
- * Uses GPT-Vision fallback for scanned documents
+ * Uses Tesseract OCR first, then GPT-Vision fallback for scanned documents
  */
 
 import OpenAI from "openai"
 import { createRequire } from "module"
+import { OCR_CONFIG } from "./ocr/config"
+import { TesseractEngine } from "./ocr/tesseract-engine"
 
 interface PdfMetadataInfo {
   Title?: string
@@ -37,30 +39,13 @@ export interface PdfExtractionResult {
     modificationDate?: Date
   }
   usedVisionOcr?: boolean
+  usedOcrEngine?: "tesseract" | "vision" | null
 }
 
 const require = createRequire(import.meta.url)
 
 const PAGE_DELIMITER = "\n___PAGE_BREAK___\n"
 const VISION_OCR_ENABLED = process.env.PDF_ENABLE_VISION_OCR !== "false"
-const VISION_MODEL = process.env.OPENAI_VISION_MODEL || "gpt-5-mini"
-const VISION_RENDER_SCALE = Number(
-  process.env.PDF_VISION_RENDER_SCALE || "1.75"
-)
-const VISION_MIN_TOTAL_CHARS = Number(
-  process.env.PDF_VISION_MIN_TOTAL_CHARS || "200"
-)
-const VISION_MIN_AVG_CHARS_PER_PAGE = Number(
-  process.env.PDF_VISION_MIN_AVG_CHARS_PER_PAGE || "30"
-)
-const VISION_MIN_NON_WHITESPACE_RATIO = Number(
-  process.env.PDF_VISION_MIN_NON_WHITESPACE_RATIO || "0.2"
-)
-const VISION_MAX_RETRIES = Number(process.env.PDF_VISION_MAX_RETRIES || "2")
-const VISION_CONCURRENCY = Math.max(
-  1,
-  Number(process.env.PDF_VISION_CONCURRENCY || "3")
-)
 
 const openAiApiKey = process.env.OPENAI_API_KEY
 const visionClient = openAiApiKey ? new OpenAI({ apiKey: openAiApiKey }) : null
@@ -82,6 +67,13 @@ export async function extractPdfText(
           total?: number
           info?: PdfMetadataInfo
           getDateNode?: () => Record<string, Date | undefined>
+        }>
+        getScreenshot: (params: {
+          imageBuffer: boolean
+          imageDataUrl: boolean
+          scale: number
+        }) => Promise<{
+          pages: Array<{ data: Uint8Array }>
         }>
         destroy: () => Promise<void>
       }
@@ -114,18 +106,54 @@ export async function extractPdfText(
         infoResult?.total ?? textResult.total ?? textResult.pages?.length ?? 1
 
       let pages = normalizePagesFromTextResult(textResult, pageCount)
-      let usedVisionOcr = false
+      let usedOcrEngine: "tesseract" | "vision" | null = null
 
-      if (VISION_OCR_ENABLED && visionClient && shouldFallbackToVision(pages)) {
-        notify?.("Texte illisible, lancement de la transcription vision…")
-        const visionPages = await runVisionPipeline(parser, pageCount, notify)
-        if (
-          visionPages.length > 0 &&
-          shouldReplaceWithVision(pages, visionPages)
-        ) {
-          pages = ensurePageCount(visionPages, pageCount)
-          usedVisionOcr = true
-          notify?.("Transcription vision terminée, reprise du traitement…")
+      if (VISION_OCR_ENABLED && shouldAttemptOcr(pages)) {
+        notify?.("Texte insuffisant, préparation de l'OCR...")
+
+        notify?.("Rendu des pages en images...")
+        const screenshotResult = await parser.getScreenshot({
+          imageBuffer: true,
+          imageDataUrl: false,
+          scale: OCR_CONFIG.VISION_RENDER_SCALE,
+        })
+
+        const screenshotPages = screenshotResult?.pages || []
+
+        if (screenshotPages.length > 0) {
+          notify?.("Tentative OCR rapide (Tesseract)...")
+          const tesseractPages = await runTesseractPipeline(
+            screenshotPages,
+            pageCount,
+            notify
+          )
+
+          if (
+            tesseractPages.length > 0 &&
+            shouldReplaceWithOcr(pages, tesseractPages)
+          ) {
+            pages = ensurePageCount(tesseractPages, pageCount)
+            usedOcrEngine = "tesseract"
+            notify?.("OCR Tesseract terminé avec succès.")
+          } else if (visionClient) {
+            notify?.("Tesseract insuffisant, passage à l'IA Vision...")
+            const visionPages = await runVisionPipeline(
+              screenshotPages,
+              pageCount,
+              notify
+            )
+
+            if (
+              visionPages.length > 0 &&
+              shouldReplaceWithOcr(pages, visionPages)
+            ) {
+              pages = ensurePageCount(visionPages, pageCount)
+              usedOcrEngine = "vision"
+              notify?.("Transcription Vision terminée.")
+            }
+          } else {
+            notify?.("OCR échoué et client Vision non configuré.")
+          }
         }
       }
 
@@ -140,7 +168,8 @@ export async function extractPdfText(
           infoResult?.info as PdfMetadataInfo,
           infoResult?.getDateNode?.()
         ),
-        usedVisionOcr,
+        usedVisionOcr: usedOcrEngine === "vision",
+        usedOcrEngine,
       }
     } finally {
       await parser.destroy()
@@ -217,7 +246,7 @@ function ensureAtLeastOnePage(pages: string[]): string[] {
   return pages
 }
 
-function shouldFallbackToVision(pages: string[]): boolean {
+function shouldAttemptOcr(pages: string[]): boolean {
   if (!pages.length) {
     return true
   }
@@ -229,13 +258,13 @@ function shouldFallbackToVision(pages: string[]): boolean {
   const avgChars = totalChars / Math.max(pages.length, 1)
   const ratio = totalChars === 0 ? 0 : nonWhitespaceChars / totalChars
   return (
-    totalChars < VISION_MIN_TOTAL_CHARS ||
-    avgChars < VISION_MIN_AVG_CHARS_PER_PAGE ||
-    ratio < VISION_MIN_NON_WHITESPACE_RATIO
+    totalChars < OCR_CONFIG.MIN_TOTAL_CHARS ||
+    avgChars < OCR_CONFIG.MIN_AVG_CHARS_PER_PAGE ||
+    ratio < OCR_CONFIG.MIN_NON_WHITESPACE_RATIO
   )
 }
 
-function shouldReplaceWithVision(
+function shouldReplaceWithOcr(
   originalPages: string[],
   ocrPages: string[]
 ): boolean {
@@ -256,8 +285,44 @@ function shouldReplaceWithVision(
   return ocrChars > originalChars * 1.2
 }
 
+async function runTesseractPipeline(
+  screenshotPages: Array<{ data: Uint8Array }>,
+  pageCount: number,
+  notify?: (message: string) => void
+): Promise<string[]> {
+  const available = await TesseractEngine.checkAvailability()
+  if (!available) {
+    console.warn("Tesseract not available, skipping.")
+    return []
+  }
+
+  const totalPages = screenshotPages.length
+  const ocrPages: string[] = new Array(totalPages).fill("")
+
+  await processWithConcurrency(
+    screenshotPages,
+    OCR_CONFIG.TESSERACT_CONCURRENCY,
+    async (page, index) => {
+      const pageNumber = index + 1
+      if (pageNumber === 1 || pageNumber % 5 === 0) {
+        notify?.(`OCR Tesseract page ${pageNumber}/${totalPages}...`)
+      }
+
+      try {
+        const imageBuffer = Buffer.from(page.data)
+        const result = await TesseractEngine.recognize(imageBuffer)
+        ocrPages[index] = cleanPageText(result.text)
+      } catch (error) {
+        console.error(`Tesseract failed on page ${pageNumber}:`, error)
+      }
+    }
+  )
+
+  return ensurePageCount(ocrPages, pageCount)
+}
+
 async function runVisionPipeline(
-  parser: any,
+  screenshotPages: Array<{ data: Uint8Array }>,
   pageCount: number,
   notify?: (message: string) => void
 ): Promise<string[]> {
@@ -266,48 +331,28 @@ async function runVisionPipeline(
     return []
   }
 
-  try {
-    notify?.("Conversion des pages en images pour GPT-Vision…")
-    const screenshotResult = await parser.getScreenshot({
-      imageBuffer: true,
-      imageDataUrl: false,
-      scale: VISION_RENDER_SCALE,
-    })
+  const totalPages = screenshotPages.length
+  const ocrPages: string[] = new Array(totalPages).fill("")
 
-    if (!screenshotResult?.pages?.length) {
-      return []
+  await processWithConcurrency(
+    screenshotPages,
+    OCR_CONFIG.VISION_CONCURRENCY,
+    async (page, index) => {
+      const imageBuffer = Buffer.from(page.data)
+      const base64 = imageBuffer.toString("base64")
+      const imageUrl = `data:image/png;base64,${base64}`
+      const pageNumber = index + 1
+      notify?.(`Transcription Vision page ${pageNumber}/${totalPages}...`)
+      const text = await extractTextFromVisionPage(
+        imageUrl,
+        pageNumber,
+        totalPages
+      )
+      ocrPages[index] = cleanPageText(text)
     }
+  )
 
-    const totalPages = screenshotResult.pages.length
-    const ocrPages: string[] = new Array(totalPages).fill("")
-
-    const screenshotPages = screenshotResult.pages as Array<{
-      data: Uint8Array
-    }>
-
-    await processWithConcurrency(
-      screenshotPages,
-      VISION_CONCURRENCY,
-      async (page, index) => {
-        const imageBuffer = Buffer.from(page.data)
-        const base64 = imageBuffer.toString("base64")
-        const imageUrl = `data:image/png;base64,${base64}`
-        const pageNumber = index + 1
-        notify?.(`Transcription vision page ${pageNumber}/${totalPages}…`)
-        const text = await extractTextFromVisionPage(
-          imageUrl,
-          pageNumber,
-          totalPages
-        )
-        ocrPages[index] = cleanPageText(text)
-      }
-    )
-
-    return ensurePageCount(ocrPages, pageCount)
-  } catch (error) {
-    console.error("Vision OCR pipeline failed:", error)
-    return []
-  }
+  return ensurePageCount(ocrPages, pageCount)
 }
 
 async function extractTextFromVisionPage(
@@ -320,10 +365,10 @@ async function extractTextFromVisionPage(
   }
 
   let attempt = 0
-  while (attempt <= VISION_MAX_RETRIES) {
+  while (attempt <= OCR_CONFIG.VISION_MAX_RETRIES) {
     try {
       const response = await visionClient.responses.create({
-        model: VISION_MODEL,
+        model: OCR_CONFIG.VISION_MODEL,
         instructions:
           "You are an expert transcription assistant. " +
           "Return only the exact text you read, preserving line breaks whenever possible. " +
@@ -362,7 +407,7 @@ async function extractTextFromVisionPage(
         `Vision OCR failed for page ${pageNumber} (attempt ${attempt}):`,
         error
       )
-      if (attempt > VISION_MAX_RETRIES) {
+      if (attempt > OCR_CONFIG.VISION_MAX_RETRIES) {
         return ""
       }
       await new Promise((resolve) => setTimeout(resolve, attempt * 1000))

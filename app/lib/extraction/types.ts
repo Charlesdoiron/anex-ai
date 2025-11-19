@@ -245,6 +245,7 @@ export interface LeaseExtractionResult {
   extractionDate: string // ISO date
   rawText: string
   pageCount: number
+  usedOcrEngine?: "tesseract" | "vision" | null
 
   regime: LeaseRegimeData
   parties: PartiesData

@@ -1,13 +1,10 @@
-import { NextRequest, NextResponse } from "next/server"
-import { createOpenAI } from "@ai-sdk/openai"
-import { streamText, tool } from "ai"
-import type { CoreMessage } from "ai"
-import { z } from "zod"
+import { NextRequest } from "next/server"
+import OpenAI from "openai"
 import { auth } from "@/app/lib/auth"
 import { searchService } from "@/app/lib/rag/services/search-service"
 import { RAG_CONFIG } from "@/app/lib/rag/config"
 
-const openai = createOpenAI({
+const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 })
 
@@ -19,9 +16,9 @@ const EXTRACTION_SYSTEM_PROMPT =
 
 export async function POST(req: NextRequest) {
   if (!process.env.OPENAI_API_KEY) {
-    return NextResponse.json(
-      { error: "OPENAI_API_KEY is not configured." },
-      { status: 500 }
+    return new Response(
+      JSON.stringify({ error: "OPENAI_API_KEY is not configured." }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
     )
   }
 
@@ -33,9 +30,9 @@ export async function POST(req: NextRequest) {
   const documentName: string | undefined = data?.fileName
 
   if (!Array.isArray(messages)) {
-    return NextResponse.json(
-      { error: "messages must be an array." },
-      { status: 400 }
+    return new Response(
+      JSON.stringify({ error: "messages must be an array." }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
     )
   }
 
@@ -52,8 +49,10 @@ export async function POST(req: NextRequest) {
         : ""
 
   const shouldUseRag = Boolean(documentId && userQuestion.trim())
+  const modelName = shouldUseRag ? RAG_CONFIG.responsesModel : "gpt-4o-mini"
+  const isGpt5 = modelName.startsWith("gpt-5")
 
-  const systemPrompt = shouldUseRag
+  const instructions = shouldUseRag
     ? [
         GENERAL_SYSTEM_PROMPT,
         `\n\n## Document actif`,
@@ -72,40 +71,167 @@ export async function POST(req: NextRequest) {
       ? EXTRACTION_SYSTEM_PROMPT
       : GENERAL_SYSTEM_PROMPT
 
-  const retrieveChunksTool =
-    shouldUseRag &&
-    tool({
-      description:
-        "Recherche des passages pertinents dans le bail commercial téléversé par l'utilisateur. À utiliser OBLIGATOIREMENT avant de répondre à toute question sur le document.",
-      parameters: z.object({
-        query: z
-          .string()
-          .describe(
-            "Requête de recherche en français, décrivant précisément l'information recherchée dans le bail (ex: 'loyer mensuel', 'durée du bail', 'conditions de résiliation')"
-          ),
-        limit: z
-          .number()
-          .min(1)
-          .max(8)
-          .optional()
-          .describe("Nombre maximum de passages à retourner (défaut: 5)"),
-      }),
-      execute: async ({ query, limit = 5 }) => {
-        console.log(
-          `🔍 RAG search: query="${query}", documentId="${documentId}", limit=${limit}`
-        )
+  const tools = shouldUseRag
+    ? [
+        {
+          type: "function" as const,
+          name: "retrieve_chunks",
+          description:
+            "Recherche des passages pertinents dans le bail commercial téléversé par l'utilisateur. À utiliser OBLIGATOIREMENT avant de répondre à toute question sur le document.",
+          parameters: {
+            type: "object",
+            properties: {
+              query: {
+                type: "string",
+                description:
+                  "Requête de recherche en français, décrivant précisément l'information recherchée dans le bail (ex: 'loyer mensuel', 'durée du bail', 'conditions de résiliation')",
+              },
+              limit: {
+                type: "number",
+                description:
+                  "Nombre maximum de passages à retourner (défaut: 5)",
+              },
+            },
+            required: ["query"],
+            additionalProperties: false,
+          },
+          strict: true,
+        },
+      ]
+    : undefined
 
-        const results = await searchService.search(query, {
+  try {
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          await handleConversation(
+            messages,
+            instructions,
+            tools,
+            modelName,
+            isGpt5,
+            extractData,
+            documentId,
+            controller,
+            encoder
+          )
+          controller.close()
+        } catch (error) {
+          console.error("Stream error:", error)
+          controller.error(error)
+        }
+      },
+    })
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
+    })
+  } catch (error) {
+    console.error("Chat route error:", error)
+    return new Response(
+      JSON.stringify({
+        error: "Failed to generate chat response",
+        message: error instanceof Error ? error.message : "Unknown error",
+      }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    )
+  }
+}
+
+async function handleConversation(
+  inputMessages: any[],
+  instructions: string,
+  tools: any[] | undefined,
+  modelName: string,
+  isGpt5: boolean,
+  extractData: boolean,
+  documentId: string | undefined,
+  controller: ReadableStreamDefaultController,
+  encoder: TextEncoder,
+  previousResponseId?: string
+) {
+  const requestConfig: any = {
+    model: modelName,
+    input: inputMessages,
+    instructions,
+    stream: true,
+  }
+
+  if (tools) {
+    requestConfig.tools = tools
+    requestConfig.tool_choice = "auto"
+  }
+
+  if (previousResponseId) {
+    requestConfig.previous_response_id = previousResponseId
+  }
+
+  if (!isGpt5) {
+    requestConfig.temperature = extractData ? 0.1 : 0.3
+  }
+
+  const stream = isGpt5
+    ? await openai.responses.create(requestConfig)
+    : await openai.chat.completions.create({
+        model: modelName,
+        messages: [{ role: "system", content: instructions }, ...inputMessages],
+        temperature: extractData ? 0.1 : 0.3,
+        stream: true,
+      })
+
+  let responseId: string | undefined
+  let toolCalls: any[] = []
+  let currentToolCall: any = null
+
+  for await (const event of stream as any) {
+    if (isGpt5) {
+      if (event.type === "response.output_item.added") {
+        if (event.item.type === "function_call") {
+          currentToolCall = {
+            call_id: event.item.call_id,
+            name: event.item.name,
+            arguments: "",
+          }
+        }
+      } else if (event.type === "response.function_call_arguments.delta") {
+        if (currentToolCall) {
+          currentToolCall.arguments += event.delta
+        }
+      } else if (event.type === "response.function_call_arguments.done") {
+        if (currentToolCall) {
+          toolCalls.push(currentToolCall)
+          currentToolCall = null
+        }
+      } else if (event.type === "response.output_text.delta") {
+        controller.enqueue(encoder.encode(`0:${JSON.stringify(event.delta)}\n`))
+      } else if (event.type === "response.done") {
+        responseId = event.response.id
+      }
+    } else {
+      if (event.choices[0]?.delta?.content) {
+        controller.enqueue(
+          encoder.encode(
+            `0:${JSON.stringify(event.choices[0].delta.content)}\n`
+          )
+        )
+      }
+    }
+  }
+
+  if (toolCalls.length > 0 && documentId) {
+    for (const toolCall of toolCalls) {
+      if (toolCall.name === "retrieve_chunks") {
+        const args = JSON.parse(toolCall.arguments)
+        const results = await searchService.search(args.query, {
           documentId,
-          limit,
+          limit: args.limit || 5,
           minScore: 0.3,
         })
-
-        console.log(`📚 Found ${results.length} relevant chunks`)
-
-        if (results.length === 0) {
-          return "Aucun passage pertinent trouvé dans le bail pour cette requête. Le document ne semble pas contenir d'information sur ce sujet."
-        }
 
         const context = results
           .map((result, idx) => {
@@ -118,40 +244,25 @@ export async function POST(req: NextRequest) {
           })
           .join("\n\n---\n\n")
 
-        return `Voici les passages pertinents trouvés dans le bail:\n\n${context}`
-      },
-    })
+        inputMessages.push({
+          type: "function_call_output",
+          call_id: toolCall.call_id,
+          output: context || "Aucun passage pertinent trouvé.",
+        })
+      }
+    }
 
-  const chatMessages: CoreMessage[] = [
-    {
-      role: "system",
-      content: systemPrompt,
-    },
-    ...messages,
-  ]
-
-  try {
-    const response = await streamText({
-      model: openai(shouldUseRag ? RAG_CONFIG.responsesModel : "gpt-4o-mini"),
-      messages: chatMessages,
-      temperature: extractData ? 0.1 : 0.3,
-      tools:
-        shouldUseRag && retrieveChunksTool
-          ? { retrieve_chunks: retrieveChunksTool }
-          : undefined,
-      toolChoice: shouldUseRag ? "required" : undefined,
-      maxSteps: shouldUseRag ? 4 : 1,
-    })
-
-    return response.toDataStreamResponse()
-  } catch (error) {
-    console.error("Chat route error:", error)
-    return NextResponse.json(
-      {
-        error: "Failed to generate chat response",
-        message: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 500 }
+    await handleConversation(
+      inputMessages,
+      instructions,
+      tools,
+      modelName,
+      isGpt5,
+      extractData,
+      documentId,
+      controller,
+      encoder,
+      responseId
     )
   }
 }
