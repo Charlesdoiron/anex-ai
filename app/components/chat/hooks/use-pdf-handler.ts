@@ -1,131 +1,134 @@
-"use client";
+"use client"
 
-import { useState, useRef } from "react";
-import { MessageWithSources } from "../types";
-import { SourceInfo } from "@/app/lib/llama-cloud-service/extract-text-from-nodes";
+import { useState, useRef } from "react"
+import { MessageWithSources } from "../types"
+import { SourceInfo } from "@/app/lib/rag/types"
+import type {
+  ExtractionProgress,
+  LeaseExtractionResult,
+} from "@/app/lib/extraction/types"
 
 interface UsePdfHandlerProps {
   setMessages: (
     messages:
       | MessageWithSources[]
       | ((messages: MessageWithSources[]) => MessageWithSources[])
-  ) => void;
+  ) => void
+  onExtractionComplete?: () => void
+  onDocumentReady?: (result: LeaseExtractionResult) => void
 }
 
-export function usePdfHandler({ setMessages }: UsePdfHandlerProps) {
-  const [uploadedPdf, setUploadedPdf] = useState<File | null>(null);
-  const [isProcessingPdf, setIsProcessingPdf] = useState(false);
-  const [processingStatus, setProcessingStatus] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+export function usePdfHandler({
+  setMessages,
+  onExtractionComplete,
+  onDocumentReady,
+}: UsePdfHandlerProps) {
+  const [uploadedPdf, setUploadedPdf] = useState<File | null>(null)
+  const [isProcessingPdf, setIsProcessingPdf] = useState(false)
+  const [processingStatus, setProcessingStatus] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // ============================================
   // DEV MODE: Trigger extraction without file upload
   // ============================================
   async function handleDevModeExtraction() {
-    setIsProcessingPdf(true);
-    setProcessingStatus("🚀 Mode développement: connexion au pipeline...");
+    setIsProcessingPdf(true)
+    setProcessingStatus("🚀 Mode développement: connexion au pipeline...")
+
+    const processingMessageId = `processing-${Date.now()}`
+
     try {
-      // Create a dummy FormData (backend will ignore it in dev mode)
-      const formData = new FormData();
-      const dummyFile = new Blob(["dev"], { type: "application/pdf" });
-      formData.append("file", dummyFile, "dev-mode.pdf");
+      const formData = new FormData()
+      const dummyFile = new Blob(["dev"], { type: "application/pdf" })
+      formData.append("file", dummyFile, "dev-mode.pdf")
+      formData.append("stream", "true")
 
-      const userMessage: MessageWithSources = {
-        id: Date.now().toString(),
-        role: "user",
-        content: "🚀 Dev Mode: Using pre-parsed file from LlamaCloud",
-      };
-
-      // Add user message immediately
-      setMessages((prev) => [...prev, userMessage]);
-
-      // Add processing indicator
       setMessages((prev) => [
         ...prev,
         {
-          id: `processing-${Date.now()}`,
+          id: processingMessageId,
           role: "assistant",
-          content: "⏳ Querying pre-parsed document...",
+          content: "⏳ Démarrage de l'extraction...",
         },
-      ]);
+      ])
 
-      setProcessingStatus("🔍 Interrogation du document pré-analysé...");
-      const response = await fetch("/api/extract-pdf", {
+      const response = await fetch("/api/extract-lease", {
         method: "POST",
         body: formData,
-      });
-      
-      setProcessingStatus("📊 Analyse des résultats...");
+      })
 
-      // Remove processing indicator
-      setMessages((prev) =>
-        prev.filter((msg) => !msg.id.startsWith("processing-"))
-      );
-
-      const assistantMessages: MessageWithSources[] = [];
-
-      if (response.ok) {
-        const result = await response.json();
-        console.log("📄 PDF extraction result:", result);
-
-        if (
-          result.results &&
-          Array.isArray(result.results) &&
-          result.results.length > 0
-        ) {
-          result.results.forEach((queryResult: any, index: number) => {
-            const content = `**Q: ${queryResult.query}**\n${
-              queryResult.answer || "Aucune réponse trouvée."
-            }`;
-
-            let answerSources: SourceInfo[] = [];
-            if (
-              queryResult.sources &&
-              Array.isArray(queryResult.sources) &&
-              queryResult.sources.length > 0
-            ) {
-              const uniqueSources = queryResult.sources.filter(
-                (source: any, idx: number, self: any[]) =>
-                  idx ===
-                  self.findIndex(
-                    (s: any) =>
-                      s.pageNumber === source.pageNumber &&
-                      s.fileName === source.fileName
-                  )
-              );
-
-              answerSources = uniqueSources.map((source: any) => ({
-                pageNumber: source.pageNumber,
-                fileName: source.fileName,
-                score: source.score,
-                startCharIdx: source.startCharIdx,
-                endCharIdx: source.endCharIdx,
-                metadata: source.metadata,
-              }));
-            }
-
-            assistantMessages.push({
-              id: `result-${Date.now()}-${index}`,
-              role: "assistant",
-              content,
-              sources: answerSources.length > 0 ? answerSources : undefined,
-            });
-          });
-        }
-      } else {
-        const errorMsg = await response.text();
-        assistantMessages.push({
-          id: `error-${Date.now()}`,
-          role: "assistant",
-          content: `❌ **Error**: ${errorMsg}`,
-        });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${await response.text()}`)
       }
 
-      setMessages((prev) => [...prev, ...assistantMessages]);
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ""
+      let extractionResult: LeaseExtractionResult | null = null
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split("\n\n")
+          buffer = lines.pop() || ""
+
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              try {
+                const data = JSON.parse(line.slice(6)) as
+                  | ExtractionProgress
+                  | { result: LeaseExtractionResult }
+
+                if ("result" in data) {
+                  extractionResult = data.result
+                } else if ("status" in data) {
+                  setProcessingStatus(data.message)
+                  setMessages((prev) =>
+                    prev.map((msg) =>
+                      msg.id === processingMessageId
+                        ? {
+                            ...msg,
+                            content: `⏳ ${data.message} (${data.progress}%)`,
+                          }
+                        : msg
+                    )
+                  )
+                }
+              } catch (e) {
+                console.warn("Failed to parse SSE data:", e)
+              }
+            }
+          }
+        }
+      }
+
+      setMessages((prev) =>
+        prev.filter((msg) => msg.id !== processingMessageId)
+      )
+
+      if (extractionResult) {
+        const summary = formatExtractionSummary(extractionResult)
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `extraction-${Date.now()}`,
+            role: "assistant",
+            content: summary,
+          },
+        ])
+        onDocumentReady?.(extractionResult)
+      }
+
+      if (onExtractionComplete) {
+        onExtractionComplete()
+      }
     } catch (error) {
-      console.error("Dev mode extraction error:", error);
+      console.error("Dev mode extraction error:", error)
       setMessages((prev) => [
-        ...prev,
+        ...prev.filter((msg) => msg.id !== processingMessageId),
         {
           id: `dev-error-${Date.now()}`,
           role: "assistant",
@@ -133,118 +136,121 @@ export function usePdfHandler({ setMessages }: UsePdfHandlerProps) {
             error instanceof Error ? error.message : "Unknown error"
           }`,
         },
-      ]);
+      ])
     } finally {
-      setIsProcessingPdf(false);
-      setProcessingStatus(null);
+      setIsProcessingPdf(false)
+      setProcessingStatus(null)
     }
   }
   // ============================================
 
   async function handlePdfUpload(file: File) {
-    setIsProcessingPdf(true);
-    setProcessingStatus("📤 Téléversement du PDF...");
+    setIsProcessingPdf(true)
+    setProcessingStatus("📤 Téléversement du PDF...")
+
+    const processingMessageId = `processing-${Date.now()}`
+
     try {
-      const formData = new FormData();
-      formData.append("file", file);
+      const formData = new FormData()
+      formData.append("file", file)
+      formData.append("stream", "true")
 
       const userMessage: MessageWithSources = {
         id: Date.now().toString(),
         role: "user",
-        content: `Uploaded PDF: ${file.name}`,
-      };
+        content: `📄 Document uploadé: ${file.name}`,
+      }
 
-      // Add user message immediately
-      setMessages((prev) => [...prev, userMessage]);
+      setMessages((prev) => [...prev, userMessage])
 
-      // Add processing indicator
       setMessages((prev) => [
         ...prev,
         {
-          id: `processing-${Date.now()}`,
+          id: processingMessageId,
           role: "assistant",
-          content: "⏳ Processing PDF...",
+          content: "⏳ Démarrage de l'extraction...",
         },
-      ]);
+      ])
 
-      setProcessingStatus("🔄 Analyse du document en cours...");
-      const response = await fetch("/api/extract-pdf", {
+      const response = await fetch("/api/extract-lease", {
         method: "POST",
         body: formData,
-      });
-      
-      setProcessingStatus("📊 Extraction des informations...");
+      })
 
-      // Remove processing indicator
-      setMessages((prev) =>
-        prev.filter((msg) => !msg.id.startsWith("processing-"))
-      );
-
-      const assistantMessages: MessageWithSources[] = [];
-
-      if (response.ok) {
-        const result = await response.json();
-        console.log("📄 PDF extraction result:", result);
-
-        if (
-          result.results &&
-          Array.isArray(result.results) &&
-          result.results.length > 0
-        ) {
-          result.results.forEach((queryResult: any, index: number) => {
-            const content = `**Q: ${queryResult.query}**\n${
-              queryResult.answer || "Aucune réponse trouvée."
-            }`;
-
-            let answerSources: SourceInfo[] = [];
-            if (
-              queryResult.sources &&
-              Array.isArray(queryResult.sources) &&
-              queryResult.sources.length > 0
-            ) {
-              const uniqueSources = queryResult.sources.filter(
-                (source: any, idx: number, self: any[]) =>
-                  idx ===
-                  self.findIndex(
-                    (s: any) =>
-                      s.pageNumber === source.pageNumber &&
-                      s.fileName === source.fileName
-                  )
-              );
-
-              answerSources = uniqueSources.map((source: any) => ({
-                pageNumber: source.pageNumber,
-                fileName: source.fileName,
-                score: source.score,
-                startCharIdx: source.startCharIdx,
-                endCharIdx: source.endCharIdx,
-                metadata: source.metadata,
-              }));
-            }
-
-            assistantMessages.push({
-              id: `result-${Date.now()}-${index}`,
-              role: "assistant",
-              content,
-              sources: answerSources.length > 0 ? answerSources : undefined,
-            });
-          });
-        }
-      } else {
-        const errorMsg = await response.text();
-        assistantMessages.push({
-          id: `error-${Date.now()}`,
-          role: "assistant",
-          content: `❌ **Error**: ${errorMsg}`,
-        });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${await response.text()}`)
       }
 
-      setMessages((prev) => [...prev, ...assistantMessages]);
-      setUploadedPdf(null);
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ""
+      let extractionResult: LeaseExtractionResult | null = null
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split("\n\n")
+          buffer = lines.pop() || ""
+
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              try {
+                const data = JSON.parse(line.slice(6)) as
+                  | ExtractionProgress
+                  | { result: LeaseExtractionResult }
+
+                if ("result" in data) {
+                  extractionResult = data.result
+                } else if ("status" in data) {
+                  setProcessingStatus(data.message)
+                  setMessages((prev) =>
+                    prev.map((msg) =>
+                      msg.id === processingMessageId
+                        ? {
+                            ...msg,
+                            content: `⏳ ${data.message} (${data.progress}%)`,
+                          }
+                        : msg
+                    )
+                  )
+                }
+              } catch (e) {
+                console.warn("Failed to parse SSE data:", e)
+              }
+            }
+          }
+        }
+      }
+
+      setMessages((prev) =>
+        prev.filter((msg) => msg.id !== processingMessageId)
+      )
+
+      if (extractionResult) {
+        const summary = formatExtractionSummary(extractionResult)
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `extraction-${Date.now()}`,
+            role: "assistant",
+            content: summary,
+          },
+        ])
+        onDocumentReady?.(extractionResult)
+      }
+
+      if (onExtractionComplete) {
+        onExtractionComplete()
+      }
+
+      setUploadedPdf(null)
     } catch (error) {
-      console.error("PDF upload error:", error);
+      console.error("PDF upload error:", error)
       setMessages((prev) => [
-        ...prev,
+        ...prev.filter((msg) => msg.id !== processingMessageId),
         {
           id: `pdf-error-${Date.now()}`,
           role: "assistant",
@@ -252,35 +258,88 @@ export function usePdfHandler({ setMessages }: UsePdfHandlerProps) {
             error instanceof Error ? error.message : "Unknown error"
           }`,
         },
-      ]);
-      setUploadedPdf(null);
+      ])
+      setUploadedPdf(null)
     } finally {
-      setIsProcessingPdf(false);
-      setProcessingStatus(null);
+      setIsProcessingPdf(false)
+      setProcessingStatus(null)
     }
   }
 
+  function formatExtractionSummary(result: LeaseExtractionResult): string {
+    const meta = result.extractionMetadata
+    const confidenceEmoji =
+      meta.averageConfidence > 0.8
+        ? "✅"
+        : meta.averageConfidence > 0.6
+          ? "⚠️"
+          : "❌"
+
+    let summary = `## 📋 Résultat de l'extraction\n\n`
+    summary += `${confidenceEmoji} **Statistiques:**\n`
+    summary += `- Champs extraits: ${meta.extractedFields}/${meta.totalFields}\n`
+    summary += `- Champs manquants: ${meta.missingFields}\n`
+    summary += `- Confiance moyenne: ${(meta.averageConfidence * 100).toFixed(1)}%\n`
+    summary += `- Temps de traitement: ${(meta.processingTimeMs / 1000).toFixed(1)}s\n\n`
+
+    if (
+      result.regime?.regime?.value &&
+      result.regime.regime.value !== "unknown"
+    ) {
+      summary += `**Régime du bail:** ${result.regime.regime.value}\n\n`
+    }
+
+    if (result.parties?.landlord?.name?.value) {
+      summary += `**Bailleur:** ${result.parties.landlord.name.value}\n`
+    }
+    if (result.parties?.tenant?.name?.value) {
+      summary += `**Locataire:** ${result.parties.tenant.name.value}\n\n`
+    }
+
+    if (result.premises?.surfaceArea?.value) {
+      summary += `**Surface:** ${result.premises.surfaceArea.value} m²\n`
+    }
+    if (result.premises?.address?.value) {
+      summary += `**Adresse:** ${result.premises.address.value}\n\n`
+    }
+
+    if (result.rent?.annualRentExclTaxExclCharges?.value) {
+      summary += `**Loyer annuel (HTHC):** ${result.rent.annualRentExclTaxExclCharges.value.toLocaleString("fr-FR")} €\n`
+    }
+    if (result.calendar?.effectiveDate?.value) {
+      summary += `**Date de prise d'effet:** ${new Date(result.calendar.effectiveDate.value).toLocaleDateString("fr-FR")}\n`
+    }
+    if (result.calendar?.duration?.value) {
+      summary += `**Durée:** ${result.calendar.duration.value} ans\n\n`
+    }
+
+    summary += `\n📄 **Document ID:** ${result.documentId}\n`
+    summary += `📅 **Date d'extraction:** ${new Date(result.extractionDate).toLocaleString("fr-FR")}`
+
+    return summary
+  }
+
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
+    const file = e.target.files?.[0]
     if (file && file.type === "application/pdf") {
-      setUploadedPdf(file);
-      console.log("PDF selected:", file.name);
-      await handlePdfUpload(file);
+      setUploadedPdf(file)
+      console.log("PDF selected:", file.name)
+      await handlePdfUpload(file)
       if (fileInputRef.current) {
-        fileInputRef.current.value = "";
+        fileInputRef.current.value = ""
       }
     } else if (file) {
-      alert("Please select a PDF file");
+      alert("Please select a PDF file")
       if (fileInputRef.current) {
-        fileInputRef.current.value = "";
+        fileInputRef.current.value = ""
       }
     }
   }
 
   function removePdf() {
-    setUploadedPdf(null);
+    setUploadedPdf(null)
     if (fileInputRef.current) {
-      fileInputRef.current.value = "";
+      fileInputRef.current.value = ""
     }
   }
 
@@ -292,6 +351,5 @@ export function usePdfHandler({ setMessages }: UsePdfHandlerProps) {
     handleFileSelect,
     removePdf,
     handleDevModeExtraction, // DEV MODE: expose dev mode extraction
-  };
+  }
 }
-

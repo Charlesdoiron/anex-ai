@@ -41,3 +41,8 @@ next-env.d.ts
 # bun
 bun.lockb
 
+# storage for local RAG
+storage/
+
+# history files
+.history/

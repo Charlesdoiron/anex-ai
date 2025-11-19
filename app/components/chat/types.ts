@@ -1,9 +1,8 @@
-import { SourceInfo } from "@/app/lib/llama-cloud-service/extract-text-from-nodes";
+import { SourceInfo } from "@/app/lib/rag/types"
 
 export interface MessageWithSources {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  sources?: SourceInfo[];
+  id: string
+  role: "user" | "assistant"
+  content: string
+  sources?: SourceInfo[]
 }
-

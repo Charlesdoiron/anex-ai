@@ -1,27 +1,36 @@
-"use client";
+"use client"
 
-import { useEffect, useRef } from "react";
-import { MessageWithSources } from "./types";
-import { MessageItem } from "./message-item";
-import { LoadingIndicator } from "./loading-indicator";
+import { useEffect, useRef } from "react"
+import { MessageWithSources } from "./types"
+import { MessageItem } from "./message-item"
+import { LoadingIndicator } from "./loading-indicator"
 
 interface MessagesAreaProps {
-  messages: MessageWithSources[];
-  isLoading: boolean;
+  messages: MessageWithSources[]
+  isLoading: boolean
+  isProcessing?: boolean
 }
 
-export function MessagesArea({ messages, isLoading }: MessagesAreaProps) {
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+export function MessagesArea({
+  messages,
+  isLoading,
+  isProcessing,
+}: MessagesAreaProps) {
+  const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [messages])
 
   return (
     <div className="flex-1 overflow-y-auto bg-[#fef9f4] dark:bg-[#343541]">
       {messages.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-full px-4">
-          <h1 className="text-8xl font-semibold text-[#033a17] dark:text-gray-100 mb-12 text-center">
+          <h1
+            className={`text-8xl font-semibold text-[#033a17] dark:text-gray-100 mb-12 text-center transition-opacity duration-500 ${
+              isProcessing ? "opacity-0" : "opacity-100"
+            }`}
+          >
             Anex AI
           </h1>
         </div>
@@ -37,6 +46,5 @@ export function MessagesArea({ messages, isLoading }: MessagesAreaProps) {
         </div>
       )}
     </div>
-  );
+  )
 }
-

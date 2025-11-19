@@ -1,38 +1,38 @@
-"use client";
+"use client"
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { signIn } from "@/app/lib/auth-client";
+import { useState } from "react"
+import { useRouter } from "next/navigation"
+import Link from "next/link"
+import { signIn } from "@/app/lib/auth-client"
 
 export default function LoginPage() {
-  const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const router = useRouter()
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [error, setError] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
-    setIsLoading(true);
+    e.preventDefault()
+    setError("")
+    setIsLoading(true)
 
     try {
       const result = await signIn.email({
         email,
         password,
-      });
+      })
 
       if (result.error) {
-        setError(result.error.message || "Invalid email or password");
+        setError(result.error.message || "Invalid email or password")
       } else {
-        router.push("/");
-        router.refresh();
+        router.push("/")
+        router.refresh()
       }
     } catch (err) {
-      setError("An error occurred. Please try again.");
+      setError("An error occurred. Please try again.")
     } finally {
-      setIsLoading(false);
+      setIsLoading(false)
     }
   }
 
@@ -98,7 +98,7 @@ export default function LoginPage() {
       </form>
 
       <p className="mt-4 text-center text-sm text-gray-600 dark:text-gray-400">
-        Don't have an account?{" "}
+        Don&apos;t have an account?{" "}
         <Link
           href="/signup"
           className="text-gray-800 dark:text-gray-200 hover:underline font-medium"
@@ -107,5 +107,5 @@ export default function LoginPage() {
         </Link>
       </p>
     </div>
-  );
+  )
 }
