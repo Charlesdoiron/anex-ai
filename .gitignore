@@ -44,7 +44,9 @@ bun.lock
 package-lock.json
 
 # storage for local RAG
-storage/
+# Ignore all content but keep directory structure with .gitkeep files
+/storage/**
+!/storage/**/.gitkeep
 
 # history files
 .history/

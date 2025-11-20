@@ -9,6 +9,7 @@
 import fs from "fs/promises"
 import path from "path"
 import type { LeaseExtractionResult } from "./types"
+import { ensureStorageStructure } from "../storage-utils"
 
 export interface StorageAdapter {
   saveExtraction(
@@ -37,8 +38,7 @@ export class FileSystemStorageAdapter implements StorageAdapter {
   }
 
   private async ensureDirectories(): Promise<void> {
-    await fs.mkdir(this.storageDir, { recursive: true })
-    await fs.mkdir(this.rawTextDir, { recursive: true })
+    await ensureStorageStructure()
   }
 
   async saveExtraction(
@@ -53,6 +53,7 @@ export class FileSystemStorageAdapter implements StorageAdapter {
   async getExtraction(
     documentId: string
   ): Promise<Omit<LeaseExtractionResult, "rawText"> | null> {
+    await this.ensureDirectories()
     const filePath = path.join(this.storageDir, `${documentId}.json`)
     try {
       const data = await fs.readFile(filePath, "utf-8")
@@ -72,6 +73,7 @@ export class FileSystemStorageAdapter implements StorageAdapter {
   }
 
   async getRawText(documentId: string): Promise<string | null> {
+    await this.ensureDirectories()
     const filePath = path.join(this.rawTextDir, `${documentId}.txt`)
     try {
       return await fs.readFile(filePath, "utf-8")
