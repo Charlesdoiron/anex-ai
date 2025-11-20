@@ -2,7 +2,6 @@
 
 import "dotenv/config"
 import { validateEnv } from "../app/lib/env-check"
-
 try {
   validateEnv()
   console.log("✅ All required environment variables are present")

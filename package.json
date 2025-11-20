@@ -4,8 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "npm run check:env && npm run seed:insee && next dev",
-    "build": "npm run check:env && next build",
+    "build": "npm run check:env && prisma generate && next build",
     "start": "next start",
+    "postinstall": "prisma generate",
     "lint": "next lint",
     "prisma:migrate": "prisma migrate dev",
     "prisma:generate": "prisma generate",
