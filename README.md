@@ -35,6 +35,11 @@ An intelligent document extraction system for French commercial lease agreements
    - JSON-based storage
    - Easy migration to database later
    - Full-text search capability
+5. **Test Mode** (optionnel)
+   - Active via `NEXT_PUBLIC_APP_MODE=test`
+   - Force le stockage local (JSON + chunks RAG)
+   - Bouton “Vider les données locales” disponible dans l’interface
+   - Endpoint dédié `/api/admin/clear-data` (test uniquement)
 
 ## Extracted Data Categories
 
@@ -119,6 +124,27 @@ Retrieve a specific extraction result.
 
 Delete an extraction result.
 
+### POST /api/admin/clear-data _(mode test uniquement)_
+
+Efface toutes les données locales (extractions + RAG). N'est disponible qu'en mode test et nécessite une session utilisateur.
+
+```bash
+curl -X POST http://localhost:3000/api/admin/clear-data
+```
+
+Réponse :
+
+```json
+{
+  "success": true,
+  "summary": {
+    "totalFiles": 42,
+    "totalSizeBytes": 345678
+  },
+  "message": "Toutes les données locales ont été effacées."
+}
+```
+
 ## Environment Variables
 
 ```env
@@ -141,6 +167,9 @@ PDF_OCR_CONCURRENCY=4
 PDF_ENABLE_VISION_OCR=true
 OPENAI_VISION_MODEL=gpt-5-nano
 EXTRACTION_CONCURRENCY=6
+
+# Mode applicatif
+NEXT_PUBLIC_APP_MODE=prod # passer à "test" pour activer les outils locaux
 ```
 
 ## Development

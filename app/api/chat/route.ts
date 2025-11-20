@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto"
 import { NextRequest } from "next/server"
 import OpenAI from "openai"
 import { auth } from "@/app/lib/auth"
@@ -210,6 +211,29 @@ interface HandleConversationArgs {
   encoder: TextEncoder
 }
 
+function enqueueDataEvent(
+  controller: ReadableStreamDefaultController,
+  encoder: TextEncoder,
+  payload: Record<string, unknown>
+) {
+  controller.enqueue(encoder.encode(`2:${JSON.stringify([payload])}\n`))
+}
+
+function sendStatusEvent(
+  controller: ReadableStreamDefaultController,
+  encoder: TextEncoder,
+  status: string,
+  data?: Record<string, unknown>
+) {
+  enqueueDataEvent(controller, encoder, {
+    type: "status",
+    id: randomUUID(),
+    timestamp: new Date().toISOString(),
+    status,
+    ...(data ?? {}),
+  })
+}
+
 async function handleConversation({
   conversationItems,
   instructions,
@@ -241,18 +265,24 @@ async function handleConversation({
       }
 
       if (!documentId) {
-        controller.enqueue(
-          encoder.encode(
-            `0:${JSON.stringify(
-              "Impossible d'accéder au document pour exécuter l'outil RAG."
-            )}\n`
-          )
-        )
+        sendStatusEvent(controller, encoder, "error", {
+          message:
+            "Impossible d'accéder au document pour exécuter l'outil RAG.",
+        })
         break
       }
 
       for (const toolCall of toolCalls) {
-        const toolOutput = await handleToolCall(toolCall, documentId)
+        if (toolCall.name === "retrieve_chunks") {
+          const args = JSON.parse(toolCall.arguments || "{}")
+          sendStatusEvent(controller, encoder, "rag_searching", {
+            query: args.query,
+          })
+        }
+
+        const toolOutput = await handleToolCall(toolCall, documentId, (data) =>
+          sendStatusEvent(controller, encoder, "rag_results", data)
+        )
         conversationItems.push(toolOutput)
       }
     }
@@ -352,7 +382,8 @@ async function streamResponses({
 
 async function handleToolCall(
   toolCall: any,
-  documentId: string
+  documentId: string,
+  onStatus?: (data: Record<string, unknown>) => void
 ): Promise<ConversationItem> {
   if (toolCall.name !== "retrieve_chunks") {
     return {
@@ -380,6 +411,14 @@ async function handleToolCall(
       limit: 5,
       minScore: 0.3,
     })
+
+    if (onStatus) {
+      onStatus({
+        found: results.length,
+        pages: results.map((r) => r.pageNumber).filter(Boolean),
+        scores: results.map((r) => r.score?.toFixed(2)).filter(Boolean),
+      })
+    }
 
     if (!results.length) {
       return {
@@ -410,6 +449,11 @@ async function handleToolCall(
     }
   } catch (error) {
     console.error("RAG tool execution failed:", error)
+    if (onStatus) {
+      onStatus({
+        error: error instanceof Error ? error.message : "inconnue",
+      })
+    }
     return {
       type: "function_call_output",
       call_id: toolCall.call_id,

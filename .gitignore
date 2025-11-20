@@ -38,11 +38,28 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# bun
+# package manager lock files (using yarn)
 bun.lockb
+bun.lock
+package-lock.json
 
 # storage for local RAG
 storage/
 
 # history files
 .history/
+
+# IDE
+.vscode/
+.idea/
+*.code-workspace
+
+# OS
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Next.js / Turbopack
+.turbo/
+.swc/

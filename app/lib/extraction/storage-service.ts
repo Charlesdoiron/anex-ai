@@ -1,96 +1,158 @@
-/**
- * Storage service for extraction results
- * Saves to filesystem for now, can be extended to database
- */
+// Service de stockage des résultats d'extraction
+//
+// Modifications récentes :
+// - Séparation du rawText dans des fichiers .txt séparés (storage/extractions/raw-text/)
+// - Les JSON ne contiennent plus que les données structurées (beaucoup plus légers)
+// - Système d'adapters pour faciliter la migration vers une base de données plus tard
+// - Migration des fichiers existants effectuée le 19/01/2025
 
 import fs from "fs/promises"
 import path from "path"
 import type { LeaseExtractionResult } from "./types"
 
-export class ExtractionStorageService {
+export interface StorageAdapter {
+  saveExtraction(
+    documentId: string,
+    data: Omit<LeaseExtractionResult, "rawText">
+  ): Promise<void>
+  getExtraction(
+    documentId: string
+  ): Promise<Omit<LeaseExtractionResult, "rawText"> | null>
+  saveRawText(documentId: string, rawText: string): Promise<void>
+  getRawText(documentId: string): Promise<string | null>
+  deleteExtraction(documentId: string): Promise<void>
+  listExtractions(): Promise<string[]>
+}
+
+export class FileSystemStorageAdapter implements StorageAdapter {
   private storageDir: string
+  private rawTextDir: string
 
   constructor(storageDir?: string) {
     this.storageDir =
       storageDir ||
       process.env.EXTRACTION_STORAGE_DIR ||
       path.join(process.cwd(), "storage", "extractions")
+    this.rawTextDir = path.join(this.storageDir, "raw-text")
   }
 
-  async ensureStorageDir(): Promise<void> {
-    try {
-      await fs.mkdir(this.storageDir, { recursive: true })
-    } catch (error) {
-      console.error("Failed to create storage directory:", error)
-      throw error
-    }
+  private async ensureDirectories(): Promise<void> {
+    await fs.mkdir(this.storageDir, { recursive: true })
+    await fs.mkdir(this.rawTextDir, { recursive: true })
   }
 
-  async saveExtraction(result: LeaseExtractionResult): Promise<void> {
-    await this.ensureStorageDir()
-
-    const filePath = path.join(this.storageDir, `${result.documentId}.json`)
-
-    try {
-      await fs.writeFile(filePath, JSON.stringify(result, null, 2), "utf-8")
-      console.log(`✅ Saved extraction result: ${result.documentId}`)
-    } catch (error) {
-      console.error("Failed to save extraction result:", error)
-      throw error
-    }
+  async saveExtraction(
+    documentId: string,
+    data: Omit<LeaseExtractionResult, "rawText">
+  ): Promise<void> {
+    await this.ensureDirectories()
+    const filePath = path.join(this.storageDir, `${documentId}.json`)
+    await fs.writeFile(filePath, JSON.stringify(data, null, 2), "utf-8")
   }
 
   async getExtraction(
     documentId: string
-  ): Promise<LeaseExtractionResult | null> {
+  ): Promise<Omit<LeaseExtractionResult, "rawText"> | null> {
     const filePath = path.join(this.storageDir, `${documentId}.json`)
-
     try {
       const data = await fs.readFile(filePath, "utf-8")
-      return JSON.parse(data) as LeaseExtractionResult
+      return JSON.parse(data)
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
         return null
       }
-      console.error("Failed to read extraction result:", error)
       throw error
     }
   }
 
-  async listExtractions(): Promise<string[]> {
-    await this.ensureStorageDir()
+  async saveRawText(documentId: string, rawText: string): Promise<void> {
+    await this.ensureDirectories()
+    const filePath = path.join(this.rawTextDir, `${documentId}.txt`)
+    await fs.writeFile(filePath, rawText, "utf-8")
+  }
 
+  async getRawText(documentId: string): Promise<string | null> {
+    const filePath = path.join(this.rawTextDir, `${documentId}.txt`)
     try {
-      const files = await fs.readdir(this.storageDir)
-      return files
-        .filter((file) => file.endsWith(".json"))
-        .map((file) => file.replace(".json", ""))
+      return await fs.readFile(filePath, "utf-8")
     } catch (error) {
-      console.error("Failed to list extractions:", error)
-      return []
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return null
+      }
+      throw error
     }
   }
 
   async deleteExtraction(documentId: string): Promise<void> {
-    const filePath = path.join(this.storageDir, `${documentId}.json`)
+    const jsonPath = path.join(this.storageDir, `${documentId}.json`)
+    const txtPath = path.join(this.rawTextDir, `${documentId}.txt`)
 
-    try {
-      await fs.unlink(filePath)
-      console.log(`🗑️ Deleted extraction result: ${documentId}`)
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-        console.error("Failed to delete extraction result:", error)
-        throw error
-      }
-    }
+    await Promise.allSettled([
+      fs.unlink(jsonPath).catch(() => {}),
+      fs.unlink(txtPath).catch(() => {}),
+    ])
   }
 
-  async searchExtractions(query: string): Promise<LeaseExtractionResult[]> {
+  async listExtractions(): Promise<string[]> {
+    await this.ensureDirectories()
+    const files = await fs.readdir(this.storageDir)
+    return files
+      .filter((file) => file.endsWith(".json"))
+      .map((file) => file.replace(".json", ""))
+  }
+}
+
+export class ExtractionStorageService {
+  constructor(private adapter: StorageAdapter) {}
+
+  async saveExtraction(result: LeaseExtractionResult): Promise<void> {
+    const { rawText, ...structuredData } = result
+
+    await Promise.all([
+      this.adapter.saveExtraction(result.documentId, structuredData),
+      this.adapter.saveRawText(result.documentId, rawText),
+    ])
+
+    console.log(`✅ Saved extraction: ${result.documentId}`)
+  }
+
+  async getExtraction(
+    documentId: string,
+    includeRawText = false
+  ): Promise<LeaseExtractionResult | null> {
+    const structured = await this.adapter.getExtraction(documentId)
+    if (!structured) return null
+
+    if (!includeRawText) {
+      return { ...structured, rawText: "" } as LeaseExtractionResult
+    }
+
+    const rawText = (await this.adapter.getRawText(documentId)) || ""
+    return { ...structured, rawText } as LeaseExtractionResult
+  }
+
+  async getRawText(documentId: string): Promise<string | null> {
+    return this.adapter.getRawText(documentId)
+  }
+
+  async deleteExtraction(documentId: string): Promise<void> {
+    await this.adapter.deleteExtraction(documentId)
+    console.log(`🗑️ Deleted extraction: ${documentId}`)
+  }
+
+  async listExtractions(): Promise<string[]> {
+    return this.adapter.listExtractions()
+  }
+
+  async searchExtractions(
+    query: string,
+    includeRawText = false
+  ): Promise<LeaseExtractionResult[]> {
     const documentIds = await this.listExtractions()
     const results: LeaseExtractionResult[] = []
 
     for (const id of documentIds) {
-      const extraction = await this.getExtraction(id)
+      const extraction = await this.getExtraction(id, includeRawText)
       if (extraction) {
         const searchableText = JSON.stringify(extraction).toLowerCase()
         if (searchableText.includes(query.toLowerCase())) {
@@ -103,4 +165,6 @@ export class ExtractionStorageService {
   }
 }
 
-export const extractionStorage = new ExtractionStorageService()
+export const extractionStorage = new ExtractionStorageService(
+  new FileSystemStorageAdapter()
+)

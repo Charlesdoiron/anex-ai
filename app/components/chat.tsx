@@ -1,16 +1,21 @@
 "use client"
 
 import { useChat } from "@ai-sdk/react"
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { Sidebar } from "./chat/sidebar"
 import { TopBar } from "./chat/top-bar"
 import { MessagesArea } from "./chat/messages-area"
 import { InputArea } from "./chat/input-area"
-import { MessageWithSources } from "./chat/types"
+import {
+  MessageWithSources,
+  StreamStatusEvent,
+  isStreamStatusEvent,
+} from "./chat/types"
 import { usePdfHandler } from "./chat/hooks/use-pdf-handler"
 import { useDataExtraction } from "./chat/hooks/use-data-extraction"
 import { ProcessingStatus } from "./chat/processing-status"
 import { exportAllToPDF, exportAllToCSV } from "./chat/utils/export-utils"
+import { RagStatusFeed } from "./chat/rag-status-feed"
 
 export function Chat() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -29,6 +34,8 @@ export function Chat() {
     stop,
     append,
     setInput,
+    data: streamData,
+    setData,
   } = useChat({
     api: "/api/chat",
     body: activeDocument
@@ -81,6 +88,8 @@ export function Chat() {
       return
     }
 
+    setData([])
+
     await append(
       {
         role: "user",
@@ -101,6 +110,7 @@ export function Chat() {
   function handleClearChat() {
     setMessages([])
     setActiveDocument(null)
+    setData(undefined)
   }
 
   const handleExportPDF = async () => {
@@ -121,6 +131,15 @@ export function Chat() {
     !isExtractingData &&
     !isProcessingPdf &&
     messages.length > 0
+
+  const statusEvents = useMemo(() => {
+    if (!Array.isArray(streamData)) {
+      return []
+    }
+    return (streamData as unknown[]).filter(
+      isStreamStatusEvent
+    ) as StreamStatusEvent[]
+  }, [streamData])
 
   return (
     <div className="flex h-screen bg-white dark:bg-[#343541]">
@@ -143,6 +162,8 @@ export function Chat() {
           isProcessingPdf={isProcessingPdf}
           activeDocument={activeDocument}
         />
+
+        <RagStatusFeed events={statusEvents} isStreaming={isLoading} />
 
         {showExportButtons && (
           <div className="border-b border-gray-200 dark:border-gray-700 bg-[#fef9f4] dark:bg-[#343541]">

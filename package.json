@@ -16,7 +16,8 @@
     "test:ci": "jest --maxWorkers=50% --ci --coverage",
     "test:watch": "jest --watch --maxWorkers=50%",
     "test:changed": "jest --onlyChanged",
-    "format": "prettier --write . --ignore-unknown"
+    "format": "prettier --write . --ignore-unknown",
+    "migrate:extractions": "tsx scripts/migrate-extractions-to-separated-storage.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^1.0.10",
