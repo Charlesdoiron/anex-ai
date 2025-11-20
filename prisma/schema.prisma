@@ -78,6 +78,7 @@ model Extraction {
   fileName          String
   fileSize          Int?
   pageCount         Int?
+  pipelineId        String?
   usedOcrEngine     String?
   extractionDate    DateTime
   

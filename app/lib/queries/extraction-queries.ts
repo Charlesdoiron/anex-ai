@@ -39,7 +39,18 @@ export async function getUserExtractions(
   })
 }
 
-export async function getUserExtractionStats(userId: string) {
+export interface ExtractionStats {
+  totalExtractions: number
+  totalPages: number
+  lastExtraction: {
+    createdAt: Date
+    fileName: string
+  } | null
+}
+
+export async function getUserExtractionStats(
+  userId: string
+): Promise<ExtractionStats> {
   const totalExtractions = await prisma.extraction.count({
     where: { userId },
   })
@@ -90,7 +101,17 @@ export async function getUserExports(
   })
 }
 
-export async function getUserExportStats(userId: string) {
+export interface ExportStats {
+  totalExports: number
+  exportsByFormat: Record<string, number>
+  totalMessages: number
+  lastExport: {
+    createdAt: Date
+    format: string
+  } | null
+}
+
+export async function getUserExportStats(userId: string): Promise<ExportStats> {
   const totalExports = await prisma.export.count({
     where: { userId },
   })
