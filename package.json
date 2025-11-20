@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "npm run seed:insee && next dev",
-    "build": "next build",
+    "dev": "npm run check:env && npm run seed:insee && next dev",
+    "build": "npm run check:env && next build",
     "start": "next start",
     "lint": "next lint",
     "prisma:migrate": "prisma migrate dev",
@@ -18,7 +18,8 @@
     "test:changed": "jest --onlyChanged",
     "format": "prettier --write . --ignore-unknown",
     "migrate:extractions": "tsx scripts/migrate-extractions-to-separated-storage.ts",
-    "seed:insee": "tsx scripts/seed-insee.ts"
+    "seed:insee": "tsx scripts/seed-insee.ts",
+    "check:env": "tsx scripts/check-env.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^1.0.10",
