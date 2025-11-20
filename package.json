@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "npm run seed:insee && next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -17,15 +17,18 @@
     "test:watch": "jest --watch --maxWorkers=50%",
     "test:changed": "jest --onlyChanged",
     "format": "prettier --write . --ignore-unknown",
-    "migrate:extractions": "tsx scripts/migrate-extractions-to-separated-storage.ts"
+    "migrate:extractions": "tsx scripts/migrate-extractions-to-separated-storage.ts",
+    "seed:insee": "tsx scripts/seed-insee.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^1.0.10",
     "@petamoriken/float16": "^3.9.3",
     "@prisma/client": "^6.19.0",
+    "@sparticuz/chromium": "^141.0.0",
     "ai": "^4.0.37",
     "bcryptjs": "^3.0.3",
     "better-auth": "^1.3.34",
+    "cheerio": "^1.1.2",
     "dotenv": "^17.2.3",
     "husky": "^9.1.7",
     "jspdf": "^3.0.3",
@@ -33,6 +36,7 @@
     "next": "^15.1.6",
     "openai": "^6.9.1",
     "pdf-parse": "^2.4.5",
+    "puppeteer-core": "^24.30.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-markdown": "^10.1.0",
@@ -62,6 +66,7 @@
     "postcss": "^8.4.49",
     "prettier": "^3.6.2",
     "prisma": "^6.19.0",
+    "puppeteer": "^24.30.0",
     "tailwindcss": "^3.4.17",
     "ts-jest": "^29.4.5",
     "typescript": "^5.7.2"

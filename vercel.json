@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/rent/insee-rental-reference-index",
+      "schedule": "0 7 * * 1"
+    }
+  ]
+}

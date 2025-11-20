@@ -71,57 +71,71 @@ model Verification {
 }
 
 model Extraction {
-  id                String   @id @default(cuid())
-  documentId        String   @unique
-  userId            String
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  fileName          String
-  fileSize          Int?
-  pageCount         Int?
-  pipelineId        String?
-  usedOcrEngine     String?
-  extractionDate    DateTime
-  
+  id             String   @id @default(cuid())
+  documentId     String   @unique
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fileName       String
+  fileSize       Int?
+  pageCount      Int?
+  pipelineId     String?
+  usedOcrEngine  String?
+  extractionDate DateTime
+
   // Structured data stored as JSON
-  structuredData    Json
-  
+  structuredData Json
+
   // Metadata
-  totalFields       Int
-  extractedFields   Int
-  missingFields     Int
+  totalFields         Int
+  extractedFields     Int
+  missingFields       Int
   lowConfidenceFields Int
-  averageConfidence Float
-  processingTimeMs  Int
-  retries           Int      @default(0)
-  
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  
-  @@map("extraction")
+  averageConfidence   Float
+  processingTimeMs    Int
+  retries             Int   @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([userId])
   @@index([documentId])
   @@index([createdAt])
+  @@map("extraction")
 }
 
 model RawText {
-  id          String   @id @default(cuid())
-  documentId  String   @unique
-  content     String   @db.Text
-  createdAt   DateTime @default(now())
-  
-  @@map("raw_text")
+  id         String   @id @default(cuid())
+  documentId String   @unique
+  content    String   @db.Text
+  createdAt  DateTime @default(now())
+
   @@index([documentId])
+  @@map("raw_text")
 }
 
 model Export {
-  id          String   @id @default(cuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  format      String   // "pdf" or "csv"
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  format       String // "pdf" or "csv"
   messageCount Int
-  createdAt   DateTime @default(now())
-  
-  @@map("export")
+  createdAt    DateTime @default(now())
+
   @@index([userId])
   @@index([createdAt])
+  @@map("export")
+}
+
+model insee_rental_reference_index {
+  id        String   @id @default(cuid())
+  year      Int
+  quarter   Int
+  value     Float
+  createdAt DateTime @default(now())
+
+  @@index([year])
+  @@index([quarter])
+  @@index([value])
+  @@index([createdAt])
+  @@map("insee_rental_reference_index")
 }
