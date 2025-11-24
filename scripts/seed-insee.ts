@@ -12,6 +12,21 @@ async function seedInsee() {
       return
     }
 
+    const isLocalDev =
+      process.env.NEXT_PUBLIC_APP_MODE === "test" ||
+      process.env.SKIP_AUTH === "true" ||
+      !process.env.VERCEL
+
+    if (!process.env.INSEE_RENTAL_REFERENCE_INDEX_URL) {
+      if (isLocalDev) {
+        console.warn(
+          "⚠️  INSEE_RENTAL_REFERENCE_INDEX_URL not set. Skipping INSEE seed for local development."
+        )
+        return
+      }
+      throw new Error("INSEE_RENTAL_REFERENCE_INDEX_URL is required")
+    }
+
     console.log("Seeding INSEE rental reference index...")
 
     const payload = await scrapeInseeRentalIndex()

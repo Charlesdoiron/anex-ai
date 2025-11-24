@@ -5,11 +5,16 @@
 
 import OpenAI from "openai"
 import { extractPdfText } from "./pdf-extractor"
-import { SYSTEM_INSTRUCTIONS, EXTRACTION_PROMPTS } from "./prompts"
+import {
+  SYSTEM_INSTRUCTIONS,
+  EXTRACTION_PROMPTS,
+  type ExtractionPrompt,
+} from "./prompts"
 import type {
   LeaseExtractionResult,
   ExtractionProgress,
   ExtractionStatus,
+  ExtractionStageDurations,
 } from "./types"
 import { documentIngestionService } from "../rag/ingestion/document-ingestion-service"
 
@@ -24,6 +29,22 @@ const EXTRACTION_CONCURRENCY = Math.max(
   1,
   Number(process.env.EXTRACTION_CONCURRENCY || "6")
 )
+const SECTIONS_PER_CALL = Math.max(
+  1,
+  Number(process.env.EXTRACTION_SECTIONS_PER_CALL || "4")
+)
+
+interface BatchExtractionResult {
+  data?: Record<string, any>
+  retries: number
+  error?: Error
+}
+
+interface SectionExtractionResult {
+  data?: any
+  retries: number
+  error?: Error
+}
 
 export type ProgressCallback = (progress: ExtractionProgress) => void
 
@@ -62,14 +83,21 @@ export class ExtractionService {
   ): Promise<LeaseExtractionResult> {
     const startTime = Date.now()
     let totalRetries = 0
+    const stageTimings: ExtractionStageDurations = {
+      pdfProcessingMs: 0,
+      extractionMs: 0,
+      ingestionMs: 0,
+    }
 
     try {
       this.emitProgress("uploading", "Réception du document...", 0)
 
+      const pdfStart = Date.now()
       this.emitProgress("parsing_pdf", "Analyse du document PDF...", 5)
       const pdfData = await extractPdfText(buffer, {
         onStatus: (message) => this.emitProgress("parsing_pdf", message, 8),
       })
+      stageTimings.pdfProcessingMs = Date.now() - pdfStart
 
       this.emitProgress(
         "parsing_pdf",
@@ -90,73 +118,116 @@ export class ExtractionService {
       }
 
       const totalSections = EXTRACTION_PROMPTS.length
+      const groupedPrompts = chunkItems(EXTRACTION_PROMPTS, SECTIONS_PER_CALL)
       let completedSections = 0
 
+      const extractionStart = Date.now()
       await processWithConcurrency(
-        EXTRACTION_PROMPTS,
+        groupedPrompts,
         EXTRACTION_CONCURRENCY,
-        async ({ section, prompt, retryable }) => {
-          const statusKey = `extracting_${section}` as ExtractionStatus
-          const startProgress =
-            10 + Math.floor((completedSections / totalSections) * 80)
+        async (promptGroup) => {
+          if (!promptGroup.length) {
+            return
+          }
 
-          this.emitProgress(
-            statusKey,
-            `Extraction: ${this.getSectionLabel(section)}...`,
-            startProgress,
-            section
+          const sectionResults: Record<string, any> = {}
+          const sectionErrors: Record<string, string | undefined> = {}
+
+          for (const { section } of promptGroup) {
+            const statusKey = `extracting_${section}` as ExtractionStatus
+            const startProgress = this.computeSectionProgress(
+              completedSections,
+              totalSections
+            )
+            this.emitProgress(
+              statusKey,
+              `Extraction: ${this.getSectionLabel(section)}...`,
+              startProgress,
+              section
+            )
+          }
+
+          const batchResult = await this.runBatchExtraction(
+            pdfData.text,
+            promptGroup
           )
+          totalRetries += batchResult.retries
 
-          let sectionData = null
-          let attempts = 0
-          let lastError: Error | null = null
+          const missingPrompts: ExtractionPrompt[] = []
 
-          while (attempts < MAX_RETRIES && !sectionData) {
-            try {
-              sectionData = await this.extractSection(
-                pdfData.text,
-                section,
-                prompt
-              )
-            } catch (error) {
-              lastError = error as Error
-              attempts++
-              totalRetries++
-
-              if (attempts < MAX_RETRIES && retryable) {
-                console.warn(
-                  `Retry ${attempts}/${MAX_RETRIES} for section ${section}:`,
-                  error
-                )
-                await this.delay(1000 * attempts)
+          if (batchResult.data) {
+            for (const prompt of promptGroup) {
+              const batchData = batchResult.data[prompt.section]
+              if (batchData === undefined) {
+                missingPrompts.push(prompt)
+                sectionErrors[prompt.section] = "Batch response missing data"
               } else {
-                console.error(`Failed to extract section ${section}:`, error)
-                sectionData = this.getDefaultSectionData(section)
+                sectionResults[prompt.section] = batchData
+              }
+            }
+          } else {
+            missingPrompts.push(...promptGroup)
+            if (batchResult.error) {
+              for (const prompt of promptGroup) {
+                sectionErrors[prompt.section] = batchResult.error.message
               }
             }
           }
 
-          result[section as keyof LeaseExtractionResult] = sectionData
-          completedSections++
+          for (const prompt of missingPrompts) {
+            const singleResult = await this.runSingleExtraction(
+              pdfData.text,
+              prompt
+            )
+            totalRetries += singleResult.retries
+            if (singleResult.data !== undefined) {
+              sectionResults[prompt.section] = singleResult.data
+              if (singleResult.error) {
+                sectionErrors[prompt.section] = singleResult.error.message
+              }
+            } else {
+              sectionResults[prompt.section] = this.getDefaultSectionData(
+                prompt.section
+              )
+              if (!sectionErrors[prompt.section]) {
+                sectionErrors[prompt.section] =
+                  singleResult.error?.message || "Extraction failed"
+              }
+            }
+          }
 
-          const progressPercent =
-            10 + Math.floor((completedSections / totalSections) * 80)
-          this.emitProgress(
-            statusKey,
-            `Extraction: ${this.getSectionLabel(section)} terminée`,
-            progressPercent,
-            section,
-            lastError ? lastError.message : undefined
-          )
+          for (const prompt of promptGroup) {
+            const sectionKey = prompt.section as keyof LeaseExtractionResult
+            result[sectionKey] =
+              sectionResults[prompt.section] ??
+              result[sectionKey] ??
+              this.getDefaultSectionData(prompt.section)
+
+            completedSections++
+            const progressPercent = this.computeSectionProgress(
+              completedSections,
+              totalSections
+            )
+            const statusKey = `extracting_${prompt.section}` as ExtractionStatus
+            this.emitProgress(
+              statusKey,
+              `Extraction: ${this.getSectionLabel(prompt.section)} terminée`,
+              progressPercent,
+              prompt.section,
+              sectionErrors[prompt.section]
+            )
+          }
         }
       )
+      stageTimings.extractionMs = Date.now() - extractionStart
 
       this.emitProgress("validating", "Validation des données...", 90)
 
       const metadata = this.calculateMetadata(
         result as LeaseExtractionResult,
         Date.now() - startTime,
-        totalRetries
+        totalRetries,
+        stageTimings
       )
 
       const finalResult: LeaseExtractionResult = {
@@ -164,7 +235,9 @@ export class ExtractionService {
         extractionMetadata: metadata,
       }
 
-      this.ingestForRag(finalResult, pdfData.pages)
+      const ingestionStart = Date.now()
+      await this.ingestForRag(finalResult, pdfData.pages)
+      stageTimings.ingestionMs = Date.now() - ingestionStart
 
       this.emitProgress("completed", "Extraction terminée avec succès", 100)
 
@@ -180,6 +253,142 @@ export class ExtractionService {
       )
       throw error
     }
+  }
+
+  private computeSectionProgress(
+    completedSections: number,
+    totalSections: number
+  ): number {
+    if (totalSections === 0) {
+      return 100
+    }
+    return 10 + Math.floor((completedSections / totalSections) * 80)
+  }
+
+  private async runBatchExtraction(
+    documentText: string,
+    prompts: ExtractionPrompt[]
+  ): Promise<BatchExtractionResult> {
+    let attempts = 0
+    let retries = 0
+    let lastError: Error | undefined
+    const isRetryable = prompts.some((prompt) => prompt.retryable)
+
+    while (attempts < MAX_RETRIES) {
+      try {
+        const data = await this.extractSectionsBatch(documentText, prompts)
+        return { data, retries }
+      } catch (error) {
+        lastError = error as Error
+        attempts++
+        retries += prompts.length
+
+        console.warn(
+          `Batch extraction retry ${attempts}/${MAX_RETRIES} for sections [${prompts
+            .map((p) => p.section)
+            .join(", ")}]:`,
+          error
+        )
+
+        if (attempts >= MAX_RETRIES || !isRetryable) {
+          break
+        }
+
+        await this.delay(1000 * attempts)
+      }
+    }
+
+    return { retries, error: lastError }
+  }
+
+  private async runSingleExtraction(
+    documentText: string,
+    prompt: ExtractionPrompt
+  ): Promise<SectionExtractionResult> {
+    let attempts = 0
+    let retries = 0
+    let lastError: Error | undefined
+
+    while (attempts < MAX_RETRIES) {
+      try {
+        const data = await this.extractSection(
+          documentText,
+          prompt.section,
+          prompt.prompt
+        )
+        return { data, retries, error: lastError }
+      } catch (error) {
+        lastError = error as Error
+        attempts++
+        retries += 1
+
+        console.warn(
+          `Retry ${attempts}/${MAX_RETRIES} for section ${prompt.section}:`,
+          error
+        )
+
+        if (attempts >= MAX_RETRIES || !prompt.retryable) {
+          break
+        }
+
+        await this.delay(1000 * attempts)
+      }
+    }
+
+    return { retries, error: lastError }
+  }
+
+  private async extractSectionsBatch(
+    documentText: string,
+    prompts: ExtractionPrompt[]
+  ): Promise<Record<string, any>> {
+    const sectionNames = prompts.map((prompt) => prompt.section)
+    const sectionsPrompt = prompts
+      .map(
+        ({ section, prompt }) =>
+          `SECTION "${section}":\n${prompt}\nReturn this section under the "${section}" key.`
+      )
+      .join("\n\n")
+
+    const response = await openai.responses.create({
+      model: EXTRACTION_MODEL,
+      instructions: SYSTEM_INSTRUCTIONS,
+      input: [
+        {
+          role: "user",
+          content: `Document text:\n\n${this.truncateText(
+            documentText,
+            50000
+          )}\n\nExtract all sections simultaneously and respond with a single JSON object whose top-level keys exactly match: ${sectionNames
+            .map((name) => `"${name}"`)
+            .join(", ")}.\n\n${sectionsPrompt}`,
+        },
+      ],
+      text: {
+        format: {
+          type: "json_object",
+        },
+      },
+      reasoning: {
+        effort: "minimal",
+      },
+    })
+
+    const outputText = this.collectResponseText(response)
+
+    if (!outputText) {
+      throw new Error(
+        `No output received for sections [${sectionNames.join(", ")}]`
+      )
+    }
+
+    const parsed = JSON.parse(outputText)
+
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Batch response is not a JSON object")
+    }
+
+    return parsed as Record<string, any>
   }
 
   private async extractSection(
@@ -206,16 +415,7 @@ export class ExtractionService {
       },
     })
 
-    let outputText = ""
-    for (const item of response.output) {
-      if (item.type === "message" && "content" in item) {
-        for (const content of item.content) {
-          if (content.type === "output_text" && "text" in content) {
-            outputText += content.text
-          }
-        }
-      }
-    }
+    const outputText = this.collectResponseText(response)
 
     if (!outputText) {
       throw new Error(`No output received for section ${section}`)
@@ -227,6 +427,28 @@ export class ExtractionService {
       console.error(`Failed to parse JSON for section ${section}:`, outputText)
       throw new Error(`Invalid JSON response for section ${section}`)
     }
+  }
+
+  private collectResponseText(response: any): string {
+    if (!response?.output) {
+      return ""
+    }
+
+    let outputText = ""
+    for (const item of response.output) {
+      if (item.type === "message" && Array.isArray(item.content)) {
+        for (const content of item.content) {
+          if (
+            content.type === "output_text" &&
+            typeof content.text === "string"
+          ) {
+            outputText += content.text
+          }
+        }
+      }
+    }
+
+    return outputText
   }
 
   private truncateText(text: string, maxLength: number): string {
@@ -272,7 +494,8 @@ export class ExtractionService {
   private calculateMetadata(
     result: LeaseExtractionResult,
     processingTimeMs: number,
-    retries: number
+    retries: number,
+    stageDurations: ExtractionStageDurations
   ) {
     let totalFields = 0
     let extractedFields = 0
@@ -322,6 +545,7 @@ export class ExtractionService {
       averageConfidence: totalFields > 0 ? confidenceSum / totalFields : 0,
       processingTimeMs,
       retries,
+      stageDurations,
     }
   }
 
@@ -397,4 +621,19 @@ async function processWithConcurrency<T>(
     }
   )
   await Promise.all(workers)
+}
+
+function chunkItems<T>(items: T[], size: number): T[][] {
+  if (items.length === 0) {
+    return []
+  }
+
+  const groupSize = size <= 0 ? items.length : size
+  const groups: T[][] = []
+
+  for (let i = 0; i < items.length; i += groupSize) {
+    groups.push(items.slice(i, i + groupSize))
+  }
+
+  return groups
 }

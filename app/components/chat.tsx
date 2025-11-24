@@ -1,7 +1,7 @@
 "use client"
 
 import { useChat } from "@ai-sdk/react"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Sidebar } from "./chat/sidebar"
 import { TopBar } from "./chat/top-bar"
 import { MessagesArea } from "./chat/messages-area"
@@ -16,6 +16,8 @@ import { useDataExtraction } from "./chat/hooks/use-data-extraction"
 import { ProcessingStatus } from "./chat/processing-status"
 import { exportAllToPDF, exportAllToCSV } from "./chat/utils/export-utils"
 import { RagStatusFeed } from "./chat/rag-status-feed"
+import type { LeaseExtractionResult } from "@/app/lib/extraction/types"
+import { ExtractionPanel } from "./extraction/extraction-panel"
 
 export function Chat() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -24,6 +26,14 @@ export function Chat() {
     id: string
     fileName: string
   } | null>(null)
+  const [showExtractionPanel, setShowExtractionPanel] = useState(false)
+  const [extraction, setExtraction] = useState<LeaseExtractionResult | null>(
+    null
+  )
+  const [isLoadingExtraction, setIsLoadingExtraction] = useState(false)
+  const [extractionError, setExtractionError] = useState<string | null>(null)
+
+  const isTestMode = process.env.NEXT_PUBLIC_APP_MODE === "test"
 
   const {
     messages,
@@ -80,6 +90,44 @@ export function Chat() {
           | ((messages: MessageWithSources[]) => MessageWithSources[])
       ) => void,
     })
+
+  useEffect(() => {
+    setShowExtractionPanel(false)
+    setExtraction(null)
+    setExtractionError(null)
+  }, [activeDocument?.id])
+
+  async function loadExtraction(documentId: string) {
+    try {
+      setIsLoadingExtraction(true)
+      setExtractionError(null)
+      const response = await fetch(`/api/extractions/${documentId}`)
+      if (!response.ok) {
+        throw new Error("Failed to load extraction")
+      }
+      const data = await response.json()
+      setExtraction(data.data ?? null)
+    } catch (error) {
+      setExtractionError(
+        error instanceof Error ? error.message : "Unexpected error"
+      )
+    } finally {
+      setIsLoadingExtraction(false)
+    }
+  }
+
+  function handleToggleExtractionPanel() {
+    if (!isTestMode || !activeDocument) {
+      return
+    }
+    setShowExtractionPanel((current) => {
+      const next = !current
+      if (next && !extraction && !isLoadingExtraction) {
+        void loadExtraction(activeDocument.id)
+      }
+      return next
+    })
+  }
 
   async function handleFormSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -161,9 +209,34 @@ export function Chat() {
           isLoading={isLoading}
           isProcessingPdf={isProcessingPdf}
           activeDocument={activeDocument}
+          onToggleExtractionPanel={
+            isTestMode && activeDocument
+              ? handleToggleExtractionPanel
+              : undefined
+          }
+          showExtractionPanel={showExtractionPanel}
         />
 
         <RagStatusFeed events={statusEvents} isStreaming={isLoading} />
+
+        {isTestMode && activeDocument && showExtractionPanel && (
+          <div className="border-b border-gray-200 dark:border-gray-700 bg-[#fef9f4] dark:bg-[#343541]">
+            <div className="max-w-7xl mx-auto px-4 py-4">
+              {isLoadingExtraction && !extraction && (
+                <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+                  <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-solid border-blue-600 border-r-transparent" />
+                  <span>Chargement des données extraites...</span>
+                </div>
+              )}
+              {extractionError && (
+                <p className="text-xs text-red-600 dark:text-red-400 mb-2">
+                  {extractionError}
+                </p>
+              )}
+              {extraction && <ExtractionPanel extraction={extraction} />}
+            </div>
+          </div>
+        )}
 
         {showExportButtons && (
           <div className="border-b border-gray-200 dark:border-gray-700 bg-[#fef9f4] dark:bg-[#343541]">

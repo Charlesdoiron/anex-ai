@@ -2,7 +2,8 @@ import { randomUUID } from "crypto"
 import { NextRequest } from "next/server"
 import OpenAI from "openai"
 import { auth } from "@/app/lib/auth"
-import { searchService } from "@/app/lib/rag/services/search-service"
+import { retrieveChunksTool } from "@/app/lib/ai/tools/definitions"
+import { handleToolCallWithRegistry } from "@/app/lib/ai/tools/handlers"
 import { RAG_CONFIG } from "@/app/lib/rag/config"
 
 const openai = new OpenAI({
@@ -114,29 +115,7 @@ export async function POST(req: NextRequest) {
       ? EXTRACTION_SYSTEM_PROMPT
       : GENERAL_SYSTEM_PROMPT
 
-  const tools = shouldUseRag
-    ? [
-        {
-          type: "function" as const,
-          name: "retrieve_chunks",
-          description:
-            "Recherche des passages pertinents dans le bail commercial téléversé par l'utilisateur. À utiliser OBLIGATOIREMENT avant de répondre à toute question sur le document.",
-          parameters: {
-            type: "object",
-            properties: {
-              query: {
-                type: "string",
-                description:
-                  "Requête de recherche en français, décrivant précisément l'information recherchée dans le bail (ex: 'loyer mensuel', 'durée du bail', 'conditions de résiliation')",
-              },
-            },
-            required: ["query"],
-            additionalProperties: false,
-          },
-          strict: true,
-        },
-      ]
-    : undefined
+  const tools = shouldUseRag ? [retrieveChunksTool] : undefined
 
   try {
     const encoder = new TextEncoder()
@@ -264,26 +243,13 @@ async function handleConversation({
         break
       }
 
-      if (!documentId) {
-        sendStatusEvent(controller, encoder, "error", {
-          message:
-            "Impossible d'accéder au document pour exécuter l'outil RAG.",
-        })
-        break
-      }
-
       for (const toolCall of toolCalls) {
-        if (toolCall.name === "retrieve_chunks") {
-          const args = JSON.parse(toolCall.arguments || "{}")
-          sendStatusEvent(controller, encoder, "rag_searching", {
-            query: args.query,
-          })
-        }
-
-        const toolOutput = await handleToolCall(toolCall, documentId, (data) =>
-          sendStatusEvent(controller, encoder, "rag_results", data)
-        )
-        conversationItems.push(toolOutput)
+        const { outputItem } = await handleToolCallWithRegistry(toolCall, {
+          documentId,
+          emitStatus: (status, data) =>
+            sendStatusEvent(controller, encoder, status, data),
+        })
+        conversationItems.push(outputItem)
       }
     }
   } else {
@@ -378,88 +344,4 @@ async function streamResponses({
   }
 
   return { toolCalls, outputItems }
-}
-
-async function handleToolCall(
-  toolCall: any,
-  documentId: string,
-  onStatus?: (data: Record<string, unknown>) => void
-): Promise<ConversationItem> {
-  if (toolCall.name !== "retrieve_chunks") {
-    return {
-      type: "function_call_output",
-      call_id: toolCall.call_id,
-      output: "Outil inconnu.",
-    }
-  }
-
-  try {
-    const args = JSON.parse(toolCall.arguments || "{}")
-    const query = typeof args.query === "string" ? args.query.trim() : ""
-
-    if (!query) {
-      return {
-        type: "function_call_output",
-        call_id: toolCall.call_id,
-        output:
-          "La requête RAG est vide. Reformule la question de l'utilisateur pour lancer une recherche.",
-      }
-    }
-
-    const results = await searchService.search(query, {
-      documentId,
-      limit: 5,
-      minScore: 0.3,
-    })
-
-    if (onStatus) {
-      onStatus({
-        found: results.length,
-        pages: results.map((r) => r.pageNumber).filter(Boolean),
-        scores: results.map((r) => r.score?.toFixed(2)).filter(Boolean),
-      })
-    }
-
-    if (!results.length) {
-      return {
-        type: "function_call_output",
-        call_id: toolCall.call_id,
-        output:
-          "Aucun passage pertinent trouvé dans le bail pour cette requête.",
-      }
-    }
-
-    const formatted = results
-      .map((result, idx) => {
-        const pageTag =
-          typeof result.pageNumber === "number"
-            ? `Page ${result.pageNumber}`
-            : "Page inconnue"
-        const score = result.score?.toFixed(2) ?? "?"
-        return `Passage ${idx + 1} (${pageTag}, pertinence ${score}):\n${
-          result.text
-        }`
-      })
-      .join("\n\n---\n\n")
-
-    return {
-      type: "function_call_output",
-      call_id: toolCall.call_id,
-      output: formatted,
-    }
-  } catch (error) {
-    console.error("RAG tool execution failed:", error)
-    if (onStatus) {
-      onStatus({
-        error: error instanceof Error ? error.message : "inconnue",
-      })
-    }
-    return {
-      type: "function_call_output",
-      call_id: toolCall.call_id,
-      output: `Erreur lors de la recherche RAG: ${
-        error instanceof Error ? error.message : "inconnue"
-      }`,
-    }
-  }
 }

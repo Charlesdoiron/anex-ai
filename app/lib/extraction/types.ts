@@ -37,6 +37,12 @@ export interface ExtractionProgress {
   error?: string
 }
 
+export interface ExtractionStageDurations {
+  pdfProcessingMs: number
+  extractionMs: number
+  ingestionMs: number
+}
+
 export type ConfidenceLevel = "high" | "medium" | "low" | "missing"
 
 export interface ExtractedValue<T> {
@@ -280,5 +286,6 @@ export interface LeaseExtractionResult {
     averageConfidence: number
     processingTimeMs: number
     retries: number
+    stageDurations: ExtractionStageDurations
   }
 }

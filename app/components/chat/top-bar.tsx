@@ -1,7 +1,7 @@
 "use client"
 
 import { UserMenu } from "../user-menu"
-import { Menu, FileText } from "lucide-react"
+import { Menu, FileText, Database } from "lucide-react"
 
 interface TopBarProps {
   onToggleSidebar: () => void
@@ -15,9 +15,18 @@ interface TopBarProps {
     id: string
     fileName: string
   } | null
+  onToggleExtractionPanel?: () => void
+  showExtractionPanel?: boolean
 }
 
-export function TopBar({ onToggleSidebar, activeDocument }: TopBarProps) {
+export function TopBar({
+  onToggleSidebar,
+  activeDocument,
+  onToggleExtractionPanel,
+  showExtractionPanel,
+}: TopBarProps) {
+  const isTestMode = process.env.NEXT_PUBLIC_APP_MODE === "test"
+
   return (
     <div className="border-b border-gray-300 dark:border-gray-700 bg-[#fef9f4] dark:bg-[#343541] px-4 py-3 flex items-center justify-between">
       <div className="flex items-center gap-3">
@@ -41,6 +50,25 @@ export function TopBar({ onToggleSidebar, activeDocument }: TopBarProps) {
         )}
       </div>
       <div className="flex items-center gap-3">
+        {isTestMode && activeDocument && onToggleExtractionPanel && (
+          <button
+            type="button"
+            onClick={onToggleExtractionPanel}
+            className={`flex items-center gap-2 px-3 py-1.5 text-xs sm:text-sm font-medium rounded-lg border transition-colors ${
+              showExtractionPanel
+                ? "border-blue-500 bg-blue-600 text-white hover:bg-blue-700"
+                : "text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border-gray-300 dark:border-gray-600"
+            }`}
+            title="Afficher les données structurées"
+          >
+            <Database size={16} />
+            <span className="hidden sm:inline">
+              {showExtractionPanel
+                ? "Masquer les données"
+                : "Données extraites"}
+            </span>
+          </button>
+        )}
         <UserMenu />
       </div>
     </div>
