@@ -16,6 +16,7 @@ import type {
   ExtractionStatus,
   ExtractionStageDurations,
 } from "./types"
+import { computeRentScheduleFromExtraction } from "../lease/from-extraction"
 import { documentIngestionService } from "../rag/ingestion/document-ingestion-service"
 
 const openai = new OpenAI({
@@ -47,12 +48,20 @@ interface SectionExtractionResult {
 }
 
 export type ProgressCallback = (progress: ExtractionProgress) => void
+export type PartialResultCallback = (
+  partialResult: Partial<LeaseExtractionResult>
+) => void
 
 export class ExtractionService {
   private progressCallback?: ProgressCallback
+  private partialResultCallback?: PartialResultCallback
 
-  constructor(progressCallback?: ProgressCallback) {
+  constructor(
+    progressCallback?: ProgressCallback,
+    partialResultCallback?: PartialResultCallback
+  ) {
     this.progressCallback = progressCallback
+    this.partialResultCallback = partialResultCallback
   }
 
   private emitProgress(
@@ -216,6 +225,26 @@ export class ExtractionService {
               prompt.section,
               sectionErrors[prompt.section]
             )
+
+            if (this.partialResultCallback) {
+              this.partialResultCallback({
+                ...result,
+                extractionMetadata: {
+                  totalFields: 0,
+                  extractedFields: 0,
+                  missingFields: 0,
+                  lowConfidenceFields: 0,
+                  averageConfidence: 0,
+                  processingTimeMs: Date.now() - startTime,
+                  retries: totalRetries,
+                  stageDurations: {
+                    pdfProcessingMs: stageTimings.pdfProcessingMs,
+                    extractionMs: Date.now() - extractionStart,
+                    ingestionMs: 0,
+                  },
+                },
+              } as Partial<LeaseExtractionResult>)
+            }
           }
         }
       )
@@ -223,16 +252,29 @@ export class ExtractionService {
 
       this.emitProgress("validating", "Validation des données...", 90)
 
+      const baseResult = result as LeaseExtractionResult
+
       const metadata = this.calculateMetadata(
-        result as LeaseExtractionResult,
+        baseResult,
         Date.now() - startTime,
         totalRetries,
         stageTimings
       )
 
+      let rentSchedule: LeaseExtractionResult["rentSchedule"] = undefined
+
+      try {
+        const schedule = await computeRentScheduleFromExtraction(baseResult)
+        rentSchedule = schedule ?? undefined
+      } catch (error) {
+        console.error("Rent schedule computation failed:", error)
+        rentSchedule = undefined
+      }
+
       const finalResult: LeaseExtractionResult = {
-        ...(result as LeaseExtractionResult),
+        ...baseResult,
         extractionMetadata: metadata,
+        ...(rentSchedule ? { rentSchedule } : {}),
       }
 
       const ingestionStart = Date.now()
@@ -485,6 +527,148 @@ export class ExtractionService {
             phone: missingValue,
             address: missingValue,
           },
+        }
+      case "premises":
+        return {
+          purpose: missingValue,
+          designation: missingValue,
+          address: missingValue,
+          buildingYear: missingValue,
+          floors: { ...missingValue, value: [] },
+          lotNumbers: { ...missingValue, value: [] },
+          surfaceArea: missingValue,
+          isPartitioned: missingValue,
+          hasFurniture: missingValue,
+          furnishingConditions: missingValue,
+          signageConditions: missingValue,
+          hasOutdoorSpace: missingValue,
+          hasArchiveSpace: missingValue,
+          parkingSpaces: missingValue,
+          twoWheelerSpaces: missingValue,
+          bikeSpaces: missingValue,
+          shareWithCommonAreas: missingValue,
+          shareWithoutCommonAreas: missingValue,
+          totalBuildingShare: missingValue,
+        }
+      case "calendar":
+        return {
+          signatureDate: missingValue,
+          duration: missingValue,
+          effectiveDate: missingValue,
+          earlyAccessDate: missingValue,
+          endDate: missingValue,
+          nextTriennialDate: missingValue,
+          noticePeriod: missingValue,
+          terminationConditions: missingValue,
+          renewalConditions: missingValue,
+        }
+      case "supportMeasures":
+        return {
+          hasRentFreeperiod: missingValue,
+          rentFreePeriodMonths: missingValue,
+          rentFreePeriodAmount: missingValue,
+          hasOtherMeasures: missingValue,
+          otherMeasuresDescription: missingValue,
+        }
+      case "rent":
+        return {
+          annualRentExclTaxExclCharges: missingValue,
+          quarterlyRentExclTaxExclCharges: missingValue,
+          annualRentPerSqmExclTaxExclCharges: missingValue,
+          annualParkingRentExclCharges: missingValue,
+          quarterlyParkingRentExclCharges: missingValue,
+          annualParkingRentPerUnitExclCharges: missingValue,
+          isSubjectToVAT: missingValue,
+          paymentFrequency: missingValue,
+          latePaymentPenaltyConditions: missingValue,
+          latePaymentPenaltyAmount: missingValue,
+        }
+      case "indexation":
+        return {
+          indexationClause: missingValue,
+          indexationType: missingValue,
+          referenceQuarter: missingValue,
+          firstIndexationDate: missingValue,
+          indexationFrequency: missingValue,
+        }
+      case "taxes":
+        return {
+          propertyTaxRebilled: missingValue,
+          propertyTaxAmount: missingValue,
+          officeTaxAmount: missingValue,
+        }
+      case "charges":
+        return {
+          annualChargesProvisionExclTax: missingValue,
+          quarterlyChargesProvisionExclTax: missingValue,
+          annualChargesProvisionPerSqmExclTax: missingValue,
+          annualRIEFeeExclTax: missingValue,
+          quarterlyRIEFeeExclTax: missingValue,
+          annualRIEFeePerSqmExclTax: missingValue,
+          managementFeesOnTenant: missingValue,
+          rentManagementFeesOnTenant: missingValue,
+        }
+      case "insurance":
+        return {
+          annualInsuranceAmountExclTax: missingValue,
+          insurancePremiumRebilled: missingValue,
+          hasWaiverOfRecourse: missingValue,
+          insuranceCertificateAnnexed: missingValue,
+        }
+      case "securities":
+        return {
+          securityDepositAmount: missingValue,
+          otherSecurities: { ...missingValue, value: [] },
+        }
+      case "inventory":
+        return {
+          entryInventoryConditions: missingValue,
+          hasPreExitInventory: missingValue,
+          preExitInventoryConditions: missingValue,
+          exitInventoryConditions: missingValue,
+        }
+      case "maintenance":
+        return {
+          tenantMaintenanceConditions: missingValue,
+          landlordWorksList: { ...missingValue, value: [] },
+          tenantWorksList: { ...missingValue, value: [] },
+          workConditionsImposedOnTenant: missingValue,
+          hasAccessionClause: missingValue,
+        }
+      case "restitution":
+        return {
+          restitutionConditions: missingValue,
+          restorationConditions: missingValue,
+        }
+      case "transfer":
+        return {
+          sublettingConditions: missingValue,
+          currentSubleaseInfo: missingValue,
+          assignmentConditions: missingValue,
+          divisionPossible: missingValue,
+        }
+      case "environmentalAnnexes":
+        return {
+          hasDPE: missingValue,
+          dpeNote: missingValue,
+          hasAsbestosDiagnostic: missingValue,
+          hasEnvironmentalAnnex: missingValue,
+          hasRiskAndPollutionStatement: missingValue,
+        }
+      case "otherAnnexes":
+        return {
+          hasInternalRegulations: missingValue,
+          hasPremisesPlan: missingValue,
+          hasChargesInventory: missingValue,
+          hasAnnualChargesSummary: missingValue,
+          hasThreeYearWorksBudget: missingValue,
+          hasPastWorksSummary: missingValue,
+        }
+      case "other":
+        return {
+          isSignedAndInitialed: missingValue,
+          civilCodeDerogations: { ...missingValue, value: [] },
+          commercialCodeDerogations: { ...missingValue, value: [] },
         }
       default:
         return {}

@@ -2,7 +2,7 @@ import { randomUUID } from "crypto"
 import { NextRequest } from "next/server"
 import OpenAI from "openai"
 import { auth } from "@/app/lib/auth"
-import { retrieveChunksTool } from "@/app/lib/ai/tools/definitions"
+import { getTools, ToolName } from "@/app/lib/ai/tools/definitions"
 import { handleToolCallWithRegistry } from "@/app/lib/ai/tools/handlers"
 import { RAG_CONFIG } from "@/app/lib/rag/config"
 
@@ -94,7 +94,12 @@ export async function POST(req: NextRequest) {
 
   const shouldUseRag = Boolean(documentId && userQuestion.trim())
   const modelName = shouldUseRag ? RAG_CONFIG.responsesModel : "gpt-4o-mini"
-  const isGpt5 = modelName.startsWith("gpt-5")
+
+  const toolNames: ToolName[] = ["compute_lease_rent_schedule"]
+  if (shouldUseRag) {
+    toolNames.push("retrieve_chunks")
+  }
+  const tools = getTools(toolNames)
 
   const instructions = shouldUseRag
     ? [
@@ -115,8 +120,6 @@ export async function POST(req: NextRequest) {
       ? EXTRACTION_SYSTEM_PROMPT
       : GENERAL_SYSTEM_PROMPT
 
-  const tools = shouldUseRag ? [retrieveChunksTool] : undefined
-
   try {
     const encoder = new TextEncoder()
     const stream = new ReadableStream({
@@ -130,7 +133,6 @@ export async function POST(req: NextRequest) {
             instructions,
             tools,
             modelName,
-            isGpt5,
             extractData,
             documentId,
             controller,
@@ -183,7 +185,6 @@ interface HandleConversationArgs {
   instructions: string
   tools: any[] | undefined
   modelName: string
-  isGpt5: boolean
   extractData: boolean
   documentId: string | undefined
   controller: ReadableStreamDefaultController
@@ -218,65 +219,37 @@ async function handleConversation({
   instructions,
   tools,
   modelName,
-  isGpt5,
   extractData,
   documentId,
   controller,
   encoder,
 }: HandleConversationArgs) {
-  if (isGpt5) {
-    while (true) {
-      const { toolCalls, outputItems } = await streamResponses({
-        conversationItems,
-        instructions,
-        tools,
-        modelName,
-        controller,
-        encoder,
-      })
-
-      if (outputItems.length > 0) {
-        conversationItems.push(...outputItems)
-      }
-
-      if (!toolCalls.length) {
-        break
-      }
-
-      for (const toolCall of toolCalls) {
-        const { outputItem } = await handleToolCallWithRegistry(toolCall, {
-          documentId,
-          emitStatus: (status, data) =>
-            sendStatusEvent(controller, encoder, status, data),
-        })
-        conversationItems.push(outputItem)
-      }
-    }
-  } else {
-    const baseMessages = conversationItems
-      .filter(
-        (
-          item
-        ): item is { role: "user" | "assistant" | "system"; content: string } =>
-          "role" in item && typeof item.content === "string"
-      )
-      .map((item) => ({ role: item.role, content: item.content }))
-
-    const stream = await openai.chat.completions.create({
-      model: modelName,
-      messages: [{ role: "system", content: instructions }, ...baseMessages],
-      temperature: extractData ? 0.1 : 0.3,
-      stream: true,
+  while (true) {
+    const { toolCalls, outputItems } = await streamResponses({
+      conversationItems,
+      instructions,
+      tools,
+      modelName,
+      controller,
+      encoder,
+      extractData,
     })
 
-    for await (const event of stream) {
-      if (event.choices[0]?.delta?.content) {
-        controller.enqueue(
-          encoder.encode(
-            `0:${JSON.stringify(event.choices[0].delta.content)}\n`
-          )
-        )
-      }
+    if (outputItems.length > 0) {
+      conversationItems.push(...outputItems)
+    }
+
+    if (!toolCalls.length) {
+      break
+    }
+
+    for (const toolCall of toolCalls) {
+      const { outputItem } = await handleToolCallWithRegistry(toolCall, {
+        documentId,
+        emitStatus: (status, data) =>
+          sendStatusEvent(controller, encoder, status, data),
+      })
+      conversationItems.push(outputItem)
     }
   }
 }
@@ -288,6 +261,7 @@ async function streamResponses({
   modelName,
   controller,
   encoder,
+  extractData,
 }: {
   conversationItems: ConversationItem[]
   instructions: string
@@ -295,15 +269,17 @@ async function streamResponses({
   modelName: string
   controller: ReadableStreamDefaultController
   encoder: TextEncoder
+  extractData: boolean
 }): Promise<{ toolCalls: any[]; outputItems: any[] }> {
   const requestConfig: any = {
     model: modelName,
     input: conversationItems,
     instructions,
     stream: true,
+    temperature: extractData ? 0.1 : 0.3,
   }
 
-  if (tools) {
+  if (tools?.length) {
     requestConfig.tools = tools
     requestConfig.tool_choice = "auto"
   }

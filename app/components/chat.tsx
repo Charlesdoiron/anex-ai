@@ -17,7 +17,7 @@ import { ProcessingStatus } from "./chat/processing-status"
 import { exportAllToPDF, exportAllToCSV } from "./chat/utils/export-utils"
 import { RagStatusFeed } from "./chat/rag-status-feed"
 import type { LeaseExtractionResult } from "@/app/lib/extraction/types"
-import { ExtractionPanel } from "./extraction/extraction-panel"
+import { ExtractionModal } from "./extraction/extraction-modal"
 
 export function Chat() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -30,8 +30,6 @@ export function Chat() {
   const [extraction, setExtraction] = useState<LeaseExtractionResult | null>(
     null
   )
-  const [isLoadingExtraction, setIsLoadingExtraction] = useState(false)
-  const [extractionError, setExtractionError] = useState<string | null>(null)
 
   const isTestMode = process.env.NEXT_PUBLIC_APP_MODE === "test"
 
@@ -78,6 +76,24 @@ export function Chat() {
         id: result.documentId,
         fileName: result.fileName,
       })
+      setExtraction(result as LeaseExtractionResult)
+    },
+    onPartialResult: (partialResult) => {
+      if (partialResult.documentId && !extraction) {
+        setActiveDocument({
+          id: partialResult.documentId,
+          fileName: partialResult.fileName || "Document",
+        })
+        setExtraction(partialResult as LeaseExtractionResult)
+      } else if (
+        extraction &&
+        partialResult.documentId === extraction.documentId
+      ) {
+        setExtraction({
+          ...extraction,
+          ...partialResult,
+        } as LeaseExtractionResult)
+      }
     },
   })
 
@@ -94,39 +110,13 @@ export function Chat() {
   useEffect(() => {
     setShowExtractionPanel(false)
     setExtraction(null)
-    setExtractionError(null)
   }, [activeDocument?.id])
-
-  async function loadExtraction(documentId: string) {
-    try {
-      setIsLoadingExtraction(true)
-      setExtractionError(null)
-      const response = await fetch(`/api/extractions/${documentId}`)
-      if (!response.ok) {
-        throw new Error("Failed to load extraction")
-      }
-      const data = await response.json()
-      setExtraction(data.data ?? null)
-    } catch (error) {
-      setExtractionError(
-        error instanceof Error ? error.message : "Unexpected error"
-      )
-    } finally {
-      setIsLoadingExtraction(false)
-    }
-  }
 
   function handleToggleExtractionPanel() {
     if (!isTestMode || !activeDocument) {
       return
     }
-    setShowExtractionPanel((current) => {
-      const next = !current
-      if (next && !extraction && !isLoadingExtraction) {
-        void loadExtraction(activeDocument.id)
-      }
-      return next
-    })
+    setShowExtractionPanel((current) => !current)
   }
 
   async function handleFormSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -217,26 +207,13 @@ export function Chat() {
           showExtractionPanel={showExtractionPanel}
         />
 
-        <RagStatusFeed events={statusEvents} isStreaming={isLoading} />
+        <ExtractionModal
+          open={isTestMode && !!activeDocument && showExtractionPanel}
+          onClose={() => setShowExtractionPanel(false)}
+          extraction={extraction}
+        />
 
-        {isTestMode && activeDocument && showExtractionPanel && (
-          <div className="border-b border-gray-200 dark:border-gray-700 bg-[#fef9f4] dark:bg-[#343541]">
-            <div className="max-w-7xl mx-auto px-4 py-4">
-              {isLoadingExtraction && !extraction && (
-                <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
-                  <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-solid border-blue-600 border-r-transparent" />
-                  <span>Chargement des données extraites...</span>
-                </div>
-              )}
-              {extractionError && (
-                <p className="text-xs text-red-600 dark:text-red-400 mb-2">
-                  {extractionError}
-                </p>
-              )}
-              {extraction && <ExtractionPanel extraction={extraction} />}
-            </div>
-          </div>
-        )}
+        <RagStatusFeed events={statusEvents} isStreaming={isLoading} />
 
         {showExportButtons && (
           <div className="border-b border-gray-200 dark:border-gray-700 bg-[#fef9f4] dark:bg-[#343541]">

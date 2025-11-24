@@ -7,7 +7,10 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/app/lib/auth"
 import { ExtractionService } from "@/app/lib/extraction/extraction-service"
 import { extractionStorage } from "@/app/lib/extraction/storage-service"
-import type { ExtractionProgress } from "@/app/lib/extraction/types"
+import type {
+  ExtractionProgress,
+  LeaseExtractionResult,
+} from "@/app/lib/extraction/types"
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB
 const ALLOWED_MIME_TYPES = ["application/pdf"]
@@ -115,13 +118,27 @@ async function handleStreamingExtraction(
         controller.enqueue(encoder.encode(data))
       }
 
+      const partialResultCallback = (
+        partialResult: Partial<LeaseExtractionResult>
+      ) => {
+        const data = `data: ${JSON.stringify({
+          type: "partial_result",
+          result: partialResult,
+        })}\n\n`
+        controller.enqueue(encoder.encode(data))
+      }
+
       try {
-        const extractionService = new ExtractionService(progressCallback)
+        const extractionService = new ExtractionService(
+          progressCallback,
+          partialResultCallback
+        )
         const result = await extractionService.extractFromPdf(buffer, fileName)
 
         await extractionStorage.saveExtraction(result)
 
         const finalData = `data: ${JSON.stringify({
+          type: "final_result",
           status: "completed",
           message: "Extraction terminée",
           progress: 100,

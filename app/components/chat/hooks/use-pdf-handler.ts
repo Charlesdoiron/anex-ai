@@ -16,12 +16,14 @@ interface UsePdfHandlerProps {
   ) => void
   onExtractionComplete?: () => void
   onDocumentReady?: (result: LeaseExtractionResult) => void
+  onPartialResult?: (partialResult: Partial<LeaseExtractionResult>) => void
 }
 
 export function usePdfHandler({
   setMessages,
   onExtractionComplete,
   onDocumentReady,
+  onPartialResult,
 }: UsePdfHandlerProps) {
   const [uploadedPdf, setUploadedPdf] = useState<File | null>(null)
   const [isProcessingPdf, setIsProcessingPdf] = useState(false)
@@ -65,6 +67,7 @@ export function usePdfHandler({
       const decoder = new TextDecoder()
       let buffer = ""
       let extractionResult: LeaseExtractionResult | null = null
+      let partialResult: Partial<LeaseExtractionResult> | null = null
 
       if (reader) {
         while (true) {
@@ -80,22 +83,39 @@ export function usePdfHandler({
               try {
                 const data = JSON.parse(line.slice(6)) as
                   | ExtractionProgress
+                  | {
+                      type: "partial_result"
+                      result: Partial<LeaseExtractionResult>
+                    }
+                  | { type: "final_result"; result: LeaseExtractionResult }
                   | { result: LeaseExtractionResult }
 
-                if ("result" in data) {
-                  extractionResult = data.result
-                } else if ("status" in data) {
-                  setProcessingStatus(data.message)
-                  setMessages((prev) =>
-                    prev.map((msg) =>
-                      msg.id === processingMessageId
-                        ? {
-                            ...msg,
-                            content: `⏳ ${data.message} (${data.progress}%)`,
-                          }
-                        : msg
+                if (data && typeof data === "object") {
+                  if ("type" in data && data.type === "partial_result") {
+                    partialResult = { ...(partialResult || {}), ...data.result }
+                    onPartialResult?.(partialResult)
+                    if (!extractionResult && partialResult.documentId) {
+                      onDocumentReady?.(partialResult as LeaseExtractionResult)
+                    }
+                  } else if ("type" in data && data.type === "final_result") {
+                    extractionResult = data.result
+                    onDocumentReady?.(extractionResult)
+                  } else if ("result" in data && !("type" in data)) {
+                    extractionResult = data.result
+                    onDocumentReady?.(extractionResult)
+                  } else if ("status" in data) {
+                    setProcessingStatus(data.message)
+                    setMessages((prev) =>
+                      prev.map((msg) =>
+                        msg.id === processingMessageId
+                          ? {
+                              ...msg,
+                              content: `⏳ ${data.message} (${data.progress}%)`,
+                            }
+                          : msg
+                      )
                     )
-                  )
+                  }
                 }
               } catch (e) {
                 console.warn("Failed to parse SSE data:", e)
@@ -146,7 +166,7 @@ export function usePdfHandler({
 
   async function handlePdfUpload(file: File) {
     setIsProcessingPdf(true)
-    setProcessingStatus("📤 Téléversement du PDF...")
+    setProcessingStatus("📤 Chargement du PDF...")
 
     const processingMessageId = `processing-${Date.now()}`
 
@@ -185,6 +205,7 @@ export function usePdfHandler({
       const decoder = new TextDecoder()
       let buffer = ""
       let extractionResult: LeaseExtractionResult | null = null
+      let partialResult: Partial<LeaseExtractionResult> | null = null
 
       if (reader) {
         while (true) {
@@ -200,22 +221,39 @@ export function usePdfHandler({
               try {
                 const data = JSON.parse(line.slice(6)) as
                   | ExtractionProgress
+                  | {
+                      type: "partial_result"
+                      result: Partial<LeaseExtractionResult>
+                    }
+                  | { type: "final_result"; result: LeaseExtractionResult }
                   | { result: LeaseExtractionResult }
 
-                if ("result" in data) {
-                  extractionResult = data.result
-                } else if ("status" in data) {
-                  setProcessingStatus(data.message)
-                  setMessages((prev) =>
-                    prev.map((msg) =>
-                      msg.id === processingMessageId
-                        ? {
-                            ...msg,
-                            content: `⏳ ${data.message} (${data.progress}%)`,
-                          }
-                        : msg
+                if (data && typeof data === "object") {
+                  if ("type" in data && data.type === "partial_result") {
+                    partialResult = { ...(partialResult || {}), ...data.result }
+                    onPartialResult?.(partialResult)
+                    if (!extractionResult && partialResult.documentId) {
+                      onDocumentReady?.(partialResult as LeaseExtractionResult)
+                    }
+                  } else if ("type" in data && data.type === "final_result") {
+                    extractionResult = data.result
+                    onDocumentReady?.(extractionResult)
+                  } else if ("result" in data && !("type" in data)) {
+                    extractionResult = data.result
+                    onDocumentReady?.(extractionResult)
+                  } else if ("status" in data) {
+                    setProcessingStatus(data.message)
+                    setMessages((prev) =>
+                      prev.map((msg) =>
+                        msg.id === processingMessageId
+                          ? {
+                              ...msg,
+                              content: `⏳ ${data.message} (${data.progress}%)`,
+                            }
+                          : msg
+                      )
                     )
-                  )
+                  }
                 }
               } catch (e) {
                 console.warn("Failed to parse SSE data:", e)

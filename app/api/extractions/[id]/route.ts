@@ -15,13 +15,21 @@ export async function GET(
     const skipAuth = process.env.SKIP_AUTH === "true"
 
     if (!skipAuth) {
-      const session = await auth.api.getSession({
-        headers: request.headers,
-      })
+      try {
+        const session = await auth.api.getSession({
+          headers: request.headers,
+        })
 
-      if (!session?.user?.id) {
+        if (!session?.user?.id) {
+          return NextResponse.json(
+            { error: "Unauthorized", message: "Authentication required" },
+            { status: 401 }
+          )
+        }
+      } catch (authError) {
+        console.error("Auth error:", authError)
         return NextResponse.json(
-          { error: "Unauthorized", message: "Authentication required" },
+          { error: "Unauthorized", message: "Authentication failed" },
           { status: 401 }
         )
       }
@@ -36,7 +44,7 @@ export async function GET(
       )
     }
 
-    const result = await extractionStorage.getExtraction(id)
+    const result = await extractionStorage.getExtraction(id, false)
 
     if (!result) {
       return NextResponse.json(
@@ -69,13 +77,21 @@ export async function DELETE(
     const skipAuth = process.env.SKIP_AUTH === "true"
 
     if (!skipAuth) {
-      const session = await auth.api.getSession({
-        headers: request.headers,
-      })
+      try {
+        const session = await auth.api.getSession({
+          headers: request.headers,
+        })
 
-      if (!session?.user?.id) {
+        if (!session?.user?.id) {
+          return NextResponse.json(
+            { error: "Unauthorized", message: "Authentication required" },
+            { status: 401 }
+          )
+        }
+      } catch (authError) {
+        console.error("Auth error:", authError)
         return NextResponse.json(
-          { error: "Unauthorized", message: "Authentication required" },
+          { error: "Unauthorized", message: "Authentication failed" },
           { status: 401 }
         )
       }
