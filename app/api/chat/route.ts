@@ -2,7 +2,8 @@ import { randomUUID } from "crypto"
 import { NextRequest } from "next/server"
 import OpenAI from "openai"
 import { auth } from "@/app/lib/auth"
-import { searchService } from "@/app/lib/rag/services/search-service"
+import { getTools, ToolName } from "@/app/lib/ai/tools/definitions"
+import { handleToolCallWithRegistry } from "@/app/lib/ai/tools/handlers"
 import { RAG_CONFIG } from "@/app/lib/rag/config"
 
 const openai = new OpenAI({
@@ -93,7 +94,12 @@ export async function POST(req: NextRequest) {
 
   const shouldUseRag = Boolean(documentId && userQuestion.trim())
   const modelName = shouldUseRag ? RAG_CONFIG.responsesModel : "gpt-4o-mini"
-  const isGpt5 = modelName.startsWith("gpt-5")
+
+  const toolNames: ToolName[] = ["compute_lease_rent_schedule"]
+  if (shouldUseRag) {
+    toolNames.push("retrieve_chunks")
+  }
+  const tools = getTools(toolNames)
 
   const instructions = shouldUseRag
     ? [
@@ -114,30 +120,6 @@ export async function POST(req: NextRequest) {
       ? EXTRACTION_SYSTEM_PROMPT
       : GENERAL_SYSTEM_PROMPT
 
-  const tools = shouldUseRag
-    ? [
-        {
-          type: "function" as const,
-          name: "retrieve_chunks",
-          description:
-            "Recherche des passages pertinents dans le bail commercial téléversé par l'utilisateur. À utiliser OBLIGATOIREMENT avant de répondre à toute question sur le document.",
-          parameters: {
-            type: "object",
-            properties: {
-              query: {
-                type: "string",
-                description:
-                  "Requête de recherche en français, décrivant précisément l'information recherchée dans le bail (ex: 'loyer mensuel', 'durée du bail', 'conditions de résiliation')",
-              },
-            },
-            required: ["query"],
-            additionalProperties: false,
-          },
-          strict: true,
-        },
-      ]
-    : undefined
-
   try {
     const encoder = new TextEncoder()
     const stream = new ReadableStream({
@@ -151,7 +133,6 @@ export async function POST(req: NextRequest) {
             instructions,
             tools,
             modelName,
-            isGpt5,
             extractData,
             documentId,
             controller,
@@ -204,7 +185,6 @@ interface HandleConversationArgs {
   instructions: string
   tools: any[] | undefined
   modelName: string
-  isGpt5: boolean
   extractData: boolean
   documentId: string | undefined
   controller: ReadableStreamDefaultController
@@ -239,78 +219,37 @@ async function handleConversation({
   instructions,
   tools,
   modelName,
-  isGpt5,
   extractData,
   documentId,
   controller,
   encoder,
 }: HandleConversationArgs) {
-  if (isGpt5) {
-    while (true) {
-      const { toolCalls, outputItems } = await streamResponses({
-        conversationItems,
-        instructions,
-        tools,
-        modelName,
-        controller,
-        encoder,
-      })
-
-      if (outputItems.length > 0) {
-        conversationItems.push(...outputItems)
-      }
-
-      if (!toolCalls.length) {
-        break
-      }
-
-      if (!documentId) {
-        sendStatusEvent(controller, encoder, "error", {
-          message:
-            "Impossible d'accéder au document pour exécuter l'outil RAG.",
-        })
-        break
-      }
-
-      for (const toolCall of toolCalls) {
-        if (toolCall.name === "retrieve_chunks") {
-          const args = JSON.parse(toolCall.arguments || "{}")
-          sendStatusEvent(controller, encoder, "rag_searching", {
-            query: args.query,
-          })
-        }
-
-        const toolOutput = await handleToolCall(toolCall, documentId, (data) =>
-          sendStatusEvent(controller, encoder, "rag_results", data)
-        )
-        conversationItems.push(toolOutput)
-      }
-    }
-  } else {
-    const baseMessages = conversationItems
-      .filter(
-        (
-          item
-        ): item is { role: "user" | "assistant" | "system"; content: string } =>
-          "role" in item && typeof item.content === "string"
-      )
-      .map((item) => ({ role: item.role, content: item.content }))
-
-    const stream = await openai.chat.completions.create({
-      model: modelName,
-      messages: [{ role: "system", content: instructions }, ...baseMessages],
-      temperature: extractData ? 0.1 : 0.3,
-      stream: true,
+  while (true) {
+    const { toolCalls, outputItems } = await streamResponses({
+      conversationItems,
+      instructions,
+      tools,
+      modelName,
+      controller,
+      encoder,
+      extractData,
     })
 
-    for await (const event of stream) {
-      if (event.choices[0]?.delta?.content) {
-        controller.enqueue(
-          encoder.encode(
-            `0:${JSON.stringify(event.choices[0].delta.content)}\n`
-          )
-        )
-      }
+    if (outputItems.length > 0) {
+      conversationItems.push(...outputItems)
+    }
+
+    if (!toolCalls.length) {
+      break
+    }
+
+    for (const toolCall of toolCalls) {
+      const { outputItem } = await handleToolCallWithRegistry(toolCall, {
+        documentId,
+        emitStatus: (status, data) =>
+          sendStatusEvent(controller, encoder, status, data),
+      })
+      conversationItems.push(outputItem)
     }
   }
 }
@@ -322,6 +261,7 @@ async function streamResponses({
   modelName,
   controller,
   encoder,
+  extractData,
 }: {
   conversationItems: ConversationItem[]
   instructions: string
@@ -329,15 +269,17 @@ async function streamResponses({
   modelName: string
   controller: ReadableStreamDefaultController
   encoder: TextEncoder
+  extractData: boolean
 }): Promise<{ toolCalls: any[]; outputItems: any[] }> {
   const requestConfig: any = {
     model: modelName,
     input: conversationItems,
     instructions,
     stream: true,
+    temperature: extractData ? 0.1 : 0.3,
   }
 
-  if (tools) {
+  if (tools?.length) {
     requestConfig.tools = tools
     requestConfig.tool_choice = "auto"
   }
@@ -378,88 +320,4 @@ async function streamResponses({
   }
 
   return { toolCalls, outputItems }
-}
-
-async function handleToolCall(
-  toolCall: any,
-  documentId: string,
-  onStatus?: (data: Record<string, unknown>) => void
-): Promise<ConversationItem> {
-  if (toolCall.name !== "retrieve_chunks") {
-    return {
-      type: "function_call_output",
-      call_id: toolCall.call_id,
-      output: "Outil inconnu.",
-    }
-  }
-
-  try {
-    const args = JSON.parse(toolCall.arguments || "{}")
-    const query = typeof args.query === "string" ? args.query.trim() : ""
-
-    if (!query) {
-      return {
-        type: "function_call_output",
-        call_id: toolCall.call_id,
-        output:
-          "La requête RAG est vide. Reformule la question de l'utilisateur pour lancer une recherche.",
-      }
-    }
-
-    const results = await searchService.search(query, {
-      documentId,
-      limit: 5,
-      minScore: 0.3,
-    })
-
-    if (onStatus) {
-      onStatus({
-        found: results.length,
-        pages: results.map((r) => r.pageNumber).filter(Boolean),
-        scores: results.map((r) => r.score?.toFixed(2)).filter(Boolean),
-      })
-    }
-
-    if (!results.length) {
-      return {
-        type: "function_call_output",
-        call_id: toolCall.call_id,
-        output:
-          "Aucun passage pertinent trouvé dans le bail pour cette requête.",
-      }
-    }
-
-    const formatted = results
-      .map((result, idx) => {
-        const pageTag =
-          typeof result.pageNumber === "number"
-            ? `Page ${result.pageNumber}`
-            : "Page inconnue"
-        const score = result.score?.toFixed(2) ?? "?"
-        return `Passage ${idx + 1} (${pageTag}, pertinence ${score}):\n${
-          result.text
-        }`
-      })
-      .join("\n\n---\n\n")
-
-    return {
-      type: "function_call_output",
-      call_id: toolCall.call_id,
-      output: formatted,
-    }
-  } catch (error) {
-    console.error("RAG tool execution failed:", error)
-    if (onStatus) {
-      onStatus({
-        error: error instanceof Error ? error.message : "inconnue",
-      })
-    }
-    return {
-      type: "function_call_output",
-      call_id: toolCall.call_id,
-      output: `Erreur lors de la recherche RAG: ${
-        error instanceof Error ? error.message : "inconnue"
-      }`,
-    }
-  }
 }

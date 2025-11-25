@@ -1,7 +1,7 @@
 "use client"
 
 import { useChat } from "@ai-sdk/react"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Sidebar } from "./chat/sidebar"
 import { TopBar } from "./chat/top-bar"
 import { MessagesArea } from "./chat/messages-area"
@@ -16,6 +16,8 @@ import { useDataExtraction } from "./chat/hooks/use-data-extraction"
 import { ProcessingStatus } from "./chat/processing-status"
 import { exportAllToPDF, exportAllToCSV } from "./chat/utils/export-utils"
 import { RagStatusFeed } from "./chat/rag-status-feed"
+import type { LeaseExtractionResult } from "@/app/lib/extraction/types"
+import { ExtractionModal } from "./extraction/extraction-modal"
 
 export function Chat() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -24,6 +26,12 @@ export function Chat() {
     id: string
     fileName: string
   } | null>(null)
+  const [showExtractionPanel, setShowExtractionPanel] = useState(false)
+  const [extraction, setExtraction] = useState<LeaseExtractionResult | null>(
+    null
+  )
+
+  const isTestMode = process.env.NEXT_PUBLIC_APP_MODE === "test"
 
   const {
     messages,
@@ -68,6 +76,24 @@ export function Chat() {
         id: result.documentId,
         fileName: result.fileName,
       })
+      setExtraction(result as LeaseExtractionResult)
+    },
+    onPartialResult: (partialResult) => {
+      if (partialResult.documentId && !extraction) {
+        setActiveDocument({
+          id: partialResult.documentId,
+          fileName: partialResult.fileName || "Document",
+        })
+        setExtraction(partialResult as LeaseExtractionResult)
+      } else if (
+        extraction &&
+        partialResult.documentId === extraction.documentId
+      ) {
+        setExtraction({
+          ...extraction,
+          ...partialResult,
+        } as LeaseExtractionResult)
+      }
     },
   })
 
@@ -80,6 +106,18 @@ export function Chat() {
           | ((messages: MessageWithSources[]) => MessageWithSources[])
       ) => void,
     })
+
+  useEffect(() => {
+    setShowExtractionPanel(false)
+    setExtraction(null)
+  }, [activeDocument?.id])
+
+  function handleToggleExtractionPanel() {
+    if (!isTestMode || !activeDocument) {
+      return
+    }
+    setShowExtractionPanel((current) => !current)
+  }
 
   async function handleFormSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -161,6 +199,18 @@ export function Chat() {
           isLoading={isLoading}
           isProcessingPdf={isProcessingPdf}
           activeDocument={activeDocument}
+          onToggleExtractionPanel={
+            isTestMode && activeDocument
+              ? handleToggleExtractionPanel
+              : undefined
+          }
+          showExtractionPanel={showExtractionPanel}
+        />
+
+        <ExtractionModal
+          open={isTestMode && !!activeDocument && showExtractionPanel}
+          onClose={() => setShowExtractionPanel(false)}
+          extraction={extraction}
         />
 
         <RagStatusFeed events={statusEvents} isStreaming={isLoading} />

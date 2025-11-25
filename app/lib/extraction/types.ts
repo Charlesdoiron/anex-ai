@@ -37,6 +37,12 @@ export interface ExtractionProgress {
   error?: string
 }
 
+export interface ExtractionStageDurations {
+  pdfProcessingMs: number
+  extractionMs: number
+  ingestionMs: number
+}
+
 export type ConfidenceLevel = "high" | "medium" | "low" | "missing"
 
 export interface ExtractedValue<T> {
@@ -239,6 +245,8 @@ export interface OtherData {
 }
 
 // Complete extraction result
+import type { ComputeLeaseRentScheduleResult } from "@/app/lib/lease/types"
+
 export interface LeaseExtractionResult {
   documentId: string
   fileName: string
@@ -266,6 +274,9 @@ export interface LeaseExtractionResult {
   otherAnnexes: OtherAnnexesData
   other: OtherData
 
+  // Computed rent schedule (using INSEE index + extracted fields)
+  rentSchedule?: ComputeLeaseRentScheduleResult
+
   // Future: computed scores will go here
   scores?: {
     [key: string]: number | string
@@ -280,5 +291,6 @@ export interface LeaseExtractionResult {
     averageConfidence: number
     processingTimeMs: number
     retries: number
+    stageDurations: ExtractionStageDurations
   }
 }

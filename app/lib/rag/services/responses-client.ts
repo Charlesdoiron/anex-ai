@@ -1,5 +1,6 @@
 import OpenAI from "openai"
-import { searchService } from "./search-service"
+import { retrieveChunksTool } from "@/app/lib/ai/tools/definitions"
+import { handleToolCallWithRegistry } from "@/app/lib/ai/tools/handlers"
 import { RAG_CONFIG } from "../config"
 import { SourceInfo } from "../types"
 
@@ -7,26 +8,7 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 })
 
-const TOOLS = [
-  {
-    type: "function" as const,
-    name: "retrieve_chunks",
-    description:
-      "Retrieve relevant text chunks from the document based on a search query.",
-    parameters: {
-      type: "object",
-      properties: {
-        query: {
-          type: "string",
-          description: "The search query to find relevant information.",
-        },
-      },
-      required: ["query"],
-      additionalProperties: false,
-    },
-    strict: true,
-  },
-]
+const TOOLS = [retrieveChunksTool]
 
 export async function generateAnswerWithRAG(
   question: string,
@@ -58,10 +40,14 @@ async function runConversation(
 ): Promise<{ answer: string; sources: SourceInfo[] }> {
   try {
     // 1. Call Responses API
+    const tools = TOOLS.map((tool) => ({
+      ...tool,
+      strict: tool.strict ?? null,
+    }))
     const response = await openai.responses.create({
       model: RAG_CONFIG.responsesModel,
       input: inputMessages,
-      tools: TOOLS,
+      tools: tools as any,
       instructions,
       previous_response_id: previousResponseId,
       tool_choice: "auto",
@@ -96,50 +82,19 @@ async function runConversation(
       return { answer, sources: accumulatedSources }
     }
 
-    // 3. Handle tool call
-    if (toolCallItem.name === "retrieve_chunks") {
-      console.log(`🛠️ Tool call: ${toolCallItem.name}`)
-      const args = JSON.parse(toolCallItem.arguments)
-
-      // Execute search
-      const results = await searchService.search(args.query, {
+    // 3. Handle tool call via registry
+    const { outputItem, sources: newSources } =
+      await handleToolCallWithRegistry(toolCallItem, {
         documentId,
-        limit: 5,
       })
 
-      const context = results
-        .map((r) => `[Page ${r.pageNumber}] ${r.text}`)
-        .join("\n\n")
-      console.log(`🔍 Found ${results.length} chunks`)
-
-      // Collect sources
-      const newSources: SourceInfo[] = results.map((r) => ({
-        pageNumber: r.pageNumber,
-        score: r.score,
-        text: r.text,
-        summary: r.metadata?.summary,
-        metadata: r.metadata,
-        // fileName is missing here, can be added if passed or fetched
-      }))
-
-      // Add tool result to conversation
-      const toolOutputItem = {
-        type: "function_call_output",
-        call_id: toolCallItem.call_id,
-        output: JSON.stringify({ results: context || "No results found." }),
-      }
-
-      // Recurse
-      return await runConversation(
-        [toolOutputItem],
-        documentId,
-        instructions,
-        response.id,
-        [...accumulatedSources, ...newSources]
-      )
-    }
-
-    return { answer: "Error: Unknown tool call", sources: accumulatedSources }
+    return await runConversation(
+      [outputItem],
+      documentId,
+      instructions,
+      response.id,
+      [...accumulatedSources, ...(newSources ?? [])]
+    )
   } catch (error) {
     console.error("Error in generateAnswerWithRAG:", error)
     return { answer: "Error generating answer.", sources: accumulatedSources }
