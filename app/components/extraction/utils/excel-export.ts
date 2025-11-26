@@ -12,32 +12,62 @@ function getValue<T>(field: ExtractedValue<T> | undefined | null): T | null {
   return field.value
 }
 
+function safeNumber(value: unknown): number | null {
+  if (value === null || value === undefined) return null
+  if (typeof value === "number") return value
+  if (typeof value === "string") {
+    const parsed = parseFloat(value.replace(/[^\d.-]/g, ""))
+    return isNaN(parsed) ? null : parsed
+  }
+  if (typeof value === "object" && value !== null && "value" in value) {
+    return safeNumber((value as { value: unknown }).value)
+  }
+  return null
+}
+
+function safeString(value: unknown): string | null {
+  if (value === null || value === undefined) return null
+  if (typeof value === "string") return value
+  if (typeof value === "number") return String(value)
+  if (typeof value === "object" && value !== null && "value" in value) {
+    return safeString((value as { value: unknown }).value)
+  }
+  if (typeof value === "object") return null
+  return String(value)
+}
+
 function fmt(value: unknown): string | number | null {
   if (value === null || value === undefined) return null
   if (typeof value === "boolean") return value ? "Oui" : "Non"
   if (typeof value === "number") return value
   if (Array.isArray(value)) return value.length > 0 ? value.join(", ") : null
-  if (typeof value === "object") return JSON.stringify(value)
+  if (typeof value === "object" && "value" in value) {
+    return fmt((value as { value: unknown }).value)
+  }
+  if (typeof value === "object") return null
   return String(value)
 }
 
 function formatDate(isoDate: string | null): string | null {
   if (!isoDate) return null
+  const dateStr = safeString(isoDate)
+  if (!dateStr) return null
   try {
-    const date = new Date(isoDate)
+    const date = new Date(dateStr)
     return date.toLocaleDateString("fr-FR", {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
     })
   } catch {
-    return isoDate
+    return dateStr
   }
 }
 
 function formatCurrency(value: number | null): string | null {
-  if (value === null) return null
-  return `${value.toLocaleString("fr-FR")} €`
+  const num = safeNumber(value)
+  if (num === null) return null
+  return `${num.toLocaleString("fr-FR")} €`
 }
 
 function setColumnWidths(worksheet: XLSX.WorkSheet, widths: number[]): void {
