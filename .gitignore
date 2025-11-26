@@ -48,6 +48,10 @@ package-lock.json
 /storage/**
 !/storage/**/.gitkeep
 
+# Test data (PDFs, etc.)
+/data/**
+!/data/.gitkeep
+
 # history files
 .history/
 

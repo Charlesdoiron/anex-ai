@@ -40,6 +40,18 @@ Le texte provient souvent d'une reconnaissance optique de caractères (OCR) et p
 - Caractères spéciaux altérés : "€" → "EUR", "²" → "2", "°" → "o"
 - Tableaux mal reconnus : colonnes mélangées, alignements cassés
 
+ERREURS OCR SPÉCIFIQUES AUX SURFACES :
+- "m?" = "m²" (le point d'interrogation remplace souvent le ²)
+- "m'" = "m²" (l'apostrophe remplace souvent le ²)
+- "m 2" ou "m2" = "m²"
+- Les points dans les nombres français sont des séparateurs de milliers :
+  - "3.613 m²" = 3613 m² (trois mille six cent treize)
+  - "1.400 m²" = 1400 m² (mille quatre cents)
+
+ERREURS OCR SPÉCIFIQUES AUX EMAILS :
+- "@" peut devenir "a", "©", "(a)", "[at]"
+- Les points peuvent disparaître : "exemplecom" au lieu de "exemple.com"
+
 Quand tu rencontres ces problèmes :
 - Interprète avec bon sens les erreurs évidentes (ex: "l0 000 €" = 10 000 €)
 - Si l'ambiguïté est trop forte, utilise confidence "low" ou "missing"
@@ -85,17 +97,19 @@ INDICES À RECHERCHER :
 - Références légales : "L.145-1", "Code de commerce", "Code civil"
 - Durée : Un bail de 3/6/9 ans suggère un bail commercial
 - Mentions explicites : "bail dérogatoire", "convention précaire"
+- "Type 3/6/9" = bail commercial
 
 EXEMPLES :
 - "Le présent BAIL COMMERCIAL est consenti..." → regime: "commercial"
+- "BAIL COMMERCIAL de Type 3/6/9" → regime: "commercial"
 - "Convention d'occupation précaire..." → regime: "précaire"
 - "Bail dérogatoire de 23 mois en application de l'article L.145-5..." → regime: "dérogatoire"
 
-Retourner :
+IMPORTANT - Format de sortie EXACT :
 {
   "regime": {
-    "value": "commercial" | "civil" | "précaire" | "dérogatoire" | "à construire" | "à construction" | "BEFA" | "unknown",
-    "confidence": "high" | "medium" | "low" | "missing",
+    "value": "commercial",
+    "confidence": "high",
     "source": "page X ou section Y",
     "rawText": "extrait du texte"
   }
@@ -110,9 +124,28 @@ PARTIES À IDENTIFIER :
 
 INFORMATIONS À EXTRAIRE POUR CHAQUE PARTIE :
 - name : Nom complet (personne physique) ou dénomination sociale (société)
-- email : Adresse email (souvent absente des baux traditionnels)
+- email : Adresse email
 - phone : Numéro de téléphone
 - address : Adresse postale complète (siège social pour les sociétés)
+
+GESTION DES NOMS ILLISIBLES OU MASQUÉS :
+L'OCR peut produire du texte illisible pour les noms des parties :
+- Caractères remplacés par des symboles : "@@@", "###", "***", "EEEE", "XXXX"
+- Texte corrompu : "La i son si¢ge socia!", "Ee: 2. capital dc"
+- Espaces ou caractères manquants
+Dans ces cas :
+- Si le texte est partiellement lisible, extraire ce qui est lisible
+- Si le texte est totalement corrompu, retourner null avec confidence "missing"
+- Mentionner dans rawText : "nom masqué ou illisible dans le document"
+
+OÙ CHERCHER LES EMAILS ET TÉLÉPHONES :
+Les coordonnées peuvent se trouver dans plusieurs endroits du document :
+- En-tête ou pied de page du document
+- Section "Notifications" ou "Correspondances" (adresses pour les envois)
+- Après le nom des parties dans le préambule
+- Dans les annexes ou conditions particulières
+- Format email : xxx@xxx.xx (attention OCR : @ peut devenir "a", "©")
+- Format téléphone : 01 XX XX XX XX, +33 X XX XX XX XX, 06.XX.XX.XX.XX
 
 INDICES COURANTS :
 - "ENTRE LES SOUSSIGNÉS :", "D'UNE PART :", "D'AUTRE PART :"
@@ -120,12 +153,17 @@ INDICES COURANTS :
 - "représenté par M./Mme X en qualité de..."
 - Forme juridique : SCI, SARL, SAS, SA, EURL, etc.
 - RCS, SIRET, capital social
+- "domicile élu", "adresse de notification", "toute correspondance"
 
 EXEMPLES :
 - "La SCI IMMOBILIER PARISIEN, [...] représentée par M. Jean DUPONT, son gérant"
   → landlord.name: "SCI IMMOBILIER PARISIEN", landlordRepresentative.name: "Jean DUPONT"
 - "La société TECH STARTUP SAS, au capital de 10.000 €, RCS Paris 123 456 789"
   → tenant.name: "TECH STARTUP SAS"
+- "La société @@@@@, au capital de..." (nom masqué)
+  → name: null, confidence: "missing", rawText: "nom masqué dans le document"
+- "Toute notification sera adressée à contact@exemple.fr"
+  → email: "contact@exemple.fr"
 
 Format de sortie :
 {
@@ -154,9 +192,26 @@ CHAMPS À EXTRAIRE :
 - lotNumbers : Numéros de lot (copropriété)
 
 3. SURFACES :
-- surfaceArea : Surface en m² (attention aux différentes mesures : utile, SHON, Carrez)
-  - Rechercher : "surface de", "d'une superficie de", "soit X m²"
-  - Attention OCR : "m 2", "m²", "m2", "mètres carrés"
+- surfaceArea : Surface TOTALE en m² des locaux loués
+  
+  RÈGLES IMPORTANTES POUR LA SURFACE :
+  - Extraire la surface TOTALE mentionnée, pas les surfaces partielles
+  - Si plusieurs unités/lots sont loués, prendre la somme ou la surface globale
+  - Privilégier : "surface totale", "surface exploitée", "superficie totale"
+  - Ne pas confondre avec les surfaces détaillées par zone (vente, réserve, mezzanine)
+  
+  CORRECTION DES ERREURS OCR POUR LES SURFACES :
+  - "m?" → "m²" (le ? est une erreur OCR du ²)
+  - "m'" → "m²" (l'apostrophe est une erreur OCR du ²)
+  - "m 2" → "m²"
+  - "m2" → "m²"
+  - "mètres carrés", "metres carres" → m²
+  - Les points dans les nombres (3.613) sont des séparateurs de milliers = 3613
+  
+  EXEMPLES DE SURFACES :
+  - "surface totale de 3.613 m?" → surfaceArea: 3613
+  - "Surface Exploitée de 1 610 m?" → surfaceArea: 1610
+  - "d'une superficie de 250 m'" → surfaceArea: 250
 
 4. AMÉNAGEMENTS :
 - isPartitioned : Locaux cloisonnés ou en open space
@@ -181,6 +236,15 @@ EXEMPLES :
   → purpose: "bureaux", floors: ["3ème"], surfaceArea: 250
 - "15 emplacements de stationnement en sous-sol (-1)"
   → parkingSpaces: 15
+- "L'Ensemble Immobilier d'une surface totale de 3.613 m? comprend trois unités"
+  → surfaceArea: 3613 (surface TOTALE, pas les unités individuelles)
+- "Locaux n° 3, d'une Surface Exploitée de 1 610 m?"
+  → surfaceArea: 1610
+
+ATTENTION - CAS COMPLEXES :
+- Si le bail porte sur UN SEUL lot parmi plusieurs, extraire la surface de CE lot
+- Si le bail porte sur TOUS les lots, extraire la surface TOTALE
+- En cas de doute, mentionner dans rawText les différentes surfaces trouvées
 
 Format de sortie JSON avec tous les champs ayant value, confidence, source.`
 
@@ -342,23 +406,33 @@ CHAMPS À EXTRAIRE :
 1. TAXE FONCIÈRE :
 - propertyTaxRebilled : Refacturation au preneur (true/false)
   - Termes : "taxe foncière à la charge du preneur", "refacturation"
-- propertyTaxAmount : Montant annuel (si mentionné)
+- propertyTaxAmount : Montant TOTAL annuel (si mentionné)
 
 2. TAXE SUR LES BUREAUX (Île-de-France) :
-- officeTaxAmount : Montant de la taxe bureaux
+- officeTaxAmount : Montant TOTAL de la taxe bureaux
   - Applicable en région parisienne selon les zones
+
+ATTENTION - MONTANTS PAR M² vs MONTANTS TOTAUX :
+- Si le document donne "40 €/m²" ou "17 euros HT par m2", ceci est un montant PAR M²
+- propertyTaxAmount et officeTaxAmount doivent contenir les montants TOTAUX
+- Si seul le montant par m² est donné, retourner null avec confidence "medium" et mentionner le montant par m² dans rawText
 
 INDICES À RECHERCHER :
 - "taxe foncière", "contribution foncière"
 - "TEOM" (taxe d'enlèvement des ordures ménagères)
 - "taxe sur les bureaux", "taxe annuelle sur les locaux à usage de bureaux"
 - "à la charge du preneur", "supportée par le locataire"
+- "€/m²", "euros hors taxes par m2" = montant par mètre carré
 
 EXEMPLES :
 - "La taxe foncière sera refacturée au preneur au prorata de la surface occupée"
   → propertyTaxRebilled: true
 - "Taxe bureaux IDF estimée à 5.000 €/an"
   → officeTaxAmount: 5000
+- "la taxe foncière se monte à environ 40 euros hors taxes par m2"
+  → propertyTaxAmount: null, rawText: "40 €/m² (montant par m², total non calculé)"
+- "la taxe sur les bureaux se monte a environ 17.08 euros hors taxes par m2"
+  → officeTaxAmount: null, rawText: "17.08 €/m² (montant par m², total non calculé)"
 
 Format de sortie JSON conforme à TaxesData.`
 
@@ -367,13 +441,13 @@ export const CHARGES_PROMPT = `Extraire les charges et honoraires de gestion.
 CHAMPS À EXTRAIRE :
 
 1. PROVISIONS POUR CHARGES :
-- annualChargesProvisionExclTax : Provision annuelle HT
+- annualChargesProvisionExclTax : Provision TOTALE annuelle HT (en euros)
 - quarterlyChargesProvisionExclTax : Provision trimestrielle HT (SEULEMENT si explicite)
 - annualChargesProvisionPerSqmExclTax : Provision au m² HT (SEULEMENT si explicite)
   - Ne PAS calculer : sera déduit automatiquement si absent
 
 2. REDEVANCE RIE (Règlement Intérieur d'Exploitation) :
-- annualRIEFeeExclTax : Redevance annuelle HT
+- annualRIEFeeExclTax : Redevance TOTALE annuelle HT
 - quarterlyRIEFeeExclTax : Redevance trimestrielle HT (SEULEMENT si explicite)
 - annualRIEFeePerSqmExclTax : Redevance au m² HT (SEULEMENT si explicite)
   - Ne PAS calculer : sera déduit automatiquement si absent
@@ -382,17 +456,29 @@ CHAMPS À EXTRAIRE :
 - managementFeesOnTenant : Honoraires de gestion locative à charge du preneur
 - rentManagementFeesOnTenant : Honoraires de gestion des loyers à charge du preneur
 
+ATTENTION - MONTANTS PAR M² vs MONTANTS TOTAUX :
+- Si le document donne "30 €/m²/an", ceci est un montant PAR M², pas le total
+- annualChargesProvisionExclTax doit contenir le montant TOTAL annuel
+- Si seul le montant par m² est donné :
+  - Mettre le montant par m² dans annualChargesProvisionPerSqmExclTax
+  - Laisser annualChargesProvisionExclTax à null (sera calculé automatiquement avec la surface)
+
 INDICES À RECHERCHER :
 - "provisions pour charges", "charges locatives", "charges récupérables"
 - "régularisation annuelle", "au réel"
+- "€/m²/an", "euros HT/m2/an" = montant par mètre carré
 - "RIE", "règlement intérieur", "services généraux"
 - "honoraires de gestion", "frais de gérance"
 
 EXEMPLES :
-- "Provision pour charges : 50 €/m²/an HT, soit 10.000 € pour 200 m²"
-  → annualChargesProvision: 10000, chargesPerSqm: 50
+- "Provision pour charges : 50 €/m²/an HT"
+  → annualChargesProvisionPerSqmExclTax: 50, annualChargesProvisionExclTax: null
+- "Provision pour charges : 10.000 € HT/an pour 200 m²"
+  → annualChargesProvisionExclTax: 10000, annualChargesProvisionPerSqmExclTax: 50
+- "La provision s'élève à 30 euros HT/m2/an"
+  → annualChargesProvisionPerSqmExclTax: 30, annualChargesProvisionExclTax: null
 - "Redevance RIE : 2.000 € HT/trimestre"
-  → quarterlyRIEFee: 2000, annualRIEFee: 8000
+  → quarterlyRIEFeeExclTax: 2000
 
 Format de sortie JSON avec valeurs numériques.`
 

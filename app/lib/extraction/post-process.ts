@@ -179,6 +179,29 @@ function computeChargesFields(
   const charges = { ...result.charges }
   const surfaceArea = result.premises?.surfaceArea?.value
 
+  // FIRST: Compute annualCharges from chargesPerSqm × surfaceArea (if only per-m² is given)
+  if (
+    !hasValue(charges.annualChargesProvisionExclTax) &&
+    hasValue(charges.annualChargesProvisionPerSqmExclTax) &&
+    typeof surfaceArea === "number" &&
+    surfaceArea > 0
+  ) {
+    const chargesPerSqm = charges.annualChargesProvisionPerSqmExclTax.value
+
+    if (typeof chargesPerSqm === "number" && chargesPerSqm > 0) {
+      const sourceConfidence = minConfidence(
+        charges.annualChargesProvisionPerSqmExclTax.confidence,
+        result.premises.surfaceArea.confidence
+      )
+
+      charges.annualChargesProvisionExclTax = {
+        value: roundCurrency(chargesPerSqm * surfaceArea),
+        confidence: sourceConfidence,
+        source: "calculé depuis charges/m² × surface",
+      }
+    }
+  }
+
   // Compute quarterlyCharges from annualCharges / 4
   if (
     !hasValue(charges.quarterlyChargesProvisionExclTax) &&
@@ -214,6 +237,29 @@ function computeChargesFields(
         value: roundCurrency(annualCharges / surfaceArea),
         confidence: sourceConfidence,
         source: "calculé depuis charges annuelles / surface",
+      }
+    }
+  }
+
+  // FIRST: Compute annualRIEFee from RIEPerSqm × surfaceArea (if only per-m² is given)
+  if (
+    !hasValue(charges.annualRIEFeeExclTax) &&
+    hasValue(charges.annualRIEFeePerSqmExclTax) &&
+    typeof surfaceArea === "number" &&
+    surfaceArea > 0
+  ) {
+    const riePerSqm = charges.annualRIEFeePerSqmExclTax.value
+
+    if (typeof riePerSqm === "number" && riePerSqm > 0) {
+      const sourceConfidence = minConfidence(
+        charges.annualRIEFeePerSqmExclTax.confidence,
+        result.premises.surfaceArea.confidence
+      )
+
+      charges.annualRIEFeeExclTax = {
+        value: roundCurrency(riePerSqm * surfaceArea),
+        confidence: sourceConfidence,
+        source: "calculé depuis RIE/m² × surface",
       }
     }
   }
