@@ -7,6 +7,7 @@ import OpenAI from "openai"
 import { createRequire } from "module"
 import { OCR_CONFIG } from "./ocr/config"
 import { TesseractEngine } from "./ocr/tesseract-engine"
+import { TesseractJsEngine } from "./ocr/tesseract-js-engine"
 
 interface PdfMetadataInfo {
   Title?: string
@@ -290,30 +291,44 @@ async function runTesseractPipeline(
   pageCount: number,
   notify?: (message: string) => void
 ): Promise<string[]> {
-  const available = await TesseractEngine.checkAvailability()
+  // Use Tesseract.js on serverless (Vercel), native binary locally
+  const useJsEngine = OCR_CONFIG.IS_SERVERLESS
+  const engineName = useJsEngine ? "Tesseract.js" : "Tesseract"
+
+  const available = useJsEngine
+    ? await TesseractJsEngine.checkAvailability()
+    : await TesseractEngine.checkAvailability()
+
   if (!available) {
-    console.warn("Tesseract not available, skipping.")
+    console.warn(`${engineName} not available, skipping.`)
     return []
   }
 
+  notify?.(`Utilisation de ${engineName} pour l'OCR...`)
+
   const totalPages = screenshotPages.length
   const ocrPages: string[] = new Array(totalPages).fill("")
+  const concurrency = useJsEngine
+    ? OCR_CONFIG.TESSERACT_JS_POOL_SIZE
+    : OCR_CONFIG.TESSERACT_CONCURRENCY
 
   await processWithConcurrency(
     screenshotPages,
-    OCR_CONFIG.TESSERACT_CONCURRENCY,
+    concurrency,
     async (page, index) => {
       const pageNumber = index + 1
       if (pageNumber === 1 || pageNumber % 5 === 0) {
-        notify?.(`OCR Tesseract page ${pageNumber}/${totalPages}...`)
+        notify?.(`OCR ${engineName} page ${pageNumber}/${totalPages}...`)
       }
 
       try {
         const imageBuffer = Buffer.from(page.data)
-        const result = await TesseractEngine.recognize(imageBuffer)
+        const result = useJsEngine
+          ? await TesseractJsEngine.recognize(imageBuffer)
+          : await TesseractEngine.recognize(imageBuffer)
         ocrPages[index] = cleanPageText(result.text)
       } catch (error) {
-        console.error(`Tesseract failed on page ${pageNumber}:`, error)
+        console.error(`${engineName} failed on page ${pageNumber}:`, error)
       }
     }
   )

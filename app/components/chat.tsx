@@ -14,10 +14,11 @@ import {
 import { usePdfHandler } from "./chat/hooks/use-pdf-handler"
 import { useDataExtraction } from "./chat/hooks/use-data-extraction"
 import { ProcessingStatus } from "./chat/processing-status"
-import { exportAllToPDF, exportAllToCSV } from "./chat/utils/export-utils"
+import { exportAllToPDF } from "./chat/utils/export-utils"
 import { RagStatusFeed } from "./chat/rag-status-feed"
 import type { LeaseExtractionResult } from "@/app/lib/extraction/types"
 import { ExtractionModal } from "./extraction/extraction-modal"
+import { exportExtractionToExcel } from "./extraction/utils/excel-export"
 
 export function Chat() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -199,20 +200,24 @@ export function Chat() {
     await exportAllToPDF(messages as MessageWithSources[])
   }
 
-  const handleExportCSV = async () => {
-    await exportAllToCSV(messages as MessageWithSources[])
+  function handleExportExcel() {
+    if (!extraction) return
+    exportExtractionToExcel(extraction)
   }
 
   const hasAssistantMessages = messages.some(
     (m) => m.role === "assistant" && m.content.trim()
   )
 
-  const showExportButtons =
+  const showChatExportButtons =
     hasAssistantMessages &&
     !isLoading &&
     !isExtractingData &&
     !isProcessingPdf &&
     messages.length > 0
+
+  const canExportExtraction =
+    !!extraction?.extractionMetadata && !isLoading && !isProcessingPdf
 
   const statusEvents = useMemo(() => {
     if (!Array.isArray(streamData)) {
@@ -260,48 +265,52 @@ export function Chat() {
 
         <RagStatusFeed events={statusEvents} isStreaming={isLoading} />
 
-        {showExportButtons && (
+        {(canExportExtraction || showChatExportButtons) && (
           <div className="border-b border-gray-200 dark:border-gray-700 bg-[#fef9f4] dark:bg-[#343541]">
             <div className="max-w-7xl mx-auto px-4 py-3">
               <div className="flex items-center gap-3">
-                <button
-                  onClick={handleExportPDF}
-                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md transition-colors"
-                >
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
+                {canExportExtraction && (
+                  <button
+                    onClick={handleExportExcel}
+                    className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-md transition-colors"
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
-                    />
-                  </svg>
-                  Export PDF
-                </button>
-                <button
-                  onClick={handleExportCSV}
-                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md transition-colors"
-                >
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                      />
+                    </svg>
+                    Exporter Excel (données extraites)
+                  </button>
+                )}
+                {showChatExportButtons && (
+                  <button
+                    onClick={handleExportPDF}
+                    className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md transition-colors"
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                    />
-                  </svg>
-                  Export CSV
-                </button>
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
+                      />
+                    </svg>
+                    Export PDF (conversation)
+                  </button>
+                )}
               </div>
             </div>
           </div>

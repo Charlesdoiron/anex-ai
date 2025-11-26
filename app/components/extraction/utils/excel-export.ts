@@ -4,139 +4,215 @@ import type {
   ExtractedValue,
 } from "@/app/lib/extraction/types"
 
-type ExcelRow = Record<string, string | number | boolean | null>
+type ExcelRow = Record<string, string | number | boolean | null | undefined>
 
-function getExtractedValue<T>(
-  field: ExtractedValue<T> | undefined | null
-): T | null {
+function getValue<T>(field: ExtractedValue<T> | undefined | null): T | null {
   if (!field) return null
   if (field.confidence === "missing") return null
   return field.value
 }
 
-function formatValue(value: unknown): string | number | boolean | null {
+function fmt(value: unknown): string | number | null {
   if (value === null || value === undefined) return null
   if (typeof value === "boolean") return value ? "Oui" : "Non"
   if (typeof value === "number") return value
-  if (Array.isArray(value)) return value.join(", ")
+  if (Array.isArray(value)) return value.length > 0 ? value.join(", ") : null
   if (typeof value === "object") return JSON.stringify(value)
   return String(value)
 }
 
-function buildRegimeSheet(extraction: LeaseExtractionResult): ExcelRow[] {
+function formatDate(isoDate: string | null): string | null {
+  if (!isoDate) return null
+  try {
+    const date = new Date(isoDate)
+    return date.toLocaleDateString("fr-FR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    })
+  } catch {
+    return isoDate
+  }
+}
+
+function formatCurrency(value: number | null): string | null {
+  if (value === null) return null
+  return `${value.toLocaleString("fr-FR")} €`
+}
+
+function setColumnWidths(worksheet: XLSX.WorkSheet, widths: number[]): void {
+  worksheet["!cols"] = widths.map((w) => ({ wch: w }))
+}
+
+function buildSummarySheet(extraction: LeaseExtractionResult): ExcelRow[] {
+  const p = extraction.parties
+  const pr = extraction.premises
+  const c = extraction.calendar
+  const r = extraction.rent
+
   return [
+    { " ": "INFORMATIONS GÉNÉRALES", "  ": "" },
     {
-      Champ: "Régime du bail",
-      Valeur: formatValue(getExtractedValue(extraction.regime?.regime)),
-      Confiance: extraction.regime?.regime?.confidence || "missing",
+      " ": "Nom du fichier",
+      "  ": extraction.fileName,
+    },
+    {
+      " ": "Date d'extraction",
+      "  ": formatDate(extraction.extractionDate),
+    },
+    {
+      " ": "Régime du bail",
+      "  ": fmt(getValue(extraction.regime?.regime)),
+    },
+    { " ": "", "  ": "" },
+    { " ": "PARTIES", "  ": "" },
+    {
+      " ": "Bailleur",
+      "  ": fmt(getValue(p?.landlord?.name)),
+    },
+    {
+      " ": "Preneur",
+      "  ": fmt(getValue(p?.tenant?.name)),
+    },
+    { " ": "", "  ": "" },
+    { " ": "LOCAUX", "  ": "" },
+    {
+      " ": "Adresse",
+      "  ": fmt(getValue(pr?.address)),
+    },
+    {
+      " ": "Surface",
+      "  ": getValue(pr?.surfaceArea)
+        ? `${getValue(pr?.surfaceArea)} m²`
+        : null,
+    },
+    { " ": "", "  ": "" },
+    { " ": "DATES CLÉS", "  ": "" },
+    {
+      " ": "Date d'effet",
+      "  ": formatDate(getValue(c?.effectiveDate) as string | null),
+    },
+    {
+      " ": "Date de fin",
+      "  ": formatDate(getValue(c?.endDate) as string | null),
+    },
+    {
+      " ": "Durée",
+      "  ": getValue(c?.duration) ? `${getValue(c?.duration)} ans` : null,
+    },
+    { " ": "", "  ": "" },
+    { " ": "LOYER", "  ": "" },
+    {
+      " ": "Loyer annuel HT",
+      "  ": formatCurrency(
+        getValue(r?.annualRentExclTaxExclCharges) as number | null
+      ),
+    },
+    {
+      " ": "Fréquence de paiement",
+      "  ":
+        getValue(r?.paymentFrequency) === "monthly"
+          ? "Mensuel"
+          : getValue(r?.paymentFrequency) === "quarterly"
+            ? "Trimestriel"
+            : fmt(getValue(r?.paymentFrequency)),
     },
   ]
 }
 
 function buildPartiesSheet(extraction: LeaseExtractionResult): ExcelRow[] {
-  const rows: ExcelRow[] = []
-  const parties = extraction.parties
-
-  rows.push({
-    Partie: "Bailleur",
-    Champ: "Nom",
-    Valeur: formatValue(getExtractedValue(parties?.landlord?.name)),
-    Confiance: parties?.landlord?.name?.confidence || "missing",
-  })
-  rows.push({
-    Partie: "Bailleur",
-    Champ: "Email",
-    Valeur: formatValue(getExtractedValue(parties?.landlord?.email)),
-    Confiance: parties?.landlord?.email?.confidence || "missing",
-  })
-  rows.push({
-    Partie: "Bailleur",
-    Champ: "Téléphone",
-    Valeur: formatValue(getExtractedValue(parties?.landlord?.phone)),
-    Confiance: parties?.landlord?.phone?.confidence || "missing",
-  })
-  rows.push({
-    Partie: "Bailleur",
-    Champ: "Adresse",
-    Valeur: formatValue(getExtractedValue(parties?.landlord?.address)),
-    Confiance: parties?.landlord?.address?.confidence || "missing",
-  })
-
-  rows.push({
-    Partie: "Preneur",
-    Champ: "Nom",
-    Valeur: formatValue(getExtractedValue(parties?.tenant?.name)),
-    Confiance: parties?.tenant?.name?.confidence || "missing",
-  })
-  rows.push({
-    Partie: "Preneur",
-    Champ: "Email",
-    Valeur: formatValue(getExtractedValue(parties?.tenant?.email)),
-    Confiance: parties?.tenant?.email?.confidence || "missing",
-  })
-  rows.push({
-    Partie: "Preneur",
-    Champ: "Téléphone",
-    Valeur: formatValue(getExtractedValue(parties?.tenant?.phone)),
-    Confiance: parties?.tenant?.phone?.confidence || "missing",
-  })
-  rows.push({
-    Partie: "Preneur",
-    Champ: "Adresse",
-    Valeur: formatValue(getExtractedValue(parties?.tenant?.address)),
-    Confiance: parties?.tenant?.address?.confidence || "missing",
-  })
-
-  return rows
+  const p = extraction.parties
+  return [
+    { Rôle: "BAILLEUR", Information: "", Valeur: "" },
+    {
+      Rôle: "",
+      Information: "Nom / Raison sociale",
+      Valeur: fmt(getValue(p?.landlord?.name)),
+    },
+    {
+      Rôle: "",
+      Information: "Adresse",
+      Valeur: fmt(getValue(p?.landlord?.address)),
+    },
+    {
+      Rôle: "",
+      Information: "Email",
+      Valeur: fmt(getValue(p?.landlord?.email)),
+    },
+    {
+      Rôle: "",
+      Information: "Téléphone",
+      Valeur: fmt(getValue(p?.landlord?.phone)),
+    },
+    { Rôle: "", Information: "", Valeur: "" },
+    { Rôle: "PRENEUR", Information: "", Valeur: "" },
+    {
+      Rôle: "",
+      Information: "Nom / Raison sociale",
+      Valeur: fmt(getValue(p?.tenant?.name)),
+    },
+    {
+      Rôle: "",
+      Information: "Adresse",
+      Valeur: fmt(getValue(p?.tenant?.address)),
+    },
+    { Rôle: "", Information: "Email", Valeur: fmt(getValue(p?.tenant?.email)) },
+    {
+      Rôle: "",
+      Information: "Téléphone",
+      Valeur: fmt(getValue(p?.tenant?.phone)),
+    },
+  ]
 }
 
 function buildPremisesSheet(extraction: LeaseExtractionResult): ExcelRow[] {
-  const p = extraction.premises
+  const pr = extraction.premises
   return [
+    { Catégorie: "IDENTIFICATION", Information: "", Valeur: "" },
     {
-      Champ: "Destination",
-      Valeur: formatValue(getExtractedValue(p?.purpose)),
-      Confiance: p?.purpose?.confidence || "missing",
+      Catégorie: "",
+      Information: "Destination / Usage",
+      Valeur: fmt(getValue(pr?.purpose)),
     },
     {
-      Champ: "Désignation",
-      Valeur: formatValue(getExtractedValue(p?.designation)),
-      Confiance: p?.designation?.confidence || "missing",
+      Catégorie: "",
+      Information: "Désignation",
+      Valeur: fmt(getValue(pr?.designation)),
     },
     {
-      Champ: "Adresse",
-      Valeur: formatValue(getExtractedValue(p?.address)),
-      Confiance: p?.address?.confidence || "missing",
+      Catégorie: "",
+      Information: "Adresse complète",
+      Valeur: fmt(getValue(pr?.address)),
+    },
+    { Catégorie: "", Information: "", Valeur: "" },
+    { Catégorie: "CARACTÉRISTIQUES", Information: "", Valeur: "" },
+    {
+      Catégorie: "",
+      Information: "Surface (m²)",
+      Valeur: fmt(getValue(pr?.surfaceArea)),
+    },
+    { Catégorie: "", Information: "Étages", Valeur: fmt(getValue(pr?.floors)) },
+    {
+      Catégorie: "",
+      Information: "Année de construction",
+      Valeur: fmt(getValue(pr?.buildingYear)),
+    },
+    { Catégorie: "", Information: "", Valeur: "" },
+    { Catégorie: "STATIONNEMENT", Information: "", Valeur: "" },
+    {
+      Catégorie: "",
+      Information: "Places de parking",
+      Valeur: fmt(getValue(pr?.parkingSpaces)),
     },
     {
-      Champ: "Année de construction",
-      Valeur: formatValue(getExtractedValue(p?.buildingYear)),
-      Confiance: p?.buildingYear?.confidence || "missing",
+      Catégorie: "",
+      Information: "Places deux-roues",
+      Valeur: fmt(getValue(pr?.twoWheelerSpaces)),
     },
     {
-      Champ: "Étages",
-      Valeur: formatValue(getExtractedValue(p?.floors)),
-      Confiance: p?.floors?.confidence || "missing",
-    },
-    {
-      Champ: "Surface (m²)",
-      Valeur: formatValue(getExtractedValue(p?.surfaceArea)),
-      Confiance: p?.surfaceArea?.confidence || "missing",
-    },
-    {
-      Champ: "Places de parking",
-      Valeur: formatValue(getExtractedValue(p?.parkingSpaces)),
-      Confiance: p?.parkingSpaces?.confidence || "missing",
-    },
-    {
-      Champ: "Places deux-roues",
-      Valeur: formatValue(getExtractedValue(p?.twoWheelerSpaces)),
-      Confiance: p?.twoWheelerSpaces?.confidence || "missing",
-    },
-    {
-      Champ: "Places vélos",
-      Valeur: formatValue(getExtractedValue(p?.bikeSpaces)),
-      Confiance: p?.bikeSpaces?.confidence || "missing",
+      Catégorie: "",
+      Information: "Places vélos",
+      Valeur: fmt(getValue(pr?.bikeSpaces)),
     },
   ]
 }
@@ -144,121 +220,183 @@ function buildPremisesSheet(extraction: LeaseExtractionResult): ExcelRow[] {
 function buildCalendarSheet(extraction: LeaseExtractionResult): ExcelRow[] {
   const c = extraction.calendar
   return [
+    { Catégorie: "DATES PRINCIPALES", Information: "", Valeur: "" },
     {
-      Champ: "Date de signature",
-      Valeur: formatValue(getExtractedValue(c?.signatureDate)),
-      Confiance: c?.signatureDate?.confidence || "missing",
+      Catégorie: "",
+      Information: "Date de signature",
+      Valeur: formatDate(getValue(c?.signatureDate) as string | null),
     },
     {
-      Champ: "Durée (années)",
-      Valeur: formatValue(getExtractedValue(c?.duration)),
-      Confiance: c?.duration?.confidence || "missing",
+      Catégorie: "",
+      Information: "Date de prise d'effet",
+      Valeur: formatDate(getValue(c?.effectiveDate) as string | null),
     },
     {
-      Champ: "Date de prise d'effet",
-      Valeur: formatValue(getExtractedValue(c?.effectiveDate)),
-      Confiance: c?.effectiveDate?.confidence || "missing",
+      Catégorie: "",
+      Information: "Date d'entrée anticipée",
+      Valeur: formatDate(getValue(c?.earlyAccessDate) as string | null),
     },
     {
-      Champ: "Date d'entrée anticipée",
-      Valeur: formatValue(getExtractedValue(c?.earlyAccessDate)),
-      Confiance: c?.earlyAccessDate?.confidence || "missing",
+      Catégorie: "",
+      Information: "Date de fin du bail",
+      Valeur: formatDate(getValue(c?.endDate) as string | null),
+    },
+    { Catégorie: "", Information: "", Valeur: "" },
+    { Catégorie: "DURÉE ET RENOUVELLEMENT", Information: "", Valeur: "" },
+    {
+      Catégorie: "",
+      Information: "Durée du bail (années)",
+      Valeur: fmt(getValue(c?.duration)),
     },
     {
-      Champ: "Date de fin",
-      Valeur: formatValue(getExtractedValue(c?.endDate)),
-      Confiance: c?.endDate?.confidence || "missing",
+      Catégorie: "",
+      Information: "Prochaine date triennale",
+      Valeur: formatDate(getValue(c?.nextTriennialDate) as string | null),
     },
     {
-      Champ: "Prochaine date triennale",
-      Valeur: formatValue(getExtractedValue(c?.nextTriennialDate)),
-      Confiance: c?.nextTriennialDate?.confidence || "missing",
+      Catégorie: "",
+      Information: "Délai de préavis",
+      Valeur: fmt(getValue(c?.noticePeriod)),
     },
     {
-      Champ: "Préavis",
-      Valeur: formatValue(getExtractedValue(c?.noticePeriod)),
-      Confiance: c?.noticePeriod?.confidence || "missing",
+      Catégorie: "",
+      Information: "Conditions de résiliation",
+      Valeur: fmt(getValue(c?.terminationConditions)),
+    },
+    {
+      Catégorie: "",
+      Information: "Conditions de renouvellement",
+      Valeur: fmt(getValue(c?.renewalConditions)),
     },
   ]
 }
 
-function buildRentSheet(extraction: LeaseExtractionResult): ExcelRow[] {
+function buildFinancialsSheet(extraction: LeaseExtractionResult): ExcelRow[] {
   const r = extraction.rent
-  return [
-    {
-      Champ: "Loyer annuel HT HC",
-      Valeur: formatValue(getExtractedValue(r?.annualRentExclTaxExclCharges)),
-      Confiance: r?.annualRentExclTaxExclCharges?.confidence || "missing",
-    },
-    {
-      Champ: "Loyer trimestriel HT HC",
-      Valeur: formatValue(
-        getExtractedValue(r?.quarterlyRentExclTaxExclCharges)
-      ),
-      Confiance: r?.quarterlyRentExclTaxExclCharges?.confidence || "missing",
-    },
-    {
-      Champ: "Loyer annuel / m² HT HC",
-      Valeur: formatValue(
-        getExtractedValue(r?.annualRentPerSqmExclTaxExclCharges)
-      ),
-      Confiance: r?.annualRentPerSqmExclTaxExclCharges?.confidence || "missing",
-    },
-    {
-      Champ: "Loyer parking annuel HT",
-      Valeur: formatValue(getExtractedValue(r?.annualParkingRentExclCharges)),
-      Confiance: r?.annualParkingRentExclCharges?.confidence || "missing",
-    },
-    {
-      Champ: "Loyer parking trimestriel HT",
-      Valeur: formatValue(
-        getExtractedValue(r?.quarterlyParkingRentExclCharges)
-      ),
-      Confiance: r?.quarterlyParkingRentExclCharges?.confidence || "missing",
-    },
-    {
-      Champ: "Assujetti TVA",
-      Valeur: formatValue(getExtractedValue(r?.isSubjectToVAT)),
-      Confiance: r?.isSubjectToVAT?.confidence || "missing",
-    },
-    {
-      Champ: "Fréquence de paiement",
-      Valeur: formatValue(getExtractedValue(r?.paymentFrequency)),
-      Confiance: r?.paymentFrequency?.confidence || "missing",
-    },
-  ]
-}
-
-function buildChargesSheet(extraction: LeaseExtractionResult): ExcelRow[] {
   const ch = extraction.charges
   const tx = extraction.taxes
+  const s = extraction.securities
+  const sm = extraction.supportMeasures
+
   return [
+    { Catégorie: "LOYER PRINCIPAL", Information: "", Valeur: "" },
     {
-      Champ: "Provision charges annuelles HT",
-      Valeur: formatValue(getExtractedValue(ch?.annualChargesProvisionExclTax)),
-      Confiance: ch?.annualChargesProvisionExclTax?.confidence || "missing",
-    },
-    {
-      Champ: "Provision charges trimestrielles HT",
-      Valeur: formatValue(
-        getExtractedValue(ch?.quarterlyChargesProvisionExclTax)
+      Catégorie: "",
+      Information: "Loyer annuel HT hors charges",
+      Valeur: formatCurrency(
+        getValue(r?.annualRentExclTaxExclCharges) as number | null
       ),
-      Confiance: ch?.quarterlyChargesProvisionExclTax?.confidence || "missing",
     },
     {
-      Champ: "Taxe foncière refacturée",
-      Valeur: formatValue(getExtractedValue(tx?.propertyTaxRebilled)),
-      Confiance: tx?.propertyTaxRebilled?.confidence || "missing",
+      Catégorie: "",
+      Information: "Loyer trimestriel HT hors charges",
+      Valeur: formatCurrency(
+        getValue(r?.quarterlyRentExclTaxExclCharges) as number | null
+      ),
     },
     {
-      Champ: "Montant taxe foncière",
-      Valeur: formatValue(getExtractedValue(tx?.propertyTaxAmount)),
-      Confiance: tx?.propertyTaxAmount?.confidence || "missing",
+      Catégorie: "",
+      Information: "Loyer annuel au m² HT",
+      Valeur: formatCurrency(
+        getValue(r?.annualRentPerSqmExclTaxExclCharges) as number | null
+      ),
     },
     {
-      Champ: "Taxe bureaux",
-      Valeur: formatValue(getExtractedValue(tx?.officeTaxAmount)),
-      Confiance: tx?.officeTaxAmount?.confidence || "missing",
+      Catégorie: "",
+      Information: "Fréquence de paiement",
+      Valeur:
+        getValue(r?.paymentFrequency) === "monthly"
+          ? "Mensuel"
+          : getValue(r?.paymentFrequency) === "quarterly"
+            ? "Trimestriel"
+            : fmt(getValue(r?.paymentFrequency)),
+    },
+    {
+      Catégorie: "",
+      Information: "Assujetti à la TVA",
+      Valeur: fmt(getValue(r?.isSubjectToVAT)),
+    },
+    { Catégorie: "", Information: "", Valeur: "" },
+    { Catégorie: "PARKING", Information: "", Valeur: "" },
+    {
+      Catégorie: "",
+      Information: "Loyer parking annuel HT",
+      Valeur: formatCurrency(
+        getValue(r?.annualParkingRentExclCharges) as number | null
+      ),
+    },
+    {
+      Catégorie: "",
+      Information: "Loyer parking trimestriel HT",
+      Valeur: formatCurrency(
+        getValue(r?.quarterlyParkingRentExclCharges) as number | null
+      ),
+    },
+    { Catégorie: "", Information: "", Valeur: "" },
+    { Catégorie: "CHARGES ET PROVISIONS", Information: "", Valeur: "" },
+    {
+      Catégorie: "",
+      Information: "Provision charges annuelles HT",
+      Valeur: formatCurrency(
+        getValue(ch?.annualChargesProvisionExclTax) as number | null
+      ),
+    },
+    {
+      Catégorie: "",
+      Information: "Provision charges trimestrielles HT",
+      Valeur: formatCurrency(
+        getValue(ch?.quarterlyChargesProvisionExclTax) as number | null
+      ),
+    },
+    { Catégorie: "", Information: "", Valeur: "" },
+    { Catégorie: "TAXES", Information: "", Valeur: "" },
+    {
+      Catégorie: "",
+      Information: "Taxe foncière refacturée",
+      Valeur: fmt(getValue(tx?.propertyTaxRebilled)),
+    },
+    {
+      Catégorie: "",
+      Information: "Montant taxe foncière",
+      Valeur: formatCurrency(getValue(tx?.propertyTaxAmount) as number | null),
+    },
+    {
+      Catégorie: "",
+      Information: "Taxe sur les bureaux",
+      Valeur: formatCurrency(getValue(tx?.officeTaxAmount) as number | null),
+    },
+    { Catégorie: "", Information: "", Valeur: "" },
+    { Catégorie: "DÉPÔT DE GARANTIE", Information: "", Valeur: "" },
+    {
+      Catégorie: "",
+      Information: "Montant du dépôt",
+      Valeur: formatCurrency(
+        getValue(s?.securityDepositAmount) as number | null
+      ),
+    },
+    {
+      Catégorie: "",
+      Information: "Autres sûretés",
+      Valeur: fmt(getValue(s?.otherSecurities)),
+    },
+    { Catégorie: "", Information: "", Valeur: "" },
+    { Catégorie: "MESURES D'ACCOMPAGNEMENT", Information: "", Valeur: "" },
+    {
+      Catégorie: "",
+      Information: "Franchise de loyer",
+      Valeur: fmt(getValue(sm?.hasRentFreeperiod)),
+    },
+    {
+      Catégorie: "",
+      Information: "Durée de la franchise (mois)",
+      Valeur: fmt(getValue(sm?.rentFreePeriodMonths)),
+    },
+    {
+      Catégorie: "",
+      Information: "Montant de la franchise HT",
+      Valeur: formatCurrency(
+        getValue(sm?.rentFreePeriodAmount) as number | null
+      ),
     },
   ]
 }
@@ -266,100 +404,134 @@ function buildChargesSheet(extraction: LeaseExtractionResult): ExcelRow[] {
 function buildIndexationSheet(extraction: LeaseExtractionResult): ExcelRow[] {
   const i = extraction.indexation
   return [
+    { Information: "Type d'indice", Valeur: fmt(getValue(i?.indexationType)) },
     {
-      Champ: "Type d'indexation",
-      Valeur: formatValue(getExtractedValue(i?.indexationType)),
-      Confiance: i?.indexationType?.confidence || "missing",
+      Information: "Trimestre de référence",
+      Valeur: fmt(getValue(i?.referenceQuarter)),
     },
     {
-      Champ: "Trimestre de référence",
-      Valeur: formatValue(getExtractedValue(i?.referenceQuarter)),
-      Confiance: i?.referenceQuarter?.confidence || "missing",
+      Information: "Date de première indexation",
+      Valeur: formatDate(getValue(i?.firstIndexationDate) as string | null),
     },
     {
-      Champ: "Première date d'indexation",
-      Valeur: formatValue(getExtractedValue(i?.firstIndexationDate)),
-      Confiance: i?.firstIndexationDate?.confidence || "missing",
+      Information: "Fréquence d'indexation",
+      Valeur:
+        getValue(i?.indexationFrequency) === "annual"
+          ? "Annuelle"
+          : fmt(getValue(i?.indexationFrequency)),
     },
     {
-      Champ: "Fréquence d'indexation",
-      Valeur: formatValue(getExtractedValue(i?.indexationFrequency)),
-      Confiance: i?.indexationFrequency?.confidence || "missing",
-    },
-  ]
-}
-
-function buildSecuritiesSheet(extraction: LeaseExtractionResult): ExcelRow[] {
-  const s = extraction.securities
-  return [
-    {
-      Champ: "Dépôt de garantie",
-      Valeur: formatValue(getExtractedValue(s?.securityDepositAmount)),
-      Confiance: s?.securityDepositAmount?.confidence || "missing",
-    },
-    {
-      Champ: "Autres sûretés",
-      Valeur: formatValue(getExtractedValue(s?.otherSecurities)),
-      Confiance: s?.otherSecurities?.confidence || "missing",
+      Information: "Clause d'indexation",
+      Valeur: fmt(getValue(i?.indexationClause)),
     },
   ]
 }
 
-function buildSupportMeasuresSheet(
-  extraction: LeaseExtractionResult
-): ExcelRow[] {
-  const sm = extraction.supportMeasures
+function buildInsuranceSheet(extraction: LeaseExtractionResult): ExcelRow[] {
+  const ins = extraction.insurance
   return [
     {
-      Champ: "Franchise de loyer",
-      Valeur: formatValue(getExtractedValue(sm?.hasRentFreeperiod)),
-      Confiance: sm?.hasRentFreeperiod?.confidence || "missing",
+      Information: "Prime d'assurance annuelle HT",
+      Valeur: formatCurrency(
+        getValue(ins?.annualInsuranceAmountExclTax) as number | null
+      ),
     },
     {
-      Champ: "Durée franchise (mois)",
-      Valeur: formatValue(getExtractedValue(sm?.rentFreePeriodMonths)),
-      Confiance: sm?.rentFreePeriodMonths?.confidence || "missing",
+      Information: "Prime refacturée au preneur",
+      Valeur: fmt(getValue(ins?.insurancePremiumRebilled)),
     },
     {
-      Champ: "Montant franchise HT",
-      Valeur: formatValue(getExtractedValue(sm?.rentFreePeriodAmount)),
-      Confiance: sm?.rentFreePeriodAmount?.confidence || "missing",
+      Information: "Renonciation à recours",
+      Valeur: fmt(getValue(ins?.hasWaiverOfRecourse)),
     },
     {
-      Champ: "Autres mesures",
-      Valeur: formatValue(getExtractedValue(sm?.hasOtherMeasures)),
-      Confiance: sm?.hasOtherMeasures?.confidence || "missing",
-    },
-    {
-      Champ: "Description autres mesures",
-      Valeur: formatValue(getExtractedValue(sm?.otherMeasuresDescription)),
-      Confiance: sm?.otherMeasuresDescription?.confidence || "missing",
+      Information: "Attestation d'assurance annexée",
+      Valeur: fmt(getValue(ins?.insuranceCertificateAnnexed)),
     },
   ]
 }
 
-function buildMetadataSheet(extraction: LeaseExtractionResult): ExcelRow[] {
-  const meta = extraction.extractionMetadata
+function buildOtherInfoSheet(extraction: LeaseExtractionResult): ExcelRow[] {
+  const inv = extraction.inventory
+  const maint = extraction.maintenance
+  const rest = extraction.restitution
+  const trans = extraction.transfer
+  const other = extraction.other
+
   return [
-    { Champ: "ID Document", Valeur: extraction.documentId },
-    { Champ: "Nom du fichier", Valeur: extraction.fileName },
-    { Champ: "Date d'extraction", Valeur: extraction.extractionDate },
-    { Champ: "Nombre de pages", Valeur: extraction.pageCount },
-    { Champ: "Moteur OCR", Valeur: extraction.usedOcrEngine || "Aucun" },
-    { Champ: "Champs totaux", Valeur: meta?.totalFields || 0 },
-    { Champ: "Champs extraits", Valeur: meta?.extractedFields || 0 },
-    { Champ: "Champs manquants", Valeur: meta?.missingFields || 0 },
+    { Catégorie: "ÉTATS DES LIEUX", Information: "", Valeur: "" },
     {
-      Champ: "Confiance moyenne (%)",
-      Valeur: meta?.averageConfidence
-        ? Math.round(meta.averageConfidence * 100)
-        : 0,
+      Catégorie: "",
+      Information: "Conditions entrée",
+      Valeur: fmt(getValue(inv?.entryInventoryConditions)),
     },
     {
-      Champ: "Temps de traitement (s)",
-      Valeur: meta?.processingTimeMs
-        ? (meta.processingTimeMs / 1000).toFixed(1)
-        : 0,
+      Catégorie: "",
+      Information: "État des lieux pré-sortie",
+      Valeur: fmt(getValue(inv?.hasPreExitInventory)),
+    },
+    {
+      Catégorie: "",
+      Information: "Conditions sortie",
+      Valeur: fmt(getValue(inv?.exitInventoryConditions)),
+    },
+    { Catégorie: "", Information: "", Valeur: "" },
+    { Catégorie: "TRAVAUX ET ENTRETIEN", Information: "", Valeur: "" },
+    {
+      Catégorie: "",
+      Information: "Entretien à charge du preneur",
+      Valeur: fmt(getValue(maint?.tenantMaintenanceConditions)),
+    },
+    {
+      Catégorie: "",
+      Information: "Travaux bailleur",
+      Valeur: fmt(getValue(maint?.landlordWorksList)),
+    },
+    {
+      Catégorie: "",
+      Information: "Travaux preneur",
+      Valeur: fmt(getValue(maint?.tenantWorksList)),
+    },
+    {
+      Catégorie: "",
+      Information: "Clause d'accession",
+      Valeur: fmt(getValue(maint?.hasAccessionClause)),
+    },
+    { Catégorie: "", Information: "", Valeur: "" },
+    { Catégorie: "RESTITUTION", Information: "", Valeur: "" },
+    {
+      Catégorie: "",
+      Information: "Conditions de restitution",
+      Valeur: fmt(getValue(rest?.restitutionConditions)),
+    },
+    {
+      Catégorie: "",
+      Information: "Conditions de remise en état",
+      Valeur: fmt(getValue(rest?.restorationConditions)),
+    },
+    { Catégorie: "", Information: "", Valeur: "" },
+    { Catégorie: "CESSION ET SOUS-LOCATION", Information: "", Valeur: "" },
+    {
+      Catégorie: "",
+      Information: "Conditions de sous-location",
+      Valeur: fmt(getValue(trans?.sublettingConditions)),
+    },
+    {
+      Catégorie: "",
+      Information: "Conditions de cession",
+      Valeur: fmt(getValue(trans?.assignmentConditions)),
+    },
+    {
+      Catégorie: "",
+      Information: "Division possible",
+      Valeur: fmt(getValue(trans?.divisionPossible)),
+    },
+    { Catégorie: "", Information: "", Valeur: "" },
+    { Catégorie: "SIGNATURES", Information: "", Valeur: "" },
+    {
+      Catégorie: "",
+      Information: "Document signé et paraphé",
+      Valeur: fmt(getValue(other?.isSignedAndInitialed)),
     },
   ]
 }
@@ -369,24 +541,46 @@ export function exportExtractionToExcel(
 ): void {
   const workbook = XLSX.utils.book_new()
 
-  const sheetsData: { name: string; data: ExcelRow[] }[] = [
-    { name: "Métadonnées", data: buildMetadataSheet(extraction) },
-    { name: "Régime", data: buildRegimeSheet(extraction) },
-    { name: "Parties", data: buildPartiesSheet(extraction) },
-    { name: "Locaux", data: buildPremisesSheet(extraction) },
-    { name: "Calendrier", data: buildCalendarSheet(extraction) },
-    { name: "Loyer", data: buildRentSheet(extraction) },
-    { name: "Charges & Taxes", data: buildChargesSheet(extraction) },
-    { name: "Indexation", data: buildIndexationSheet(extraction) },
-    { name: "Sûretés", data: buildSecuritiesSheet(extraction) },
-    { name: "Accompagnement", data: buildSupportMeasuresSheet(extraction) },
-  ]
+  const summaryData = buildSummarySheet(extraction)
+  const summarySheet = XLSX.utils.json_to_sheet(summaryData)
+  setColumnWidths(summarySheet, [25, 50])
+  XLSX.utils.book_append_sheet(workbook, summarySheet, "Résumé")
 
-  for (const sheet of sheetsData) {
-    const worksheet = XLSX.utils.json_to_sheet(sheet.data)
-    XLSX.utils.book_append_sheet(workbook, worksheet, sheet.name)
-  }
+  const partiesData = buildPartiesSheet(extraction)
+  const partiesSheet = XLSX.utils.json_to_sheet(partiesData)
+  setColumnWidths(partiesSheet, [12, 25, 50])
+  XLSX.utils.book_append_sheet(workbook, partiesSheet, "Parties")
 
-  const fileName = extraction.fileName?.replace(/\.pdf$/i, "") || "extraction"
+  const premisesData = buildPremisesSheet(extraction)
+  const premisesSheet = XLSX.utils.json_to_sheet(premisesData)
+  setColumnWidths(premisesSheet, [18, 25, 50])
+  XLSX.utils.book_append_sheet(workbook, premisesSheet, "Locaux")
+
+  const calendarData = buildCalendarSheet(extraction)
+  const calendarSheet = XLSX.utils.json_to_sheet(calendarData)
+  setColumnWidths(calendarSheet, [22, 30, 40])
+  XLSX.utils.book_append_sheet(workbook, calendarSheet, "Calendrier")
+
+  const financialsData = buildFinancialsSheet(extraction)
+  const financialsSheet = XLSX.utils.json_to_sheet(financialsData)
+  setColumnWidths(financialsSheet, [25, 35, 25])
+  XLSX.utils.book_append_sheet(workbook, financialsSheet, "Financier")
+
+  const indexationData = buildIndexationSheet(extraction)
+  const indexationSheet = XLSX.utils.json_to_sheet(indexationData)
+  setColumnWidths(indexationSheet, [30, 50])
+  XLSX.utils.book_append_sheet(workbook, indexationSheet, "Indexation")
+
+  const insuranceData = buildInsuranceSheet(extraction)
+  const insuranceSheet = XLSX.utils.json_to_sheet(insuranceData)
+  setColumnWidths(insuranceSheet, [35, 30])
+  XLSX.utils.book_append_sheet(workbook, insuranceSheet, "Assurance")
+
+  const otherData = buildOtherInfoSheet(extraction)
+  const otherSheet = XLSX.utils.json_to_sheet(otherData)
+  setColumnWidths(otherSheet, [22, 30, 50])
+  XLSX.utils.book_append_sheet(workbook, otherSheet, "Autres")
+
+  const fileName = extraction.fileName?.replace(/\.pdf$/i, "") || "bail"
   XLSX.writeFile(workbook, `${fileName}-extraction.xlsx`)
 }
