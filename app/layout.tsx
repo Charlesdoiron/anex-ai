@@ -4,9 +4,9 @@ import { EnvChecker } from "./components/env-checker"
 import { validateEnv } from "./lib/env-check"
 
 export const metadata: Metadata = {
-  title: "AI Chat - Next.js + AI SDK",
+  title: "Anex AI - Agents intelligents",
   description:
-    "AI-powered chat application built with Next.js and Vercel AI SDK",
+    "Automatisez vos tâches complexes avec nos agents IA spécialisés",
 }
 
 export default function RootLayout({
@@ -20,8 +20,8 @@ export default function RootLayout({
   }
 
   return (
-    <html lang="en">
-      <body className="antialiased">
+    <html lang="fr">
+      <body className="antialiased bg-brand-cream">
         <EnvChecker />
         {children}
       </body>
