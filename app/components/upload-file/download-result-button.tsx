@@ -1,16 +1,41 @@
 "use client"
 
 import { Download, CheckCircle2 } from "lucide-react"
+import type { LeaseExtractionResult } from "@/app/lib/extraction/types"
+import { exportExtractionToExcel } from "@/app/components/extraction/utils/excel-export"
 
 interface DownloadResultButtonProps {
+  extraction: LeaseExtractionResult | null
   onReset: () => void
   label?: string
 }
 
 export default function DownloadResultButton({
+  extraction,
   onReset,
   label = "Télécharger votre résultat",
 }: DownloadResultButtonProps) {
+  function handleDownload() {
+    if (!extraction) {
+      console.error("No extraction result available")
+      return
+    }
+
+    // Verify extraction is complete
+    if (!extraction.documentId || !extraction.extractionMetadata) {
+      console.error("Extraction result is incomplete:", extraction)
+      alert("Le résultat d'extraction est incomplet. Veuillez réessayer.")
+      return
+    }
+
+    try {
+      exportExtractionToExcel(extraction)
+    } catch (error) {
+      console.error("Error exporting to Excel:", error)
+      alert("Erreur lors de l'export Excel. Veuillez réessayer.")
+    }
+  }
+
   return (
     <div className="group relative bg-white rounded-2xl border-2 border-brand-green/20 p-8 sm:p-12 shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
       {/* Gradient overlay on hover */}
@@ -34,7 +59,7 @@ export default function DownloadResultButton({
 
         {/* Download button */}
         <button
-          onClick={onReset}
+          onClick={handleDownload}
           className="relative inline-flex items-center gap-3 rounded-xl bg-brand-green px-8 py-4 text-base font-semibold text-white shadow-lg hover:shadow-xl hover:bg-brand-green/90 transition-all duration-300 group-hover:scale-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-green"
         >
           <Download className="w-5 h-5" />
