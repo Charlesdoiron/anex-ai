@@ -182,28 +182,28 @@ async function handleComputeLeaseRentSchedule(
   }
 }
 
-function mapComputeLeaseArgs(raw: any): ComputeLeaseRentScheduleInput {
+function mapComputeLeaseArgs(raw: unknown): ComputeLeaseRentScheduleInput {
   if (!raw || typeof raw !== "object") {
     throw new Error("Paramètres manquants pour le calcul des loyers.")
   }
 
-  const {
-    start_date,
-    end_date,
-    payment_frequency,
-    base_index_value,
-    known_index_points,
-    charges_growth_rate,
-    office_rent_ht,
-    parking_rent_ht,
-    charges_ht,
-    taxes_ht,
-    other_costs_ht,
-    deposit_months,
-    franchise_months,
-    incentive_amount,
-    horizon_years,
-  } = raw
+  const args = raw as Record<string, unknown>
+
+  const start_date = args.start_date
+  const end_date = args.end_date
+  const payment_frequency = args.payment_frequency
+  const base_index_value = args.base_index_value
+  const known_index_points = args.known_index_points
+  const charges_growth_rate = args.charges_growth_rate
+  const office_rent_ht = args.office_rent_ht
+  const parking_rent_ht = args.parking_rent_ht
+  const charges_ht = args.charges_ht
+  const taxes_ht = args.taxes_ht
+  const other_costs_ht = args.other_costs_ht
+  const deposit_months = args.deposit_months
+  const franchise_months = args.franchise_months
+  const incentive_amount = args.incentive_amount
+  const horizon_years = args.horizon_years
 
   if (typeof start_date !== "string" || typeof end_date !== "string") {
     throw new Error("start_date et end_date doivent être des chaînes ISO.")
@@ -224,15 +224,24 @@ function mapComputeLeaseArgs(raw: any): ComputeLeaseRentScheduleInput {
   const mappedKnownPoints = Array.isArray(known_index_points)
     ? known_index_points
         .filter(
-          (point: any) =>
-            typeof point?.effective_date === "string" &&
-            typeof point?.index_value === "number"
+          (point: unknown) =>
+            point !== null &&
+            typeof point === "object" &&
+            typeof (point as Record<string, unknown>).effective_date ===
+              "string" &&
+            typeof (point as Record<string, unknown>).index_value === "number"
         )
-        .map((point: any) => ({
-          effectiveDate: point.effective_date,
-          indexValue: point.index_value,
-        }))
+        .map((point: unknown) => {
+          const p = point as Record<string, unknown>
+          return {
+            effectiveDate: p.effective_date as string,
+            indexValue: p.index_value as number,
+          }
+        })
     : undefined
+
+  const toNumberOrUndefined = (val: unknown): number | undefined =>
+    typeof val === "number" ? val : undefined
 
   return {
     startDate: start_date,
@@ -240,21 +249,15 @@ function mapComputeLeaseArgs(raw: any): ComputeLeaseRentScheduleInput {
     paymentFrequency: payment_frequency,
     baseIndexValue: base_index_value,
     knownIndexPoints: mappedKnownPoints,
-    chargesGrowthRate:
-      typeof charges_growth_rate === "number" ? charges_growth_rate : undefined,
+    chargesGrowthRate: toNumberOrUndefined(charges_growth_rate),
     officeRentHT: office_rent_ht,
-    parkingRentHT:
-      typeof parking_rent_ht === "number" ? parking_rent_ht : undefined,
-    chargesHT: typeof charges_ht === "number" ? charges_ht : undefined,
-    taxesHT: typeof taxes_ht === "number" ? taxes_ht : undefined,
-    otherCostsHT:
-      typeof other_costs_ht === "number" ? other_costs_ht : undefined,
-    depositMonths:
-      typeof deposit_months === "number" ? deposit_months : undefined,
-    franchiseMonths:
-      typeof franchise_months === "number" ? franchise_months : undefined,
-    incentiveAmount:
-      typeof incentive_amount === "number" ? incentive_amount : undefined,
-    horizonYears: typeof horizon_years === "number" ? horizon_years : undefined,
+    parkingRentHT: toNumberOrUndefined(parking_rent_ht),
+    chargesHT: toNumberOrUndefined(charges_ht),
+    taxesHT: toNumberOrUndefined(taxes_ht),
+    otherCostsHT: toNumberOrUndefined(other_costs_ht),
+    depositMonths: toNumberOrUndefined(deposit_months),
+    franchiseMonths: toNumberOrUndefined(franchise_months),
+    incentiveAmount: toNumberOrUndefined(incentive_amount),
+    horizonYears: toNumberOrUndefined(horizon_years),
   }
 }

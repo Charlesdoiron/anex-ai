@@ -271,12 +271,19 @@ async function streamResponses({
   encoder: TextEncoder
   extractData: boolean
 }): Promise<{ toolCalls: any[]; outputItems: any[] }> {
+  // les models comme gpt-5-mini nesupportent pas le parm temperature
+  const supportsTemperature =
+    !modelName.startsWith("gpt-5") &&
+    !modelName.startsWith("o1") &&
+    !modelName.startsWith("o3") &&
+    !modelName.startsWith("o4")
+
   const requestConfig: any = {
     model: modelName,
     input: conversationItems,
     instructions,
     stream: true,
-    temperature: extractData ? 0.1 : 0.3,
+    ...(supportsTemperature && { temperature: extractData ? 0.1 : 0.3 }),
   }
 
   if (tools?.length) {

@@ -277,11 +277,12 @@ export class ExtractionService {
         ...(rentSchedule ? { rentSchedule } : {}),
       }
 
-      const ingestionStart = Date.now()
-      await this.ingestForRag(finalResult, pdfData.pages)
-      stageTimings.ingestionMs = Date.now() - ingestionStart
-
       this.emitProgress("completed", "Extraction terminée avec succès", 100)
+
+      // Fire-and-forget: RAG ingestion runs in background
+      this.ingestForRag(finalResult, pdfData.pages).catch((err) =>
+        console.error("Background RAG ingestion failed:", err)
+      )
 
       return finalResult
     } catch (error) {

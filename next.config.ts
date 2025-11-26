@@ -2,14 +2,16 @@ import type { NextConfig } from "next"
 
 const nextConfig: NextConfig = {
   webpack: (config, { isServer }) => {
+    if (!config.resolve) {
+      config.resolve = {}
+    }
+
     if (!isServer) {
-      if (!config.resolve) {
-        config.resolve = {}
-      }
       config.resolve.fallback = {
         ...config.resolve.fallback,
         fs: false,
         canvas: false,
+        child_process: false,
       }
     }
 
@@ -22,6 +24,8 @@ const nextConfig: NextConfig = {
 
     return config
   },
+
+  // Externalize pdf-parse to avoid bundling issues on serverless
   serverExternalPackages: ["pdf-parse"],
 }
 

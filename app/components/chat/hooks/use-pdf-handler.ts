@@ -317,7 +317,6 @@ export function usePdfHandler({
     summary += `${confidenceEmoji} **Statistiques:**\n`
     summary += `- Champs extraits: ${meta.extractedFields}/${meta.totalFields}\n`
     summary += `- Champs manquants: ${meta.missingFields}\n`
-    summary += `- Confiance moyenne: ${(meta.averageConfidence * 100).toFixed(1)}%\n`
     summary += `- Temps de traitement: ${(meta.processingTimeMs / 1000).toFixed(1)}s\n\n`
 
     if (
@@ -351,7 +350,6 @@ export function usePdfHandler({
       summary += `**Durée:** ${result.calendar.duration.value} ans\n\n`
     }
 
-    summary += `\n📄 **Document ID:** ${result.documentId}\n`
     summary += `📅 **Date d'extraction:** ${new Date(result.extractionDate).toLocaleString("fr-FR")}`
 
     return summary
