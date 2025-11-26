@@ -30,8 +30,8 @@ export function Chat() {
   const [extraction, setExtraction] = useState<LeaseExtractionResult | null>(
     null
   )
-
-  const isTestMode = process.env.NEXT_PUBLIC_APP_MODE === "test"
+  const [isLoadingExtraction, setIsLoadingExtraction] = useState(false)
+  const [extractionError, setExtractionError] = useState<string | null>(null)
 
   const {
     messages,
@@ -112,11 +112,55 @@ export function Chat() {
     setExtraction(null)
   }, [activeDocument?.id])
 
+  async function loadExtraction(documentId: string) {
+    try {
+      setIsLoadingExtraction(true)
+      setExtractionError(null)
+      const response = await fetch(`/api/extractions/${documentId}`)
+      if (!response.ok) {
+        throw new Error("Failed to load extraction")
+      }
+      const data = await response.json()
+      setExtraction(data.data ?? null)
+    } catch (error) {
+      setExtractionError(
+        error instanceof Error ? error.message : "Unexpected error"
+      )
+    } finally {
+      setIsLoadingExtraction(false)
+    }
+  }
+
+  async function handleExtractionClick(extraction: {
+    id: string
+    fileName: string
+  }) {
+    setSidebarOpen(false)
+    setActiveDocument({
+      id: extraction.id,
+      fileName: extraction.fileName,
+    })
+    await loadExtraction(extraction.id)
+    setMessages([
+      {
+        id: Date.now().toString(),
+        role: "user",
+        content: `📄 Document chargé: ${extraction.fileName}`,
+      },
+    ])
+  }
+
   function handleToggleExtractionPanel() {
-    if (!isTestMode || !activeDocument) {
+    if (!activeDocument) {
       return
     }
-    setShowExtractionPanel((current) => !current)
+    setShowExtractionPanel((current) => {
+      const next = !current
+      if (next && (!extraction || !extraction.extractionMetadata)) {
+        void loadExtraction(activeDocument.id)
+      }
+      return next
+    })
   }
 
   async function handleFormSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -187,6 +231,7 @@ export function Chat() {
         key={sidebarKey}
         isOpen={sidebarOpen}
         onNewChat={handleClearChat}
+        onExtractionClick={handleExtractionClick}
       />
 
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -200,17 +245,17 @@ export function Chat() {
           isProcessingPdf={isProcessingPdf}
           activeDocument={activeDocument}
           onToggleExtractionPanel={
-            isTestMode && activeDocument
-              ? handleToggleExtractionPanel
-              : undefined
+            activeDocument ? handleToggleExtractionPanel : undefined
           }
           showExtractionPanel={showExtractionPanel}
         />
 
         <ExtractionModal
-          open={isTestMode && !!activeDocument && showExtractionPanel}
+          open={!!activeDocument && showExtractionPanel}
           onClose={() => setShowExtractionPanel(false)}
           extraction={extraction}
+          isLoading={isLoadingExtraction}
+          error={extractionError}
         />
 
         <RagStatusFeed events={statusEvents} isStreaming={isLoading} />

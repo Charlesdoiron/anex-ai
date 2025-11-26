@@ -35,24 +35,22 @@ export const computeLeaseRentScheduleTool: ToolDefinition = {
   type: "function",
   name: "compute_lease_rent_schedule",
   description:
-    "Calcule un calendrier de loyers HT (bureaux, parkings, charges, taxes, franchises) pour un bail commercial français.",
+    "Calcule un calendrier de loyers HT (bureaux, parkings, charges, taxes, franchises) pour un bail commercial français. Utilise cet outil quand l'utilisateur demande un échéancier, une projection ou un calcul de loyers.",
   parameters: {
     type: "object",
     properties: {
       start_date: {
         type: "string",
-        format: "date",
         description: "Date de prise d'effet du bail (format ISO YYYY-MM-DD).",
       },
       end_date: {
         type: "string",
-        format: "date",
-        description: "Date de fin du bail utilisée pour arrêter le calcul.",
+        description: "Date de fin du bail (format ISO YYYY-MM-DD).",
       },
       payment_frequency: {
         type: "string",
         enum: ["monthly", "quarterly"],
-        description: "Fréquence de paiement prévue au bail.",
+        description: "Fréquence de paiement: 'monthly' ou 'quarterly'.",
       },
       base_index_value: {
         type: "number",
@@ -60,16 +58,15 @@ export const computeLeaseRentScheduleTool: ToolDefinition = {
           "Valeur d'indice de référence (ex: dernier ILAT connu au démarrage).",
       },
       known_index_points: {
-        type: "array",
+        type: ["array", "null"],
         description:
-          "Liste chronologique des indices connus (INSEE) utilisés pour l'indexation future.",
+          "Liste chronologique des indices connus (INSEE) pour l'indexation future. Null si inconnus.",
         items: {
           type: "object",
           properties: {
             effective_date: {
               type: "string",
-              format: "date",
-              description: "Date d'effet de l'indice (AAAAMMJJ).",
+              description: "Date d'effet de l'indice (format ISO YYYY-MM-DD).",
             },
             index_value: {
               type: "number",
@@ -81,9 +78,9 @@ export const computeLeaseRentScheduleTool: ToolDefinition = {
         },
       },
       charges_growth_rate: {
-        type: "number",
+        type: ["number", "null"],
         description:
-          "Hypothèse d'évolution annuelle des charges et taxes (ex: 0.02 pour +2%).",
+          "Hypothèse d'évolution annuelle des charges et taxes (ex: 0.02 pour +2%). Null si inconnu.",
       },
       office_rent_ht: {
         type: "number",
@@ -91,41 +88,43 @@ export const computeLeaseRentScheduleTool: ToolDefinition = {
           "Loyer HT (base) pour la composante bureaux sur une période de paiement.",
       },
       parking_rent_ht: {
-        type: "number",
-        description: "Loyer HT (base) pour les parkings sur une période.",
+        type: ["number", "null"],
+        description:
+          "Loyer HT (base) pour les parkings sur une période. Null si pas de parking.",
       },
       charges_ht: {
-        type: "number",
-        description: "Provision charges HT par période.",
+        type: ["number", "null"],
+        description: "Provision charges HT par période. Null si inconnue.",
       },
       taxes_ht: {
-        type: "number",
-        description: "Provision taxes foncières HT par période.",
+        type: ["number", "null"],
+        description:
+          "Provision taxes foncières HT par période. Null si inconnue.",
       },
       other_costs_ht: {
-        type: "number",
+        type: ["number", "null"],
         description:
-          "Autres montants HT récurrents par période (ex: services annexes).",
+          "Autres montants HT récurrents par période (ex: services annexes). Null si aucun.",
       },
       deposit_months: {
-        type: "integer",
+        type: ["number", "null"],
         description:
-          "Nombre de mois retenus pour le dépôt de garantie (sur base loyers + charges + taxes).",
+          "Nombre de mois retenus pour le dépôt de garantie (sur base loyers + charges + taxes). Null si inconnu.",
       },
       franchise_months: {
-        type: "integer",
+        type: ["number", "null"],
         description:
-          "Nombre de mois de franchise loyers (bureaux + parkings) accordés à la signature.",
+          "Nombre de mois de franchise loyers (bureaux + parkings) accordés à la signature. Null si aucune.",
       },
       incentive_amount: {
-        type: "number",
+        type: ["number", "null"],
         description:
-          "Montant des travaux / mesures d'accompagnement (positif = remise pour le preneur).",
+          "Montant des travaux / mesures d'accompagnement (positif = remise pour le preneur). Null si aucun.",
       },
       horizon_years: {
-        type: "integer",
+        type: ["number", "null"],
         description:
-          "Nombre d'années maximum à projeter depuis la prise d'effet (par défaut 3).",
+          "Nombre d'années maximum à projeter depuis la prise d'effet. Par défaut 3 si null.",
       },
     },
     required: [
@@ -133,7 +132,17 @@ export const computeLeaseRentScheduleTool: ToolDefinition = {
       "end_date",
       "payment_frequency",
       "base_index_value",
+      "known_index_points",
+      "charges_growth_rate",
       "office_rent_ht",
+      "parking_rent_ht",
+      "charges_ht",
+      "taxes_ht",
+      "other_costs_ht",
+      "deposit_months",
+      "franchise_months",
+      "incentive_amount",
+      "horizon_years",
     ],
     additionalProperties: false,
   },

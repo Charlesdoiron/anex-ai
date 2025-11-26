@@ -3,6 +3,10 @@
  * POST /api/extract-lease
  */
 
+// Force Node.js runtime - required for pdf-parse/pdfjs-dist
+export const runtime = "nodejs"
+export const maxDuration = 60
+
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/app/lib/auth"
 import { ExtractionService } from "@/app/lib/extraction/extraction-service"

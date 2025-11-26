@@ -6,6 +6,7 @@ import { FileText, Clock, Files, Calendar } from "lucide-react"
 interface SidebarProps {
   isOpen: boolean
   onNewChat: () => void
+  onExtractionClick?: (extraction: Extraction) => void
 }
 
 interface Extraction {
@@ -24,7 +25,11 @@ interface GroupedExtractions {
   older: Extraction[]
 }
 
-export function Sidebar({ isOpen, onNewChat }: SidebarProps) {
+export function Sidebar({
+  isOpen,
+  onNewChat,
+  onExtractionClick,
+}: SidebarProps) {
   const [extractions, setExtractions] = useState<Extraction[]>([])
   const [loading, setLoading] = useState(true)
   const [clearing, setClearing] = useState(false)
@@ -171,6 +176,7 @@ export function Sidebar({ isOpen, onNewChat }: SidebarProps) {
             return (
               <div
                 key={extraction.id ?? `${title}-${index}`}
+                onClick={() => onExtractionClick?.(extraction)}
                 className="group mx-2 p-2.5 rounded-lg hover:bg-white/80 dark:hover:bg-gray-800/50 cursor-pointer transition-all duration-200 border border-transparent hover:border-gray-200 dark:hover:border-gray-700 hover:shadow-sm"
               >
                 <div className="flex items-start gap-2.5">
