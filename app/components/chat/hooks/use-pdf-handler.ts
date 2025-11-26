@@ -327,32 +327,58 @@ export function usePdfHandler({
     }
 
     if (result.parties?.landlord?.name?.value) {
-      summary += `**Bailleur:** ${result.parties.landlord.name.value}\n`
+      summary += `**Bailleur:** ${safeString(result.parties.landlord.name.value)}\n`
     }
     if (result.parties?.tenant?.name?.value) {
-      summary += `**Locataire:** ${result.parties.tenant.name.value}\n\n`
+      summary += `**Locataire:** ${safeString(result.parties.tenant.name.value)}\n\n`
     }
 
     if (result.premises?.surfaceArea?.value) {
-      summary += `**Surface:** ${result.premises.surfaceArea.value} m²\n`
+      summary += `**Surface:** ${safeNumber(result.premises.surfaceArea.value)} m²\n`
     }
     if (result.premises?.address?.value) {
-      summary += `**Adresse:** ${result.premises.address.value}\n\n`
+      summary += `**Adresse:** ${safeString(result.premises.address.value)}\n\n`
     }
 
-    if (result.rent?.annualRentExclTaxExclCharges?.value) {
-      summary += `**Loyer annuel (HTHC):** ${result.rent.annualRentExclTaxExclCharges.value.toLocaleString("fr-FR")} €\n`
+    const annualRent = safeNumber(
+      result.rent?.annualRentExclTaxExclCharges?.value
+    )
+    if (annualRent !== null) {
+      summary += `**Loyer annuel (HTHC):** ${annualRent.toLocaleString("fr-FR")} €\n`
     }
     if (result.calendar?.effectiveDate?.value) {
       summary += `**Date de prise d'effet:** ${new Date(result.calendar.effectiveDate.value).toLocaleDateString("fr-FR")}\n`
     }
     if (result.calendar?.duration?.value) {
-      summary += `**Durée:** ${result.calendar.duration.value} ans\n\n`
+      summary += `**Durée:** ${safeNumber(result.calendar.duration.value)} ans\n\n`
     }
 
     summary += `📅 **Date d'extraction:** ${new Date(result.extractionDate).toLocaleString("fr-FR")}`
 
     return summary
+  }
+
+  function safeNumber(value: unknown): number | null {
+    if (value === null || value === undefined) return null
+    if (typeof value === "number") return value
+    if (typeof value === "string") {
+      const parsed = parseFloat(value.replace(/[^\d.-]/g, ""))
+      return isNaN(parsed) ? null : parsed
+    }
+    if (typeof value === "object" && value !== null && "value" in value) {
+      return safeNumber((value as { value: unknown }).value)
+    }
+    return null
+  }
+
+  function safeString(value: unknown): string {
+    if (value === null || value === undefined) return ""
+    if (typeof value === "string") return value
+    if (typeof value === "number") return String(value)
+    if (typeof value === "object" && value !== null && "value" in value) {
+      return safeString((value as { value: unknown }).value)
+    }
+    return ""
   }
 
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {

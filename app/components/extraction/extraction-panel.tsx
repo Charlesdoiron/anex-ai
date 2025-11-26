@@ -17,6 +17,31 @@ interface FieldDisplayProps {
   type?: "text" | "number" | "boolean" | "date" | "array" | "object"
 }
 
+function safeNumber(value: unknown): number | null {
+  if (value === null || value === undefined) return null
+  if (typeof value === "number") return value
+  if (typeof value === "string") {
+    const parsed = parseFloat(value.replace(/[^\d.-]/g, ""))
+    return isNaN(parsed) ? null : parsed
+  }
+  if (typeof value === "object" && value !== null && "value" in value) {
+    return safeNumber((value as { value: unknown }).value)
+  }
+  return null
+}
+
+function safeDisplayValue(value: unknown): string {
+  if (value === null || value === undefined) return "–"
+  if (typeof value === "string") return value
+  if (typeof value === "number") return String(value)
+  if (typeof value === "boolean") return value ? "Oui" : "Non"
+  if (typeof value === "object" && value !== null && "value" in value) {
+    return safeDisplayValue((value as { value: unknown }).value)
+  }
+  if (typeof value === "object") return "–"
+  return String(value)
+}
+
 function ConfidenceBadge({ level }: { level: ConfidenceLevel }) {
   const styles = {
     high: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
@@ -27,10 +52,10 @@ function ConfidenceBadge({ level }: { level: ConfidenceLevel }) {
   }
 
   const labels = {
-    high: "High",
-    medium: "Medium",
-    low: "Low",
-    missing: "Missing",
+    high: "Élevé",
+    medium: "Moyen",
+    low: "Faible",
+    missing: "Absent",
   }
 
   return (
@@ -53,7 +78,7 @@ function FieldDisplay({ label, value, type = "text" }: FieldDisplayProps) {
           <ConfidenceBadge level="missing" />
         </div>
         <p className="text-sm text-gray-400 dark:text-gray-600 italic">
-          Not available
+          Non disponible
         </p>
       </div>
     )
@@ -79,7 +104,7 @@ function FieldDisplay({ label, value, type = "text" }: FieldDisplayProps) {
             <ConfidenceBadge level={extractedValue.confidence} />
           </div>
           <p className="text-sm text-gray-400 dark:text-gray-600 italic">
-            Not found
+            Non trouvé
           </p>
         </div>
       )
@@ -88,20 +113,23 @@ function FieldDisplay({ label, value, type = "text" }: FieldDisplayProps) {
     let formattedValue: string
 
     if (type === "boolean") {
-      formattedValue = displayValue ? "Yes" : "No"
+      formattedValue = displayValue ? "Oui" : "Non"
     } else if (type === "date" && displayValue) {
       try {
-        formattedValue = new Date(displayValue).toLocaleDateString("fr-FR")
+        const dateStr =
+          typeof displayValue === "string" ? displayValue : String(displayValue)
+        formattedValue = new Date(dateStr).toLocaleDateString("fr-FR")
       } catch {
-        formattedValue = String(displayValue)
+        formattedValue = safeDisplayValue(displayValue)
       }
     } else if (type === "array" && Array.isArray(displayValue)) {
       formattedValue =
-        displayValue.length > 0 ? displayValue.join(", ") : "None"
-    } else if (type === "number" && displayValue !== null) {
-      formattedValue = displayValue.toLocaleString("fr-FR")
+        displayValue.length > 0 ? displayValue.join(", ") : "Aucun"
+    } else if (type === "number") {
+      const num = safeNumber(displayValue)
+      formattedValue = num !== null ? num.toLocaleString("fr-FR") : "–"
     } else {
-      formattedValue = String(displayValue)
+      formattedValue = safeDisplayValue(displayValue)
     }
 
     return (
@@ -126,13 +154,13 @@ function FieldDisplay({ label, value, type = "text" }: FieldDisplayProps) {
 
   let formattedValue: string
   if (type === "boolean") {
-    formattedValue = value ? "Yes" : "No"
+    formattedValue = value ? "Oui" : "Non"
   } else if (type === "array" && Array.isArray(value)) {
-    formattedValue = value.length > 0 ? value.join(", ") : "None"
+    formattedValue = value.length > 0 ? value.join(", ") : "Aucun"
   } else if (type === "object") {
-    formattedValue = JSON.stringify(value, null, 2)
+    formattedValue = safeDisplayValue(value)
   } else {
-    formattedValue = String(value)
+    formattedValue = safeDisplayValue(value)
   }
 
   return (
@@ -230,7 +258,7 @@ export function ExtractionPanel({ extraction }: ExtractionPanelProps) {
                   {extraction.pageCount ?? "-"}
                 </p>
                 <p className="text-xs text-gray-600 dark:text-gray-400">
-                  Pages
+                  pages
                 </p>
               </div>
             </div>
@@ -258,7 +286,7 @@ export function ExtractionPanel({ extraction }: ExtractionPanelProps) {
                   {metadata.extractedFields ?? "-"}
                 </p>
                 <p className="text-xs text-gray-600 dark:text-gray-400">
-                  Extracted
+                  Extraits
                 </p>
               </div>
             </div>
@@ -289,7 +317,7 @@ export function ExtractionPanel({ extraction }: ExtractionPanelProps) {
                   %
                 </p>
                 <p className="text-xs text-gray-600 dark:text-gray-400">
-                  Confidence
+                  Confiance
                 </p>
               </div>
             </div>
@@ -320,7 +348,7 @@ export function ExtractionPanel({ extraction }: ExtractionPanelProps) {
                   s
                 </p>
                 <p className="text-xs text-gray-600 dark:text-gray-400">
-                  Processing
+                  Traitement
                 </p>
               </div>
             </div>
@@ -330,7 +358,7 @@ export function ExtractionPanel({ extraction }: ExtractionPanelProps) {
 
       {extraction.regime && (
         <Section
-          title="Lease Regime"
+          title="Régime du bail"
           icon={
             <svg
               className="w-5 h-5"
@@ -349,14 +377,14 @@ export function ExtractionPanel({ extraction }: ExtractionPanelProps) {
           color="bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
         >
           <FieldDisplay
-            label="Regime"
+            label="Type de bail"
             value={(extraction.regime as any)?.regime || extraction.regime}
           />
         </Section>
       )}
 
       <Section
-        title="Parties"
+        title="Parties au contrat"
         icon={
           <svg
             className="w-5 h-5"
@@ -377,11 +405,11 @@ export function ExtractionPanel({ extraction }: ExtractionPanelProps) {
         <div className="space-y-4">
           <div>
             <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">
-              Landlord
+              Bailleur
             </h4>
             <div className="pl-4 space-y-1 divide-y divide-gray-100 dark:divide-gray-700">
               <FieldDisplay
-                label="Name"
+                label="Nom"
                 value={extraction.parties?.landlord?.name}
               />
               <FieldDisplay
@@ -389,22 +417,22 @@ export function ExtractionPanel({ extraction }: ExtractionPanelProps) {
                 value={extraction.parties?.landlord?.email}
               />
               <FieldDisplay
-                label="Phone"
+                label="Téléphone"
                 value={extraction.parties?.landlord?.phone}
               />
               <FieldDisplay
-                label="Address"
+                label="Adresse"
                 value={extraction.parties?.landlord?.address}
               />
             </div>
           </div>
           <div>
             <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">
-              Tenant
+              Preneur
             </h4>
             <div className="pl-4 space-y-1 divide-y divide-gray-100 dark:divide-gray-700">
               <FieldDisplay
-                label="Name"
+                label="Nom"
                 value={extraction.parties?.tenant?.name}
               />
               <FieldDisplay
@@ -412,11 +440,11 @@ export function ExtractionPanel({ extraction }: ExtractionPanelProps) {
                 value={extraction.parties?.tenant?.email}
               />
               <FieldDisplay
-                label="Phone"
+                label="Téléphone"
                 value={extraction.parties?.tenant?.phone}
               />
               <FieldDisplay
-                label="Address"
+                label="Adresse"
                 value={extraction.parties?.tenant?.address}
               />
             </div>
@@ -425,7 +453,7 @@ export function ExtractionPanel({ extraction }: ExtractionPanelProps) {
       </Section>
 
       <Section
-        title="Premises"
+        title="Locaux"
         icon={
           <svg
             className="w-5 h-5"
@@ -443,36 +471,39 @@ export function ExtractionPanel({ extraction }: ExtractionPanelProps) {
         }
         color="bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400"
       >
-        <FieldDisplay label="Purpose" value={extraction.premises?.purpose} />
         <FieldDisplay
-          label="Designation"
+          label="Destination"
+          value={extraction.premises?.purpose}
+        />
+        <FieldDisplay
+          label="Désignation"
           value={extraction.premises?.designation}
         />
-        <FieldDisplay label="Address" value={extraction.premises?.address} />
+        <FieldDisplay label="Adresse" value={extraction.premises?.address} />
         <FieldDisplay
-          label="Building Year"
+          label="Année de construction"
           value={extraction.premises?.buildingYear}
           type="number"
         />
         <FieldDisplay
-          label="Floors"
+          label="Étages"
           value={extraction.premises?.floors}
           type="array"
         />
         <FieldDisplay
-          label="Surface Area (m²)"
+          label="Surface (m²)"
           value={extraction.premises?.surfaceArea}
           type="number"
         />
         <FieldDisplay
-          label="Parking Spaces"
+          label="Places de parking"
           value={extraction.premises?.parkingSpaces}
           type="number"
         />
       </Section>
 
       <Section
-        title="Calendar & Dates"
+        title="Calendrier et dates"
         icon={
           <svg
             className="w-5 h-5"
@@ -491,33 +522,33 @@ export function ExtractionPanel({ extraction }: ExtractionPanelProps) {
         color="bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400"
       >
         <FieldDisplay
-          label="Signature Date"
+          label="Date de signature"
           value={extraction.calendar?.signatureDate}
           type="date"
         />
         <FieldDisplay
-          label="Effective Date"
+          label="Date de prise d'effet"
           value={extraction.calendar?.effectiveDate}
           type="date"
         />
         <FieldDisplay
-          label="End Date"
+          label="Date de fin"
           value={extraction.calendar?.endDate}
           type="date"
         />
         <FieldDisplay
-          label="Duration (years)"
+          label="Durée (années)"
           value={extraction.calendar?.duration}
           type="number"
         />
         <FieldDisplay
-          label="Notice Period"
+          label="Préavis"
           value={extraction.calendar?.noticePeriod}
         />
       </Section>
 
       <Section
-        title="Rent"
+        title="Loyer"
         icon={
           <svg
             className="w-5 h-5"
@@ -536,27 +567,27 @@ export function ExtractionPanel({ extraction }: ExtractionPanelProps) {
         color="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400"
       >
         <FieldDisplay
-          label="Annual Rent (excl. tax & charges)"
+          label="Loyer annuel HTHC"
           value={extraction.rent?.annualRentExclTaxExclCharges}
           type="number"
         />
         <FieldDisplay
-          label="Quarterly Rent (excl. tax & charges)"
+          label="Loyer trimestriel HTHC"
           value={extraction.rent?.quarterlyRentExclTaxExclCharges}
           type="number"
         />
         <FieldDisplay
-          label="Rent per m² (annual)"
+          label="Loyer annuel au m²"
           value={extraction.rent?.annualRentPerSqmExclTaxExclCharges}
           type="number"
         />
         <FieldDisplay
-          label="Subject to VAT"
+          label="Assujetti à la TVA"
           value={extraction.rent?.isSubjectToVAT}
           type="boolean"
         />
         <FieldDisplay
-          label="Payment Frequency"
+          label="Fréquence de paiement"
           value={extraction.rent?.paymentFrequency}
         />
       </Section>
@@ -582,26 +613,26 @@ export function ExtractionPanel({ extraction }: ExtractionPanelProps) {
         defaultOpen={false}
       >
         <FieldDisplay
-          label="Indexation Type"
+          label="Type d'indice"
           value={extraction.indexation?.indexationType}
         />
         <FieldDisplay
-          label="Reference Quarter"
+          label="Trimestre de référence"
           value={extraction.indexation?.referenceQuarter}
         />
         <FieldDisplay
-          label="First Indexation Date"
+          label="Date de première indexation"
           value={extraction.indexation?.firstIndexationDate}
           type="date"
         />
         <FieldDisplay
-          label="Frequency"
+          label="Fréquence"
           value={extraction.indexation?.indexationFrequency}
         />
       </Section>
 
       <Section
-        title="Charges & Fees"
+        title="Charges et frais"
         icon={
           <svg
             className="w-5 h-5"
@@ -621,24 +652,24 @@ export function ExtractionPanel({ extraction }: ExtractionPanelProps) {
         defaultOpen={false}
       >
         <FieldDisplay
-          label="Annual Charges Provision (excl. tax)"
+          label="Provision charges annuelles HT"
           value={extraction.charges?.annualChargesProvisionExclTax}
           type="number"
         />
         <FieldDisplay
-          label="Quarterly Charges Provision (excl. tax)"
+          label="Provision charges trimestrielles HT"
           value={extraction.charges?.quarterlyChargesProvisionExclTax}
           type="number"
         />
         <FieldDisplay
-          label="Management Fees on Tenant"
+          label="Honoraires gestion à charge du preneur"
           value={extraction.charges?.managementFeesOnTenant}
           type="boolean"
         />
       </Section>
 
       <Section
-        title="Taxes"
+        title="Taxes et impôts"
         icon={
           <svg
             className="w-5 h-5"
@@ -658,24 +689,24 @@ export function ExtractionPanel({ extraction }: ExtractionPanelProps) {
         defaultOpen={false}
       >
         <FieldDisplay
-          label="Property Tax Rebilled"
+          label="Taxe foncière refacturée"
           value={extraction.taxes?.propertyTaxRebilled}
           type="boolean"
         />
         <FieldDisplay
-          label="Property Tax Amount"
+          label="Montant taxe foncière"
           value={extraction.taxes?.propertyTaxAmount}
           type="number"
         />
         <FieldDisplay
-          label="Office Tax Amount"
+          label="Taxe bureaux"
           value={extraction.taxes?.officeTaxAmount}
           type="number"
         />
       </Section>
 
       <Section
-        title="Insurance"
+        title="Assurances"
         icon={
           <svg
             className="w-5 h-5"
@@ -695,24 +726,24 @@ export function ExtractionPanel({ extraction }: ExtractionPanelProps) {
         defaultOpen={false}
       >
         <FieldDisplay
-          label="Annual Insurance Amount (excl. tax)"
+          label="Prime d'assurance annuelle HT"
           value={extraction.insurance?.annualInsuranceAmountExclTax}
           type="number"
         />
         <FieldDisplay
-          label="Premium Rebilled"
+          label="Prime refacturée"
           value={extraction.insurance?.insurancePremiumRebilled}
           type="boolean"
         />
         <FieldDisplay
-          label="Waiver of Recourse"
+          label="Renonciation à recours"
           value={extraction.insurance?.hasWaiverOfRecourse}
           type="boolean"
         />
       </Section>
 
       <Section
-        title="Securities"
+        title="Sûretés et garanties"
         icon={
           <svg
             className="w-5 h-5"
@@ -732,19 +763,19 @@ export function ExtractionPanel({ extraction }: ExtractionPanelProps) {
         defaultOpen={false}
       >
         <FieldDisplay
-          label="Security Deposit Amount"
+          label="Montant dépôt de garantie"
           value={extraction.securities?.securityDepositAmount}
           type="number"
         />
         <FieldDisplay
-          label="Other Securities"
+          label="Autres sûretés"
           value={extraction.securities?.otherSecurities}
           type="array"
         />
       </Section>
 
       <Section
-        title="Other Information"
+        title="Autres informations"
         icon={
           <svg
             className="w-5 h-5"
@@ -764,17 +795,17 @@ export function ExtractionPanel({ extraction }: ExtractionPanelProps) {
         defaultOpen={false}
       >
         <FieldDisplay
-          label="Signed and Initialed"
+          label="Signé et paraphé"
           value={extraction.other?.isSignedAndInitialed}
           type="boolean"
         />
         <FieldDisplay
-          label="Civil Code Derogations"
+          label="Dérogations Code civil"
           value={extraction.other?.civilCodeDerogations}
           type="array"
         />
         <FieldDisplay
-          label="Commercial Code Derogations"
+          label="Dérogations Code de commerce"
           value={extraction.other?.commercialCodeDerogations}
           type="array"
         />

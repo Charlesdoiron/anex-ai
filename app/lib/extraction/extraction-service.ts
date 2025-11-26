@@ -16,6 +16,7 @@ import type {
   ExtractionStatus,
   ExtractionStageDurations,
 } from "./types"
+import { postProcessExtraction } from "./post-process"
 import { computeRentScheduleFromExtraction } from "../lease/from-extraction"
 import { documentIngestionService } from "../rag/ingestion/document-ingestion-service"
 
@@ -254,8 +255,11 @@ export class ExtractionService {
 
       const baseResult = result as LeaseExtractionResult
 
+      // Post-process to compute derived fields (endDate, rentPerSqm, etc.)
+      const processedResult = postProcessExtraction(baseResult)
+
       const metadata = this.calculateMetadata(
-        baseResult,
+        processedResult,
         Date.now() - startTime,
         totalRetries,
         stageTimings
@@ -264,7 +268,8 @@ export class ExtractionService {
       let rentSchedule: LeaseExtractionResult["rentSchedule"] = undefined
 
       try {
-        const schedule = await computeRentScheduleFromExtraction(baseResult)
+        const schedule =
+          await computeRentScheduleFromExtraction(processedResult)
         rentSchedule = schedule ?? undefined
       } catch (error) {
         console.error("Rent schedule computation failed:", error)
@@ -272,7 +277,7 @@ export class ExtractionService {
       }
 
       const finalResult: LeaseExtractionResult = {
-        ...baseResult,
+        ...processedResult,
         extractionMetadata: metadata,
         ...(rentSchedule ? { rentSchedule } : {}),
       }
