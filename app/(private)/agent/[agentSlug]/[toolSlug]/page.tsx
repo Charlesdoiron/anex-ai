@@ -1,5 +1,4 @@
-import UploadFile from "@/app/components/upload-file/upload-file"
-import UploadFileWrapper from "@/app/components/upload-file/upload-file-wrapper"
+import UploadFileWrapper from "@/app/components/upload-file/upload-file-wrapper/upload-file-wrapper"
 import { AGENTS } from "@/app/static-data/agent"
 import {
   Breadcrumb,
