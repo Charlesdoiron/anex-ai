@@ -1,15 +1,14 @@
 // Service de stockage des résultats d'extraction
 //
-// Modifications récentes :
-// - Séparation du rawText dans des fichiers .txt séparés (storage/extractions/raw-text/)
-// - Les JSON ne contiennent plus que les données structurées (beaucoup plus légers)
-// - Système d'adapters pour faciliter la migration vers une base de données plus tard
-// - Migration des fichiers existants effectuée le 19/01/2025
+// Supporte deux backends :
+// - FileSystem (dev local) : USE_DB_STORAGE=false ou non défini
+// - Database (production) : USE_DB_STORAGE=true
 
 import fs from "fs/promises"
 import path from "path"
 import type { LeaseExtractionResult } from "./types"
 import { ensureStorageStructure } from "../storage-utils"
+import { DatabaseStorageAdapter } from "./storage-adapters/database-adapter"
 
 export interface StorageAdapter {
   saveExtraction(
@@ -167,6 +166,16 @@ export class ExtractionStorageService {
   }
 }
 
+function createStorageAdapter(): StorageAdapter {
+  const useDatabase = process.env.USE_DB_STORAGE === "true"
+
+  if (useDatabase) {
+    return new DatabaseStorageAdapter()
+  }
+
+  return new FileSystemStorageAdapter()
+}
+
 export const extractionStorage = new ExtractionStorageService(
-  new FileSystemStorageAdapter()
+  createStorageAdapter()
 )

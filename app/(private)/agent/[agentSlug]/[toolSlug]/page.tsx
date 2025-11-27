@@ -1,4 +1,4 @@
-import UploadFileWrapper from "@/app/components/upload-file/upload-file-wrapper/upload-file-wrapper"
+import UploadFileWithHistory from "@/app/components/upload-file/upload-file-wrapper/upload-file-with-history"
 import { AGENTS } from "@/app/static-data/agent"
 import {
   Breadcrumb,
@@ -58,16 +58,16 @@ export default async function ToolPage({
             </BreadcrumbList>
           </Breadcrumb>
         </div>
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24">
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-16 md:py-24">
           <div className="text-center max-w-3xl mx-auto">
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-brand-green mb-6 tracking-tight">
-              Outil {currentTool.name ?? ""}
+            <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-brand-green mb-4 sm:mb-6 tracking-tight px-2">
+              {currentTool.name ?? "Outil"}
             </h1>
           </div>
         </div>
       </div>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
-        <UploadFileWrapper
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 md:py-16">
+        <UploadFileWithHistory
           label="Extraire les données du bail"
           toolType={currentTool.type}
         />

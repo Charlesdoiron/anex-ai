@@ -25,16 +25,14 @@ export default function ErrorDisplay({
 }: ErrorDisplayProps) {
   return (
     <div className="space-y-4">
-      <div className="group relative bg-white rounded-2xl border-2 border-red-200 p-6 shadow-sm">
-        <div className="flex items-center gap-4">
-          <div className="flex-shrink-0">
-            <AlertCircle className="w-6 h-6 text-red-600" />
-          </div>
+      <div className="rounded-xl border border-red-200 bg-red-50/50 px-4 py-3.5">
+        <div className="flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-red-900">
+            <p className="text-sm font-medium text-red-800">
               Erreur lors du traitement
             </p>
-            <p className="text-xs text-red-700 mt-1">{error}</p>
+            <p className="text-sm text-red-600 mt-1">{error}</p>
           </div>
         </div>
       </div>

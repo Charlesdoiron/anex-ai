@@ -37,14 +37,17 @@ export function TopBar({
         >
           <Menu size={20} className="text-gray-700 dark:text-gray-300" />
         </button>
-        <span className="font-semibold text-gray-900 dark:text-gray-100">
+        <span className="font-semibold text-gray-900 dark:text-gray-100 text-sm sm:text-base">
           Anex AI
         </span>
         {activeDocument && (
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-100 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-700 rounded-lg">
-            <FileText size={14} className="text-blue-600 dark:text-blue-400" />
-            <span className="text-xs font-medium text-blue-700 dark:text-blue-300">
-              Document actif: {activeDocument.fileName}
+          <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-blue-100 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-700 rounded-lg max-w-[200px] md:max-w-xs">
+            <FileText
+              size={14}
+              className="text-blue-600 dark:text-blue-400 flex-shrink-0"
+            />
+            <span className="text-xs font-medium text-blue-700 dark:text-blue-300 truncate">
+              {activeDocument.fileName}
             </span>
           </div>
         )}

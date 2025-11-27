@@ -1,5 +1,7 @@
 "use client"
 
+import { getStatusDescription } from "@/app/lib/status-labels"
+
 interface ProcessingStatusProps {
   status: string | null
   progress?: number
@@ -7,6 +9,8 @@ interface ProcessingStatusProps {
 
 export function ProcessingStatus({ status, progress }: ProcessingStatusProps) {
   if (!status) return null
+
+  const displayStatus = getStatusDescription(status)
 
   return (
     <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 animate-in fade-in duration-300">
@@ -39,7 +43,7 @@ export function ProcessingStatus({ status, progress }: ProcessingStatusProps) {
           {/* Status text */}
           <div className="flex-1">
             <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-              {status}
+              {displayStatus}
             </p>
             {progress !== undefined && (
               <div className="mt-2 w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">

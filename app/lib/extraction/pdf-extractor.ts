@@ -110,9 +110,9 @@ export async function extractPdfText(
       let usedOcrEngine: "tesseract" | "vision" | null = null
 
       if (VISION_OCR_ENABLED && shouldAttemptOcr(pages)) {
-        notify?.("Texte insuffisant, préparation de l'OCR...")
+        notify?.("Document scanné détecté, reconnaissance du texte...")
 
-        notify?.("Rendu des pages en images...")
+        notify?.("Préparation des pages...")
         const screenshotResult = await parser.getScreenshot({
           imageBuffer: true,
           imageDataUrl: false,
@@ -122,7 +122,7 @@ export async function extractPdfText(
         const screenshotPages = screenshotResult?.pages || []
 
         if (screenshotPages.length > 0) {
-          notify?.("Tentative OCR rapide (Tesseract)...")
+          notify?.("Reconnaissance du texte en cours...")
           const tesseractPages = await runTesseractPipeline(
             screenshotPages,
             pageCount,
@@ -135,9 +135,9 @@ export async function extractPdfText(
           ) {
             pages = ensurePageCount(tesseractPages, pageCount)
             usedOcrEngine = "tesseract"
-            notify?.("OCR Tesseract terminé avec succès.")
+            notify?.("Texte reconnu avec succès.")
           } else if (visionClient) {
-            notify?.("Tesseract insuffisant, passage à l'IA Vision...")
+            notify?.("Analyse approfondie du document...")
             const visionPages = await runVisionPipeline(
               screenshotPages,
               pageCount,
@@ -150,10 +150,10 @@ export async function extractPdfText(
             ) {
               pages = ensurePageCount(visionPages, pageCount)
               usedOcrEngine = "vision"
-              notify?.("Transcription Vision terminée.")
+              notify?.("Transcription terminée.")
             }
           } else {
-            notify?.("OCR échoué et client Vision non configuré.")
+            notify?.("Reconnaissance du texte non disponible.")
           }
         }
       }
@@ -304,7 +304,7 @@ async function runTesseractPipeline(
     return []
   }
 
-  notify?.(`Utilisation de ${engineName} pour l'OCR...`)
+  notify?.("Reconnaissance du texte...")
 
   const totalPages = screenshotPages.length
   const ocrPages: string[] = new Array(totalPages).fill("")
@@ -318,7 +318,7 @@ async function runTesseractPipeline(
     async (page, index) => {
       const pageNumber = index + 1
       if (pageNumber === 1 || pageNumber % 5 === 0) {
-        notify?.(`OCR ${engineName} page ${pageNumber}/${totalPages}...`)
+        notify?.(`Lecture page ${pageNumber}/${totalPages}...`)
       }
 
       try {
@@ -357,7 +357,7 @@ async function runVisionPipeline(
       const base64 = imageBuffer.toString("base64")
       const imageUrl = `data:image/png;base64,${base64}`
       const pageNumber = index + 1
-      notify?.(`Transcription Vision page ${pageNumber}/${totalPages}...`)
+      notify?.(`Transcription page ${pageNumber}/${totalPages}...`)
       const text = await extractTextFromVisionPage(
         imageUrl,
         pageNumber,

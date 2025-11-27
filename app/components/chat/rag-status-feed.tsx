@@ -1,3 +1,4 @@
+import { getStatusLabel } from "@/app/lib/status-labels"
 import { StreamStatusEvent } from "./types"
 
 interface RagStatusFeedProps {
@@ -71,34 +72,42 @@ function getEventCopy(event: StreamStatusEvent): {
   description: string
 } {
   switch (event.status) {
-    case "rag_searching":
+    case "rag_searching": {
+      const baseLabel = getStatusLabel("rag_searching")
       return {
-        label: "Requête RAG",
-        description: event.query || "Analyse du bail en cours...",
+        label: baseLabel.label,
+        description: event.query
+          ? `« ${event.query.slice(0, 60)}${event.query.length > 60 ? "..." : ""} »`
+          : baseLabel.description,
       }
+    }
     case "rag_results": {
       const pages = formatPages(event.pages)
-      const stats = []
+      const stats: string[] = []
       if (typeof event.found === "number") {
-        stats.push(`${event.found} passage${event.found > 1 ? "s" : ""}`)
+        stats.push(
+          `${event.found} passage${event.found > 1 ? "s" : ""} trouvé${event.found > 1 ? "s" : ""}`
+        )
       }
       if (pages) {
         stats.push(pages)
       }
       return {
-        label: "Passages trouvés",
+        label: getStatusLabel("rag_results").label,
         description: stats.length ? stats.join(" • ") : "Résultats reçus",
       }
     }
     case "error":
       return {
-        label: "Erreur RAG",
-        description: event.error || "Impossible de récupérer le document.",
+        label: getStatusLabel("error").label,
+        description: event.error || getStatusLabel("error").description,
       }
-    default:
+    default: {
+      const fallback = getStatusLabel(event.status)
       return {
-        label: "Statut",
-        description: event.status,
+        label: fallback.label,
+        description: fallback.description,
       }
+    }
   }
 }

@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import "./globals.css"
 import { EnvChecker } from "./components/env-checker"
 import { validateEnv } from "./lib/env-check"
+import { JobTrackerProvider, JobStatusBanner } from "./components/job-tracker"
 
 export const metadata: Metadata = {
   title: "Anex AI - Agents intelligents",
@@ -22,8 +23,11 @@ export default function RootLayout({
   return (
     <html lang="fr">
       <body className="antialiased bg-brand-cream">
-        <EnvChecker />
-        {children}
+        <JobTrackerProvider>
+          <EnvChecker />
+          {children}
+          <JobStatusBanner />
+        </JobTrackerProvider>
       </body>
     </html>
   )

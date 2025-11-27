@@ -93,7 +93,7 @@ export async function POST(req: NextRequest) {
     typeof lastUserMessage?.content === "string" ? lastUserMessage.content : ""
 
   const shouldUseRag = Boolean(documentId && userQuestion.trim())
-  const modelName = shouldUseRag ? RAG_CONFIG.responsesModel : "gpt-4o-mini"
+  const modelName = shouldUseRag ? RAG_CONFIG.responsesModel : "gpt-5-mini"
 
   const toolNames: ToolName[] = ["compute_lease_rent_schedule"]
   if (shouldUseRag) {

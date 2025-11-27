@@ -1,6 +1,7 @@
 "use client"
 
 import { Loader2 } from "lucide-react"
+import { getStatusDescription } from "@/app/lib/status-labels"
 
 interface ProcessingLoaderProps {
   status?: string | null
@@ -11,6 +12,10 @@ export default function ProcessingLoader({
   status,
   progress = 0,
 }: ProcessingLoaderProps) {
+  const displayStatus = status
+    ? getStatusDescription(status)
+    : "Traitement en cours..."
+
   return (
     <div className="group relative bg-white rounded-2xl border-2 border-brand-green/20 p-8 sm:p-12 shadow-sm hover:shadow-xl transition-all duration-300">
       {/* Gradient overlay */}
@@ -25,7 +30,7 @@ export default function ProcessingLoader({
         {/* Status message */}
         <div className="text-center w-full">
           <p className="text-base sm:text-lg font-semibold text-gray-900 mb-2">
-            {status || "Traitement en cours..."}
+            {displayStatus}
           </p>
 
           {/* Progress bar */}

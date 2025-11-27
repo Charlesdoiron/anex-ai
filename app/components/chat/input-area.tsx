@@ -1,20 +1,20 @@
-"use client";
+"use client"
 
-import { useRef, useEffect } from "react";
-import { PdfUploadIndicator } from "./pdf-upload-indicator";
+import { useRef, useEffect } from "react"
+import { PdfUploadIndicator } from "./pdf-upload-indicator"
 
 interface InputAreaProps {
-  input: string;
-  onInputChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
-  onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
-  onStop: () => void;
-  onFileSelect: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  uploadedPdf: File | null;
-  onRemovePdf: () => void;
-  isLoading: boolean;
-  isProcessingPdf: boolean;
-  fileInputRef: React.RefObject<HTMLInputElement | null>;
-  onDevModeExtract?: () => void; // DEV MODE: optional dev mode handler
+  input: string
+  onInputChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void
+  onSubmit: (e: React.FormEvent<HTMLFormElement>) => void
+  onStop: () => void
+  onFileSelect: (e: React.ChangeEvent<HTMLInputElement>) => void
+  uploadedPdf: File | null
+  onRemovePdf: () => void
+  isLoading: boolean
+  isProcessingPdf: boolean
+  fileInputRef: React.RefObject<HTMLInputElement | null>
+  onDevModeExtract?: () => void // DEV MODE: optional dev mode handler
 }
 
 export function InputArea({
@@ -30,21 +30,21 @@ export function InputArea({
   fileInputRef,
   onDevModeExtract,
 }: InputAreaProps) {
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     if (inputRef.current) {
-      inputRef.current.style.height = "auto";
+      inputRef.current.style.height = "auto"
       inputRef.current.style.height = `${Math.min(
         inputRef.current.scrollHeight,
         200
-      )}px`;
+      )}px`
     }
-  }, [input]);
+  }, [input])
 
   return (
-    <div className="border-t border-gray-300 dark:border-gray-700 bg-[#fef9f4] dark:bg-[#343541]">
-      <div className="max-w-3xl mx-auto px-4 py-4">
+    <div className="border-t border-gray-300 dark:border-gray-700 bg-[#fef9f4] dark:bg-[#343541] safe-bottom">
+      <div className="max-w-3xl mx-auto px-3 sm:px-4 py-3 sm:py-4">
         {uploadedPdf && (
           <PdfUploadIndicator
             fileName={uploadedPdf.name}
@@ -122,9 +122,9 @@ export function InputArea({
             className="flex-1 px-4 py-3 bg-transparent text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 resize-none focus:outline-none disabled:opacity-50 overflow-hidden max-h-[200px]"
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
+                e.preventDefault()
                 if (input.trim() && !isLoading && !isProcessingPdf) {
-                  onSubmit(e as any);
+                  onSubmit(e as any)
                 }
               }
             }}
@@ -179,5 +179,5 @@ export function InputArea({
         </div>
       </div>
     </div>
-  );
+  )
 }

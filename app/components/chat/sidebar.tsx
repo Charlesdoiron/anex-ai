@@ -1,69 +1,51 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState, useMemo } from "react"
 import { FileText, Clock, Files, Calendar } from "lucide-react"
+import {
+  useExtractions,
+  type ExtractionSummary,
+} from "@/app/lib/hooks/use-extractions"
 
 interface SidebarProps {
   isOpen: boolean
   onNewChat: () => void
-  onExtractionClick?: (extraction: Extraction) => void
-}
-
-interface Extraction {
-  id: string
-  fileName: string
-  fileSize: number | null
-  pageCount: number | null
-  pipelineId: string | null
-  createdAt: string
+  onExtractionClick?: (extraction: ExtractionSummary) => void
+  onClose?: () => void
 }
 
 interface GroupedExtractions {
-  today: Extraction[]
-  yesterday: Extraction[]
-  thisWeek: Extraction[]
-  older: Extraction[]
+  today: ExtractionSummary[]
+  yesterday: ExtractionSummary[]
+  thisWeek: ExtractionSummary[]
+  older: ExtractionSummary[]
 }
 
 export function Sidebar({
   isOpen,
   onNewChat,
   onExtractionClick,
+  onClose,
 }: SidebarProps) {
-  const [extractions, setExtractions] = useState<Extraction[]>([])
-  const [loading, setLoading] = useState(true)
+  const {
+    extractions,
+    isLoading: loading,
+    mutate,
+  } = useExtractions({
+    enabled: isOpen,
+  })
   const [clearing, setClearing] = useState(false)
   const [clearMessage, setClearMessage] = useState<string | null>(null)
 
   const isTestMode = process.env.NEXT_PUBLIC_APP_MODE === "test"
 
-  useEffect(() => {
-    if (isOpen) {
-      fetchExtractions()
-    }
-  }, [isOpen])
-
-  async function fetchExtractions() {
-    try {
-      setLoading(true)
-      const response = await fetch("/api/extractions")
-      if (response.ok) {
-        const data = await response.json()
-        const list =
-          (Array.isArray(data.extractions) && data.extractions) ||
-          (Array.isArray(data.data) && data.data) ||
-          []
-        setExtractions(list.filter(Boolean))
-      }
-    } catch (error) {
-      console.error("Error fetching extractions:", error)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const groupedExtractions = useMemo(
+    () => groupExtractions(extractions),
+    [extractions]
+  )
 
   function groupExtractions(
-    extractions: Extraction[] = []
+    extractions: ExtractionSummary[] = []
   ): GroupedExtractions {
     const now = new Date()
     const groups: GroupedExtractions = {
@@ -138,7 +120,7 @@ export function Sidebar({
       setClearMessage(
         `Données effacées (${totalFiles} fichiers, ${formatBytes(totalSize)})`
       )
-      setExtractions([])
+      mutate([])
     } catch (error) {
       setClearMessage(
         error instanceof Error
@@ -147,15 +129,13 @@ export function Sidebar({
       )
     } finally {
       setClearing(false)
-      await fetchExtractions()
+      mutate()
     }
   }
 
-  const groupedExtractions = groupExtractions(extractions)
-
   function renderExtractionGroup(
     title: string,
-    items: Extraction[],
+    items: ExtractionSummary[],
     showTime = false
   ) {
     if (items.length === 0) return null
@@ -176,8 +156,11 @@ export function Sidebar({
             return (
               <div
                 key={extraction.id ?? `${title}-${index}`}
-                onClick={() => onExtractionClick?.(extraction)}
-                className="group mx-2 p-2.5 rounded-lg hover:bg-white/80 dark:hover:bg-gray-800/50 cursor-pointer transition-all duration-200 border border-transparent hover:border-gray-200 dark:hover:border-gray-700 hover:shadow-sm"
+                onClick={() => {
+                  onExtractionClick?.(extraction)
+                  onClose?.()
+                }}
+                className="group mx-2 p-2.5 rounded-lg hover:bg-white/80 dark:hover:bg-gray-800/50 cursor-pointer transition-all duration-200 border border-transparent hover:border-gray-200 dark:hover:border-gray-700 hover:shadow-sm touch-manipulation"
               >
                 <div className="flex items-start gap-2.5">
                   <div className="p-1.5 rounded-md bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 flex-shrink-0">
@@ -224,11 +207,12 @@ export function Sidebar({
 
   return (
     <div
-      className={`${
-        isOpen ? "w-72" : "w-0"
-      } transition-all duration-300 bg-[#fef9f4] dark:bg-[#202123] flex flex-col overflow-hidden ${
-        isOpen ? "border-r border-gray-200 dark:border-gray-800" : ""
-      }`}
+      className={`
+        sidebar-mobile-overlay md:relative md:transform-none
+        ${isOpen ? "w-72 open" : "w-0 md:w-0"}
+        transition-all duration-300 bg-[#fef9f4] dark:bg-[#202123] flex flex-col overflow-hidden
+        ${isOpen ? "border-r border-gray-200 dark:border-gray-800" : ""}
+      `}
     >
       {isOpen && (
         <>

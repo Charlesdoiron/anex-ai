@@ -3,18 +3,23 @@
 import { toolType } from "@/app/static-data/agent"
 import UploadFile from "../upload-file/upload-file"
 import DownloadResultButton from "../download-result-button/download-result-button"
+import RentCalculationResultButton from "../download-result-button/rent-calculation-result-button"
 import ProcessingLoader from "../processing-loader/processing-loader"
 import ErrorDisplay from "../error-display/error-display"
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useExtraction } from "../hooks/use-extraction/use-extraction"
+
+interface UploadFileWrapperProps {
+  label?: string
+  toolType: toolType
+  onExtractionComplete?: () => void
+}
 
 export default function UploadFileWrapper({
   label,
   toolType,
-}: {
-  label?: string
-  toolType: toolType
-}) {
+  onExtractionComplete,
+}: UploadFileWrapperProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const {
     isProcessing,
@@ -24,7 +29,28 @@ export default function UploadFileWrapper({
     progress,
     handleExtraction,
     reset,
-  } = useExtraction()
+  } = useExtraction({ toolType })
+
+  const hasNotifiedRef = useRef(false)
+
+  // Check for result completion - handles both lease extraction and rent calculation
+  const hasValidResult =
+    extractionResult?.documentId &&
+    (extractionResult?.extractionMetadata || // Lease extraction
+      (extractionResult as unknown as Record<string, unknown>)?.metadata) // Rent calculation
+
+  useEffect(() => {
+    if (hasValidResult && !hasNotifiedRef.current) {
+      hasNotifiedRef.current = true
+      onExtractionComplete?.()
+    }
+  }, [hasValidResult, onExtractionComplete])
+
+  useEffect(() => {
+    if (!extractionResult) {
+      hasNotifiedRef.current = false
+    }
+  }, [extractionResult])
 
   function handleFileSelect(file: File) {
     setSelectedFile(file)
@@ -45,11 +71,16 @@ export default function UploadFileWrapper({
   }
 
   // Only show download button if we have a complete extraction result
-  if (
-    extractionResult &&
-    extractionResult.documentId &&
-    extractionResult.extractionMetadata
-  ) {
+  if (hasValidResult && extractionResult) {
+    if (toolType === "calculation-rent") {
+      return (
+        <RentCalculationResultButton
+          result={extractionResult as unknown as Record<string, unknown>}
+          onReset={handleReset}
+          label={label}
+        />
+      )
+    }
     return (
       <DownloadResultButton
         extraction={extractionResult}

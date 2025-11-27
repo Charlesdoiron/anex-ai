@@ -1,6 +1,12 @@
 import type { NextConfig } from "next"
 
 const nextConfig: NextConfig = {
+  // Enable React strict mode for better debugging
+  reactStrictMode: true,
+
+  // Optimize package imports for faster builds
+  optimizePackageImports: ["lucide-react"],
+
   webpack: (config, { isServer }) => {
     if (!config.resolve) {
       config.resolve = {}

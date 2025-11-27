@@ -73,14 +73,15 @@ model Verification {
 model Extraction {
   id             String   @id @default(cuid())
   documentId     String   @unique
-  userId         String
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         String?
+  user           User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   fileName       String
   fileSize       Int?
   pageCount      Int?
   pipelineId     String?
   usedOcrEngine  String?
   extractionDate DateTime
+  toolType       String   @default("extraction-lease") // "extraction-lease" | "calculation-rent"
 
   // Structured data stored as JSON
   structuredData Json
@@ -100,6 +101,7 @@ model Extraction {
   @@index([userId])
   @@index([documentId])
   @@index([createdAt])
+  @@index([toolType])
   @@map("extraction")
 }
 
@@ -138,4 +140,47 @@ model insee_rental_reference_index {
   @@index([value])
   @@index([createdAt])
   @@map("insee_rental_reference_index")
+}
+
+enum ExtractionJobStatus {
+  pending
+  processing
+  completed
+  failed
+}
+
+model ExtractionJob {
+  id        String              @id @default(cuid())
+  userId    String?
+  fileName  String
+  fileSize  Int
+  fileData  Bytes               // PDF binary data stored in DB
+  status    ExtractionJobStatus @default(pending)
+  progress  Int                 @default(0) // 0-100
+  stage     String?             // Current extraction stage
+  message   String?             // Human-readable status message
+  toolType  String              @default("extraction-lease") // "extraction-lease" | "calculation-rent"
+
+  // Partial results for resume capability
+  partialResult Json?
+
+  // Final result reference (no FK constraint for flexibility)
+  documentId String?
+
+  // Error tracking
+  errorMessage String?
+  retryCount   Int      @default(0)
+  maxRetries   Int      @default(3)
+
+  // Timestamps
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([toolType])
+  @@map("extraction_job")
 }

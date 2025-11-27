@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import type { LeaseExtractionResult } from "@/app/lib/extraction/types"
 import type { ComputeLeaseRentScheduleResult } from "@/app/lib/lease/types"
 import {
@@ -26,6 +26,7 @@ interface ExtractionModalProps {
   extraction: LeaseExtractionResult | null
   isLoading?: boolean
   error?: string | null
+  initialView?: ModalView
 }
 
 export function ExtractionModal({
@@ -34,12 +35,20 @@ export function ExtractionModal({
   extraction,
   isLoading = false,
   error = null,
+  initialView = "actions",
 }: ExtractionModalProps) {
-  const [view, setView] = useState<ModalView>("actions")
+  const [view, setView] = useState<ModalView>(initialView)
   const [rentSchedule, setRentSchedule] =
     useState<ComputeLeaseRentScheduleResult | null>(null)
   const [isComputingSchedule, setIsComputingSchedule] = useState(false)
   const [scheduleError, setScheduleError] = useState<string | null>(null)
+
+  // Reset view when modal opens with a different initialView
+  useEffect(() => {
+    if (open) {
+      setView(initialView)
+    }
+  }, [open, initialView])
 
   if (!open) {
     return null
@@ -92,8 +101,8 @@ export function ExtractionModal({
       extraction?.calendar?.signatureDate?.value)
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30 p-4">
-      <div className="relative flex w-full max-w-4xl max-h-[85vh] flex-col rounded-lg border border-gray-200 bg-[#fef9f4] shadow-xl dark:border-gray-700 dark:bg-[#343541]">
+    <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-black/30 p-0 sm:p-4">
+      <div className="relative flex w-full sm:max-w-4xl max-h-[90vh] sm:max-h-[85vh] flex-col rounded-t-xl sm:rounded-lg border border-gray-200 bg-[#fef9f4] shadow-xl dark:border-gray-700 dark:bg-[#343541] safe-bottom">
         <div className="flex items-center justify-between border-b border-gray-200 px-5 py-3 dark:border-gray-700">
           <div className="flex items-center gap-2.5">
             {view !== "actions" && (
@@ -222,7 +231,7 @@ export function ExtractionModal({
                     <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-3">
                       Résumé
                     </p>
-                    <div className="grid grid-cols-4 gap-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
                       <div className="flex items-center gap-2.5 rounded-md border border-gray-200 bg-white px-3 py-2.5 dark:border-gray-700 dark:bg-gray-800">
                         <FileIcon
                           size={14}

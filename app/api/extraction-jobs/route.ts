@@ -1,0 +1,151 @@
+import { NextRequest, NextResponse } from "next/server"
+import { auth } from "@/app/lib/auth"
+import { extractionJobService } from "@/app/lib/jobs/extraction-job-service"
+import type { toolType } from "@/app/static-data/agent"
+
+const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB
+const VALID_TOOL_TYPES: toolType[] = ["extraction-lease", "calculation-rent"]
+
+export async function POST(request: NextRequest) {
+  try {
+    const skipAuth = process.env.SKIP_AUTH === "true"
+    let userId: string | undefined
+
+    if (!skipAuth) {
+      const session = await auth.api.getSession({
+        headers: request.headers,
+      })
+
+      if (!session?.user?.id) {
+        return NextResponse.json(
+          { error: "Unauthorized", message: "Authentication required" },
+          { status: 401 }
+        )
+      }
+
+      userId = session.user.id
+    }
+
+    const formData = await request.formData()
+    const file = formData.get("file") as File | null
+    const toolTypeParam = formData.get("toolType") as string | null
+
+    if (!file) {
+      return NextResponse.json(
+        { error: "No file", message: "Aucun fichier fourni" },
+        { status: 400 }
+      )
+    }
+
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        {
+          error: "File too large",
+          message: "Fichier trop volumineux (max 50MB)",
+        },
+        { status: 400 }
+      )
+    }
+
+    if (file.type !== "application/pdf") {
+      return NextResponse.json(
+        {
+          error: "Invalid file type",
+          message: "Seuls les fichiers PDF sont acceptés",
+        },
+        { status: 400 }
+      )
+    }
+
+    const toolType: toolType =
+      toolTypeParam && VALID_TOOL_TYPES.includes(toolTypeParam as toolType)
+        ? (toolTypeParam as toolType)
+        : "extraction-lease"
+
+    const buffer = Buffer.from(await file.arrayBuffer())
+
+    const jobId = await extractionJobService.createJob({
+      fileName: file.name,
+      fileData: buffer,
+      userId,
+      toolType,
+    })
+
+    return NextResponse.json({
+      success: true,
+      jobId,
+      toolType,
+      message: "Job créé avec succès",
+    })
+  } catch (error) {
+    console.error("Failed to create extraction job:", error)
+    return NextResponse.json(
+      {
+        error: "Job creation failed",
+        message: error instanceof Error ? error.message : "Erreur inconnue",
+      },
+      { status: 500 }
+    )
+  }
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    const skipAuth = process.env.SKIP_AUTH === "true"
+    let userId: string | undefined
+
+    if (!skipAuth) {
+      const session = await auth.api.getSession({
+        headers: request.headers,
+      })
+
+      if (!session?.user?.id) {
+        return NextResponse.json(
+          { error: "Unauthorized", message: "Authentication required" },
+          { status: 401 }
+        )
+      }
+
+      userId = session.user.id
+    }
+
+    if (!userId) {
+      return NextResponse.json(
+        {
+          error: "User ID required",
+          message: "Impossible de lister les jobs sans utilisateur",
+        },
+        { status: 400 }
+      )
+    }
+
+    const { searchParams } = new URL(request.url)
+    const limit = parseInt(searchParams.get("limit") || "20", 10)
+    const toolTypeParam = searchParams.get("toolType")
+    const filterToolType =
+      toolTypeParam && VALID_TOOL_TYPES.includes(toolTypeParam as toolType)
+        ? (toolTypeParam as toolType)
+        : undefined
+
+    const jobs = await extractionJobService.listUserJobs(
+      userId,
+      limit,
+      filterToolType
+    )
+
+    return NextResponse.json({
+      success: true,
+      jobs,
+      count: jobs.length,
+    })
+  } catch (error) {
+    console.error("Failed to list extraction jobs:", error)
+    return NextResponse.json(
+      {
+        error: "Listing failed",
+        message: error instanceof Error ? error.message : "Erreur inconnue",
+      },
+      { status: 500 }
+    )
+  }
+}

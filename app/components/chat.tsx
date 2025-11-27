@@ -1,7 +1,14 @@
 "use client"
 
 import { useChat } from "@ai-sdk/react"
-import { useEffect, useMemo, useState } from "react"
+import {
+  useEffect,
+  useMemo,
+  useState,
+  useCallback,
+  lazy,
+  Suspense,
+} from "react"
 import { Sidebar } from "./chat/sidebar"
 import { TopBar } from "./chat/top-bar"
 import { MessagesArea } from "./chat/messages-area"
@@ -17,8 +24,13 @@ import { ProcessingStatus } from "./chat/processing-status"
 import { exportAllToPDF } from "./chat/utils/export-utils"
 import { RagStatusFeed } from "./chat/rag-status-feed"
 import type { LeaseExtractionResult } from "@/app/lib/extraction/types"
-import { ExtractionModal } from "./extraction/extraction-modal"
 import { exportExtractionToExcel } from "./extraction/utils/excel-export"
+
+const ExtractionModal = lazy(() =>
+  import("./extraction/extraction-modal").then((mod) => ({
+    default: mod.ExtractionModal,
+  }))
+)
 
 export function Chat() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -113,7 +125,7 @@ export function Chat() {
     setExtraction(null)
   }, [activeDocument?.id])
 
-  async function loadExtraction(documentId: string) {
+  const loadExtraction = useCallback(async (documentId: string) => {
     try {
       setIsLoadingExtraction(true)
       setExtractionError(null)
@@ -130,28 +142,28 @@ export function Chat() {
     } finally {
       setIsLoadingExtraction(false)
     }
-  }
+  }, [])
 
-  async function handleExtractionClick(extraction: {
-    id: string
-    fileName: string
-  }) {
-    setSidebarOpen(false)
-    setActiveDocument({
-      id: extraction.id,
-      fileName: extraction.fileName,
-    })
-    await loadExtraction(extraction.id)
-    setMessages([
-      {
-        id: Date.now().toString(),
-        role: "user",
-        content: `📄 Document chargé: ${extraction.fileName}`,
-      },
-    ])
-  }
+  const handleExtractionClick = useCallback(
+    async (extraction: { id: string; fileName: string }) => {
+      setSidebarOpen(false)
+      setActiveDocument({
+        id: extraction.id,
+        fileName: extraction.fileName,
+      })
+      await loadExtraction(extraction.id)
+      setMessages([
+        {
+          id: Date.now().toString(),
+          role: "user",
+          content: `📄 Document chargé: ${extraction.fileName}`,
+        },
+      ])
+    },
+    [loadExtraction, setMessages]
+  )
 
-  function handleToggleExtractionPanel() {
+  const handleToggleExtractionPanel = useCallback(() => {
     if (!activeDocument) {
       return
     }
@@ -162,48 +174,51 @@ export function Chat() {
       }
       return next
     })
-  }
+  }, [activeDocument, extraction, loadExtraction])
 
-  async function handleFormSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault()
+  const handleFormSubmit = useCallback(
+    async (e: React.FormEvent<HTMLFormElement>) => {
+      e.preventDefault()
 
-    if (!input.trim()) {
-      return
-    }
+      if (!input.trim()) {
+        return
+      }
 
-    setData([])
+      setData([])
 
-    await append(
-      {
-        role: "user",
-        content: input,
-      },
-      activeDocument
-        ? {
-            data: {
-              documentId: activeDocument.id,
-              fileName: activeDocument.fileName,
-            },
-          }
-        : undefined
-    )
-    setInput("")
-  }
+      await append(
+        {
+          role: "user",
+          content: input,
+        },
+        activeDocument
+          ? {
+              data: {
+                documentId: activeDocument.id,
+                fileName: activeDocument.fileName,
+              },
+            }
+          : undefined
+      )
+      setInput("")
+    },
+    [input, activeDocument, setData, append, setInput]
+  )
 
-  function handleClearChat() {
+  const handleClearChat = useCallback(() => {
     setMessages([])
     setActiveDocument(null)
     setData(undefined)
-  }
+  }, [setMessages, setData])
 
-  const handleExportPDF = async () => {
+  const handleExportPDF = useCallback(async () => {
     await exportAllToPDF(messages as MessageWithSources[])
-  }
+  }, [messages])
 
-  function handleExportExcel() {
+  const handleExportExcel = useCallback(() => {
     if (!extraction) return
     exportExtractionToExcel(extraction)
-  }
+  }, [extraction])
 
   const hasAssistantMessages = messages.some(
     (m) => m.role === "assistant" && m.content.trim()
@@ -229,14 +244,22 @@ export function Chat() {
   }, [streamData])
 
   return (
-    <div className="flex h-screen bg-white dark:bg-[#343541]">
+    <div className="flex h-screen-safe bg-white dark:bg-[#343541] overflow-hidden">
       <ProcessingStatus status={processingStatus || extractionStatus} />
+
+      {/* Mobile backdrop */}
+      <div
+        className={`sidebar-backdrop md:hidden ${sidebarOpen ? "visible" : ""}`}
+        onClick={() => setSidebarOpen(false)}
+        aria-hidden="true"
+      />
 
       <Sidebar
         key={sidebarKey}
         isOpen={sidebarOpen}
         onNewChat={handleClearChat}
         onExtractionClick={handleExtractionClick}
+        onClose={() => setSidebarOpen(false)}
       />
 
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -255,24 +278,28 @@ export function Chat() {
           showExtractionPanel={showExtractionPanel}
         />
 
-        <ExtractionModal
-          open={!!activeDocument && showExtractionPanel}
-          onClose={() => setShowExtractionPanel(false)}
-          extraction={extraction}
-          isLoading={isLoadingExtraction}
-          error={extractionError}
-        />
+        {activeDocument && showExtractionPanel && (
+          <Suspense fallback={null}>
+            <ExtractionModal
+              open={true}
+              onClose={() => setShowExtractionPanel(false)}
+              extraction={extraction}
+              isLoading={isLoadingExtraction}
+              error={extractionError}
+            />
+          </Suspense>
+        )}
 
         <RagStatusFeed events={statusEvents} isStreaming={isLoading} />
 
         {(canExportExtraction || showChatExportButtons) && (
           <div className="border-b border-gray-200 dark:border-gray-700 bg-[#fef9f4] dark:bg-[#343541]">
-            <div className="max-w-7xl mx-auto px-4 py-3">
-              <div className="flex items-center gap-3">
+            <div className="max-w-7xl mx-auto px-3 sm:px-4 py-2 sm:py-3">
+              <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
                 {canExportExtraction && (
                   <button
                     onClick={handleExportExcel}
-                    className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-md transition-colors"
+                    className="inline-flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-md transition-colors touch-manipulation"
                   >
                     <svg
                       className="w-4 h-4"
@@ -287,13 +314,16 @@ export function Chat() {
                         d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
                       />
                     </svg>
-                    Exporter Excel (données extraites)
+                    <span className="hidden sm:inline">
+                      Exporter Excel (données)
+                    </span>
+                    <span className="sm:hidden">Excel</span>
                   </button>
                 )}
                 {showChatExportButtons && (
                   <button
                     onClick={handleExportPDF}
-                    className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md transition-colors"
+                    className="inline-flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md transition-colors touch-manipulation"
                   >
                     <svg
                       className="w-4 h-4"
@@ -308,7 +338,10 @@ export function Chat() {
                         d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
                       />
                     </svg>
-                    Export PDF (conversation)
+                    <span className="hidden sm:inline">
+                      Export PDF (conversation)
+                    </span>
+                    <span className="sm:hidden">PDF</span>
                   </button>
                 )}
               </div>
