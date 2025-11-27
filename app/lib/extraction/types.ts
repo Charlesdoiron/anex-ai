@@ -70,6 +70,7 @@ export interface LeaseRegimeData {
 // 2. Parties
 export interface ContactInfo {
   name: ExtractedValue<string>
+  siren: ExtractedValue<string | null>
   email: ExtractedValue<string | null>
   phone: ExtractedValue<string | null>
   address: ExtractedValue<string | null>
@@ -153,6 +154,7 @@ export interface IndexationData {
 export interface TaxesData {
   propertyTaxRebilled: ExtractedValue<boolean | null>
   propertyTaxAmount: ExtractedValue<number | null>
+  teomAmount: ExtractedValue<number | null> // Taxe d'Enlèvement des Ordures Ménagères
   officeTaxAmount: ExtractedValue<number | null>
 }
 
@@ -253,7 +255,7 @@ export interface LeaseExtractionResult {
   extractionDate: string // ISO date
   rawText: string
   pageCount: number
-  usedOcrEngine?: "tesseract" | "vision" | null
+  usedOcrEngine?: "tesseract" | "vision" | "mistral" | null
 
   regime: LeaseRegimeData
   parties: PartiesData

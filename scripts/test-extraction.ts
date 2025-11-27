@@ -7,6 +7,11 @@
  *   npx tsx scripts/test-extraction.ts  # runs on first PDF in data/
  */
 
+import { config } from "dotenv"
+// Load .env.local for local development
+config({ path: ".env.local" })
+config({ path: ".env" })
+
 import * as fs from "fs"
 import * as path from "path"
 import { ExtractionService } from "../app/lib/extraction/extraction-service"

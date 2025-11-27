@@ -522,6 +522,7 @@ export class ExtractionService {
         return {
           landlord: {
             name: missingValue,
+            siren: missingValue,
             email: missingValue,
             phone: missingValue,
             address: missingValue,
@@ -529,6 +530,7 @@ export class ExtractionService {
           landlordRepresentative: null,
           tenant: {
             name: missingValue,
+            siren: missingValue,
             email: missingValue,
             phone: missingValue,
             address: missingValue,
@@ -601,6 +603,7 @@ export class ExtractionService {
         return {
           propertyTaxRebilled: missingValue,
           propertyTaxAmount: missingValue,
+          teomAmount: missingValue,
           officeTaxAmount: missingValue,
         }
       case "charges":

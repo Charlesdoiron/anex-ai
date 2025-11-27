@@ -1,6 +1,6 @@
 /**
  * PDF text extraction using pdf-parse
- * Uses Tesseract OCR first, then GPT-Vision fallback for scanned documents
+ * Uses Mistral OCR (if available), then Tesseract, then GPT-Vision fallback
  */
 
 import OpenAI from "openai"
@@ -8,6 +8,7 @@ import { createRequire } from "module"
 import { OCR_CONFIG } from "./ocr/config"
 import { TesseractEngine } from "./ocr/tesseract-engine"
 import { TesseractJsEngine } from "./ocr/tesseract-js-engine"
+import { MistralOcrEngine } from "./ocr/mistral-engine"
 
 interface PdfMetadataInfo {
   Title?: string
@@ -40,7 +41,7 @@ export interface PdfExtractionResult {
     modificationDate?: Date
   }
   usedVisionOcr?: boolean
-  usedOcrEngine?: "tesseract" | "vision" | null
+  usedOcrEngine?: "tesseract" | "mistral" | "vision" | null
 }
 
 const require = createRequire(import.meta.url)
@@ -107,53 +108,84 @@ export async function extractPdfText(
         infoResult?.total ?? textResult.total ?? textResult.pages?.length ?? 1
 
       let pages = normalizePagesFromTextResult(textResult, pageCount)
-      let usedOcrEngine: "tesseract" | "vision" | null = null
+      let usedOcrEngine: "tesseract" | "mistral" | "vision" | null = null
 
       if (VISION_OCR_ENABLED && shouldAttemptOcr(pages)) {
         notify?.("Document scanné détecté, reconnaissance du texte...")
 
-        notify?.("Préparation des pages...")
-        const screenshotResult = await parser.getScreenshot({
-          imageBuffer: true,
-          imageDataUrl: false,
-          scale: OCR_CONFIG.VISION_RENDER_SCALE,
-        })
+        // Try Mistral OCR first (processes entire PDF at once)
+        const useMistral =
+          OCR_CONFIG.OCR_ENGINE === "mistral" ||
+          (OCR_CONFIG.OCR_ENGINE === "auto" &&
+            (await MistralOcrEngine.checkAvailability()))
 
-        const screenshotPages = screenshotResult?.pages || []
+        if (useMistral && OCR_CONFIG.OCR_ENGINE !== "tesseract") {
+          notify?.("Reconnaissance du texte avec Mistral OCR...")
+          try {
+            const mistralResult = await MistralOcrEngine.processPdf(buffer)
+            if (mistralResult.pages.length > 0) {
+              const mistralPages = mistralResult.pages.map((p) =>
+                cleanPageText(p.markdown)
+              )
+              if (shouldReplaceWithOcr(pages, mistralPages)) {
+                pages = ensurePageCount(mistralPages, pageCount)
+                usedOcrEngine = "mistral"
+                notify?.("Texte reconnu avec Mistral OCR.")
+              }
+            }
+          } catch (error) {
+            console.warn(
+              "Mistral OCR failed, falling back to Tesseract:",
+              error
+            )
+          }
+        }
 
-        if (screenshotPages.length > 0) {
-          notify?.("Reconnaissance du texte en cours...")
-          const tesseractPages = await runTesseractPipeline(
-            screenshotPages,
-            pageCount,
-            notify
-          )
+        // Fallback to Tesseract if Mistral didn't work or wasn't available
+        if (!usedOcrEngine) {
+          notify?.("Préparation des pages...")
+          const screenshotResult = await parser.getScreenshot({
+            imageBuffer: true,
+            imageDataUrl: false,
+            scale: OCR_CONFIG.VISION_RENDER_SCALE,
+          })
 
-          if (
-            tesseractPages.length > 0 &&
-            shouldReplaceWithOcr(pages, tesseractPages)
-          ) {
-            pages = ensurePageCount(tesseractPages, pageCount)
-            usedOcrEngine = "tesseract"
-            notify?.("Texte reconnu avec succès.")
-          } else if (visionClient) {
-            notify?.("Analyse approfondie du document...")
-            const visionPages = await runVisionPipeline(
+          const screenshotPages = screenshotResult?.pages || []
+
+          if (screenshotPages.length > 0) {
+            notify?.("Reconnaissance du texte en cours...")
+            const tesseractPages = await runTesseractPipeline(
               screenshotPages,
               pageCount,
               notify
             )
 
             if (
-              visionPages.length > 0 &&
-              shouldReplaceWithOcr(pages, visionPages)
+              tesseractPages.length > 0 &&
+              shouldReplaceWithOcr(pages, tesseractPages)
             ) {
-              pages = ensurePageCount(visionPages, pageCount)
-              usedOcrEngine = "vision"
-              notify?.("Transcription terminée.")
+              pages = ensurePageCount(tesseractPages, pageCount)
+              usedOcrEngine = "tesseract"
+              notify?.("Texte reconnu avec succès.")
+            } else if (visionClient) {
+              notify?.("Analyse approfondie du document...")
+              const visionPages = await runVisionPipeline(
+                screenshotPages,
+                pageCount,
+                notify
+              )
+
+              if (
+                visionPages.length > 0 &&
+                shouldReplaceWithOcr(pages, visionPages)
+              ) {
+                pages = ensurePageCount(visionPages, pageCount)
+                usedOcrEngine = "vision"
+                notify?.("Transcription terminée.")
+              }
+            } else {
+              notify?.("Reconnaissance du texte non disponible.")
             }
-          } else {
-            notify?.("Reconnaissance du texte non disponible.")
           }
         }
       }
