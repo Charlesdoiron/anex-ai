@@ -424,6 +424,10 @@ export function ExtractionPanel({ extraction }: ExtractionPanelProps) {
                 label="Adresse"
                 value={extraction.parties?.landlord?.address}
               />
+              <FieldDisplay
+                label="SIREN"
+                value={extraction.parties?.landlord?.siren}
+              />
             </div>
           </div>
           <div>
@@ -446,6 +450,10 @@ export function ExtractionPanel({ extraction }: ExtractionPanelProps) {
               <FieldDisplay
                 label="Adresse"
                 value={extraction.parties?.tenant?.address}
+              />
+              <FieldDisplay
+                label="SIREN"
+                value={extraction.parties?.tenant?.siren}
               />
             </div>
           </div>

@@ -265,6 +265,12 @@ function ExtractionContent({
                 extractValue(extraction.parties?.landlord?.phone) as string
               }
             />
+            <FieldRow
+              label="SIREN"
+              value={
+                extractValue(extraction.parties?.landlord?.siren) as string
+              }
+            />
           </div>
           <div>
             <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1 pt-1">
@@ -287,6 +293,10 @@ function ExtractionContent({
             <FieldRow
               label="Téléphone"
               value={extractValue(extraction.parties?.tenant?.phone) as string}
+            />
+            <FieldRow
+              label="SIREN"
+              value={extractValue(extraction.parties?.tenant?.siren) as string}
             />
           </div>
         </div>

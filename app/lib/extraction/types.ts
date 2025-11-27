@@ -73,6 +73,7 @@ export interface ContactInfo {
   email: ExtractedValue<string | null>
   phone: ExtractedValue<string | null>
   address: ExtractedValue<string | null>
+  siren: ExtractedValue<string | null>
 }
 
 export interface PartiesData {

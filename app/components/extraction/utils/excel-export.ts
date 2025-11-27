@@ -174,6 +174,11 @@ function buildPartiesSheet(extraction: LeaseExtractionResult): ExcelRow[] {
       Information: "Téléphone",
       Valeur: fmt(getValue(p?.landlord?.phone)),
     },
+    {
+      Rôle: "",
+      Information: "SIREN",
+      Valeur: fmt(getValue(p?.landlord?.siren)),
+    },
     { Rôle: "", Information: "", Valeur: "" },
     { Rôle: "PRENEUR", Information: "", Valeur: "" },
     {
@@ -191,6 +196,11 @@ function buildPartiesSheet(extraction: LeaseExtractionResult): ExcelRow[] {
       Rôle: "",
       Information: "Téléphone",
       Valeur: fmt(getValue(p?.tenant?.phone)),
+    },
+    {
+      Rôle: "",
+      Information: "SIREN",
+      Valeur: fmt(getValue(p?.tenant?.siren)),
     },
   ]
 }

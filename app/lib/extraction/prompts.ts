@@ -127,6 +127,7 @@ INFORMATIONS À EXTRAIRE POUR CHAQUE PARTIE :
 - email : Adresse email
 - phone : Numéro de téléphone
 - address : Adresse postale complète (siège social pour les sociétés)
+- siren : Numéro SIREN (9 chiffres) de l'entreprise si personne morale
 
 GESTION DES NOMS ILLISIBLES OU MASQUÉS :
 L'OCR peut produire du texte illisible pour les noms des parties :
@@ -152,7 +153,9 @@ INDICES COURANTS :
 - "ci-après dénommé le Bailleur / le Preneur"
 - "représenté par M./Mme X en qualité de..."
 - Forme juridique : SCI, SARL, SAS, SA, EURL, etc.
-- RCS, SIRET, capital social
+- RCS, SIRET, SIREN, capital social
+- Le SIREN est un numéro à 9 chiffres (les 9 premiers chiffres du SIRET)
+- Format SIREN : "123 456 789" ou "123456789" (avec ou sans espaces)
 - "domicile élu", "adresse de notification", "toute correspondance"
 
 EXEMPLES :
@@ -171,10 +174,17 @@ Format de sortie :
     "name": { "value": "...", "confidence": "...", "source": "..." },
     "email": { "value": "..." ou null, "confidence": "...", "source": "..." },
     "phone": { "value": "..." ou null, "confidence": "...", "source": "..." },
-    "address": { "value": "..." ou null, "confidence": "...", "source": "..." }
+    "address": { "value": "..." ou null, "confidence": "...", "source": "..." },
+    "siren": { "value": "..." ou null, "confidence": "...", "source": "..." }
   },
   "landlordRepresentative": { ... } ou null,
-  "tenant": { ... }
+  "tenant": {
+    "name": { "value": "...", "confidence": "...", "source": "..." },
+    "email": { "value": "..." ou null, "confidence": "...", "source": "..." },
+    "phone": { "value": "..." ou null, "confidence": "...", "source": "..." },
+    "address": { "value": "..." ou null, "confidence": "...", "source": "..." },
+    "siren": { "value": "..." ou null, "confidence": "...", "source": "..." }
+  }
 }`
 
 export const PREMISES_PROMPT = `Extraire la description détaillée des locaux loués.

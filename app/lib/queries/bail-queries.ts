@@ -1391,74 +1391,76 @@ type RegimeJuridique =
   | "dérogatoire"
   | "à construire"
   | "à construction"
-  | "BEFA";
+  | "BEFA"
 
 interface Coordonnees {
-  nom?: string;
-  denomination?: string;
-  courriel?: string;
-  telephone?: string;
-  adresse?: string;
-  siret?: string;
+  nom?: string
+  denomination?: string
+  courriel?: string
+  telephone?: string
+  adresse?: string
+  siret?: string
+  siren?: string
 }
 
 interface RepresentantBailleur {
-  nom?: string;
-  prenom?: string;
-  qualite?: string;
-  capital?: string;
-  adresse?: string;
-  representant_legal?: string;
+  nom?: string
+  prenom?: string
+  qualite?: string
+  capital?: string
+  adresse?: string
+  representant_legal?: string
 }
 
 interface Preneur {
-  nom?: string;
-  denomination?: string;
-  courriel?: string;
-  telephone?: string;
-  adresse?: string;
-  siret?: string;
-  representant_legal?: string;
+  nom?: string
+  denomination?: string
+  courriel?: string
+  telephone?: string
+  adresse?: string
+  siret?: string
+  siren?: string
+  representant_legal?: string
 }
 
 interface ConditionsEnseigne {
-  autorisation: boolean;
-  conditions?: string;
-  dimensions?: string;
-  emplacement?: string;
-  materiaux?: string;
-  autorisations_prealables?: string[];
+  autorisation: boolean
+  conditions?: string
+  dimensions?: string
+  emplacement?: string
+  materiaux?: string
+  autorisations_prealables?: string[]
 }
 
 interface Surface {
-  designation?: string;
-  surface_m2: number;
+  designation?: string
+  surface_m2: number
 }
 
 interface SurfaceLocaux {
-  surface_totale_m2: number;
-  surfaces_detaillees?: Surface[];
-  methode_mesure?: string;
+  surface_totale_m2: number
+  surfaces_detaillees?: Surface[]
+  methode_mesure?: string
 }
 
 interface Cloisonnement {
-  cloisonne: boolean;
-  nombre_locaux_cloisonnes?: number;
-  surfaces_cloisonnees?: Surface[];
-  type_cloisons?: string;
+  cloisonne: boolean
+  nombre_locaux_cloisonnes?: number
+  surfaces_cloisonnees?: Surface[]
+  type_cloisons?: string
 }
 
 interface Mobilier {
-  equipe: boolean;
-  liste_equipements?: string[];
-  description?: string;
+  equipe: boolean
+  liste_equipements?: string[]
+  description?: string
 }
 
 // Interface principale pour une query
 export interface BailQuery {
-  id: string;
-  query: string;
-  expectedType: string;
+  id: string
+  query: string
+  expectedType: string
 }
 
 // Queries typées
@@ -1472,7 +1474,7 @@ export const bailQueries: BailQuery[] = [
   {
     id: "bailleur",
     query:
-      "Quel est le nom du bailleur et ses coordonnées (courriel, téléphone, adresse, siret) ?",
+      "Quel est le nom du bailleur et ses coordonnées (courriel, téléphone, adresse, siret, siren) ?",
     expectedType: "Coordonnees",
   },
   {
@@ -1484,7 +1486,7 @@ export const bailQueries: BailQuery[] = [
   {
     id: "preneur",
     query:
-      "Quel est le nom du preneur et ses coordonnées (courriel, représentant légal, adresse, siret) ?",
+      "Quel est le nom du preneur et ses coordonnées (courriel, représentant légal, adresse, siret, siren) ?",
     expectedType: "Preneur",
   },
   {
@@ -1558,23 +1560,23 @@ export const bailQueries: BailQuery[] = [
       "L’existence d’un local d’archive ? Répondre par « oui » ou « non » en précisant.",
     expectedType: "string",
   },
-];
+]
 
 // Type pour l'ensemble des réponses attendues
 interface BailExtractionResult {
-  regime_juridique: RegimeJuridique;
-  bailleur: Coordonnees;
-  representant_bailleur: RepresentantBailleur | null;
-  preneur: Preneur;
-  conditions_enseigne: ConditionsEnseigne | string;
-  destination_locaux: string;
-  designation_locaux: string;
-  adresse_locaux: string;
-  annee_construction: number | null;
-  etages_locaux: string[];
-  numeros_lots: string[];
-  surface_locaux: SurfaceLocaux;
-  cloisonnement: Cloisonnement;
-  mobilier_equipements: Mobilier;
-  conditions_garnissement: string;
+  regime_juridique: RegimeJuridique
+  bailleur: Coordonnees
+  representant_bailleur: RepresentantBailleur | null
+  preneur: Preneur
+  conditions_enseigne: ConditionsEnseigne | string
+  destination_locaux: string
+  designation_locaux: string
+  adresse_locaux: string
+  annee_construction: number | null
+  etages_locaux: string[]
+  numeros_lots: string[]
+  surface_locaux: SurfaceLocaux
+  cloisonnement: Cloisonnement
+  mobilier_equipements: Mobilier
+  conditions_garnissement: string
 }
