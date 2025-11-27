@@ -1,13 +1,13 @@
-// Detect serverless environment (Vercel, AWS Lambda, etc.)
+// Serverless environment detection
 const IS_SERVERLESS =
   process.env.VERCEL === "1" ||
   process.env.AWS_LAMBDA_FUNCTION_NAME !== undefined ||
   process.env.OCR_USE_JS === "true"
 
-// OCR engine selection: "auto" | "tesseract" | "mistral"
-// - "auto": Use Mistral if available, fallback to Tesseract
-// - "tesseract": Force Tesseract (local binary or JS)
-// - "mistral": Force Mistral (requires MISTRAL_API_KEY)
+// OCR engine selection
+// "auto": Mistral if available, otherwise Tesseract
+// "tesseract": Force Tesseract (local binary or JS)
+// "mistral": Force Mistral (requires MISTRAL_API_KEY)
 const OCR_ENGINE = (process.env.OCR_ENGINE || "auto") as
   | "auto"
   | "tesseract"

@@ -1,6 +1,5 @@
 /**
- * Mistral OCR Engine using mistral-ocr-latest model
- * Provides high-quality document OCR with structure preservation
+ * Mistral OCR integration for document text extraction
  */
 
 import { Mistral } from "@mistralai/mistralai"
@@ -27,7 +26,6 @@ export interface MistralOcrPage {
 let mistralClient: Mistral | null = null
 
 function getClient(): Mistral | null {
-  // Read API key dynamically (allows dotenv to load first)
   const mistralApiKey = process.env.MISTRAL_API_KEY
   if (!mistralApiKey) {
     return null

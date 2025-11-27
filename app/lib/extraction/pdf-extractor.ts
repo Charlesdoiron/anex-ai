@@ -1,6 +1,7 @@
 /**
- * PDF text extraction using pdf-parse
- * Uses Mistral OCR (if available), then Tesseract, then GPT-Vision fallback
+ * PDF text extraction with OCR fallback
+ * Serverless: Mistral OCR API
+ * Local: pdf-parse with Tesseract/Vision fallback
  */
 
 import OpenAI from "openai"
@@ -58,6 +59,19 @@ export async function extractPdfText(
 ): Promise<PdfExtractionResult> {
   try {
     const notify = options?.onStatus
+
+    // Bypass pdf-parse on serverless when Mistral is available
+    const canUseMistralDirect =
+      OCR_CONFIG.IS_SERVERLESS &&
+      (OCR_CONFIG.OCR_ENGINE === "mistral" ||
+        (OCR_CONFIG.OCR_ENGINE === "auto" &&
+          (await MistralOcrEngine.checkAvailability())))
+
+    if (canUseMistralDirect) {
+      return await extractWithMistralDirect(buffer, notify)
+    }
+
+    // Local development: use pdf-parse with OCR fallback
     const pdfModule = require("pdf-parse") as {
       PDFParse?: new (options: Record<string, unknown>) => {
         getText: (params?: Record<string, unknown>) => Promise<{
@@ -113,7 +127,7 @@ export async function extractPdfText(
       if (VISION_OCR_ENABLED && shouldAttemptOcr(pages)) {
         notify?.("Document scanné détecté, reconnaissance du texte...")
 
-        // Try Mistral OCR first (processes entire PDF at once)
+        // Mistral OCR: processes entire PDF in one call
         const useMistral =
           OCR_CONFIG.OCR_ENGINE === "mistral" ||
           (OCR_CONFIG.OCR_ENGINE === "auto" &&
@@ -141,7 +155,7 @@ export async function extractPdfText(
           }
         }
 
-        // Fallback to Tesseract if Mistral didn't work or wasn't available
+        // Tesseract fallback when Mistral unavailable
         if (!usedOcrEngine) {
           notify?.("Préparation des pages...")
           const screenshotResult = await parser.getScreenshot({
@@ -213,6 +227,45 @@ export async function extractPdfText(
       `Failed to extract text from PDF: ${
         error instanceof Error ? error.message : "Unknown error"
       }`
+    )
+  }
+}
+
+/**
+ * Serverless-compatible PDF extraction via Mistral OCR API
+ * Bypasses local PDF parsing dependencies
+ */
+async function extractWithMistralDirect(
+  buffer: Buffer,
+  notify?: (message: string) => void
+): Promise<PdfExtractionResult> {
+  notify?.("Analyse du document avec Mistral OCR...")
+
+  try {
+    const mistralResult = await MistralOcrEngine.processPdf(buffer)
+
+    if (!mistralResult.pages.length) {
+      throw new Error("Mistral OCR returned no pages")
+    }
+
+    const pages = mistralResult.pages.map((p) => cleanPageText(p.markdown))
+    const pageCount = pages.length
+    const combinedText = pages.join("\n\n").trim()
+
+    notify?.("Document analysé avec succès.")
+
+    return {
+      text: combinedText,
+      pageCount,
+      pages,
+      metadata: undefined,
+      usedVisionOcr: false,
+      usedOcrEngine: "mistral",
+    }
+  } catch (error) {
+    console.error("Mistral direct extraction failed:", error)
+    throw new Error(
+      `Mistral OCR failed: ${error instanceof Error ? error.message : "Unknown error"}`
     )
   }
 }
