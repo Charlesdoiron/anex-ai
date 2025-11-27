@@ -235,7 +235,7 @@ export function ExtractionPanel({ extraction }: ExtractionPanelProps) {
   return (
     <div className="space-y-6">
       {metadata && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
@@ -292,7 +292,7 @@ export function ExtractionPanel({ extraction }: ExtractionPanelProps) {
             </div>
           </div>
 
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+          {/* <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg">
                 <svg
@@ -321,7 +321,7 @@ export function ExtractionPanel({ extraction }: ExtractionPanelProps) {
                 </p>
               </div>
             </div>
-          </div>
+          </div> */}
 
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
             <div className="flex items-center gap-3">
