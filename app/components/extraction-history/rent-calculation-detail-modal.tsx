@@ -10,9 +10,12 @@ import {
   Info,
   AlertTriangle,
   CheckCircle,
+  BarChart3,
+  ChevronDown,
 } from "lucide-react"
 import { useEffect, useState, useRef } from "react"
 import { exportRentCalculationToExcel } from "@/app/components/extraction/utils/rent-calculation-excel-export"
+import RentCalculationCharts from "./rent-calculation-charts"
 import type {
   RentCalculationResult,
   RentCalculationExtractedData,
@@ -190,6 +193,7 @@ export default function RentCalculationDetailModal({
 }
 
 function RentCalculationContent({ result }: { result: RentCalculationData }) {
+  const [showDetails, setShowDetails] = useState(true)
   const extracted = result.extractedData
   const schedule = result.rentSchedule
   const input = result.scheduleInput
@@ -254,204 +258,242 @@ function RentCalculationContent({ result }: { result: RentCalculationData }) {
         </div>
       )}
 
-      {/* Extracted data */}
-      <SectionCard
-        title="Données extraites"
-        icon={<FileText className="w-3.5 h-3.5" strokeWidth={1.5} />}
-      >
-        <div className="grid grid-cols-2 gap-x-6">
-          <FieldRow
-            label="Date d'effet"
-            value={extracted.calendar.effectiveDate?.value}
-            type="date"
-          />
-          <FieldRow
-            label="Date de signature"
-            value={extracted.calendar.signatureDate?.value}
-            type="date"
-          />
-          <FieldRow
-            label="Durée"
-            value={
-              extracted.calendar.duration?.value
-                ? `${extracted.calendar.duration.value} ans`
-                : null
-            }
-          />
-          <FieldRow
-            label="Fréquence"
-            value={formatFrequency(extracted.rent.paymentFrequency?.value)}
-          />
-          <FieldRow
-            label="Loyer annuel bureaux HT"
-            value={extracted.rent.annualRentExclTaxExclCharges?.value}
-            type="currency"
-          />
-          <FieldRow
-            label="Loyer trimestriel bureaux HT"
-            value={extracted.rent.quarterlyRentExclTaxExclCharges?.value}
-            type="currency"
-          />
-          <FieldRow
-            label="Loyer annuel parking HT"
-            value={extracted.rent.annualParkingRentExclCharges?.value}
-            type="currency"
-          />
-        </div>
-      </SectionCard>
-
-      {/* Schedule input parameters */}
-      {input && (
-        <SectionCard
-          title="Paramètres de calcul"
-          icon={<Calculator className="w-3.5 h-3.5" strokeWidth={1.5} />}
-        >
-          <div className="grid grid-cols-2 gap-x-6">
-            <FieldRow
-              label="Date de début"
-              value={input.startDate}
-              type="date"
-            />
-            <FieldRow label="Date de fin" value={input.endDate} type="date" />
-            <FieldRow
-              label="Indice INSEE de base"
-              value={input.baseIndexValue}
-            />
-            <FieldRow
-              label="Fréquence"
-              value={formatFrequency(input.paymentFrequency)}
-            />
-            <FieldRow
-              label="Loyer bureaux / période"
-              value={input.officeRentHT}
-              type="currency"
-            />
-            <FieldRow
-              label="Loyer parking / période"
-              value={input.parkingRentHT}
-              type="currency"
-            />
-          </div>
-        </SectionCard>
+      {/* Charts - Only when schedule is available */}
+      {hasSchedule && input && (
+        <RentCalculationCharts
+          schedule={schedule}
+          baseIndexValue={input.baseIndexValue}
+        />
       )}
 
-      {/* Yearly totals */}
-      {hasSchedule && schedule.summary.yearlyTotals.length > 0 && (
-        <SectionCard
-          title="Totaux annuels"
-          icon={<TrendingUp className="w-3.5 h-3.5" strokeWidth={1.5} />}
-        >
-          <div className="overflow-x-auto -mx-4">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-gray-500 border-b border-gray-100">
-                  <th className="text-left font-medium py-2 px-4">Année</th>
-                  <th className="text-right font-medium py-2 px-4">
-                    Loyer base HT
-                  </th>
-                  <th className="text-right font-medium py-2 px-4">
-                    Charges HT
-                  </th>
-                  <th className="text-right font-medium py-2 px-4">
-                    Loyer net HT
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {schedule.summary.yearlyTotals.map(
-                  (year: YearlyTotalSummary) => (
-                    <tr key={year.year} className="border-b border-gray-50">
-                      <td className="py-2 px-4 font-medium text-gray-900">
-                        {year.year}
-                      </td>
-                      <td className="py-2 px-4 text-right text-gray-700">
-                        {formatCurrency(year.baseRentHT)}
-                      </td>
-                      <td className="py-2 px-4 text-right text-gray-700">
-                        {formatCurrency(year.chargesHT)}
-                      </td>
-                      <td className="py-2 px-4 text-right font-medium text-emerald-600">
-                        {formatCurrency(year.netRentHT)}
-                      </td>
-                    </tr>
-                  )
-                )}
-              </tbody>
-            </table>
-          </div>
+      {/* Collapsible details section */}
+      <button
+        onClick={() => setShowDetails(!showDetails)}
+        className="w-full flex items-center justify-between px-4 py-2.5 bg-gray-50 hover:bg-gray-100 rounded-lg border border-gray-200 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <BarChart3 className="w-4 h-4 text-gray-500" />
+          <span className="text-xs font-medium text-gray-700">
+            Détails de l&apos;extraction et échéancier
+          </span>
+        </div>
+        <ChevronDown
+          className={`w-4 h-4 text-gray-400 transition-transform ${showDetails ? "rotate-180" : ""}`}
+        />
+      </button>
 
-          {schedule.summary.depositHT > 0 && (
-            <div className="mt-3 pt-3 border-t border-gray-100">
+      {showDetails && (
+        <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+          {/* Extracted data */}
+          <SectionCard
+            title="Données extraites"
+            icon={<FileText className="w-3.5 h-3.5" strokeWidth={1.5} />}
+          >
+            <div className="grid grid-cols-2 gap-x-6">
               <FieldRow
-                label="Dépôt de garantie HT"
-                value={schedule.summary.depositHT}
+                label="Date d'effet"
+                value={extracted.calendar.effectiveDate?.value}
+                type="date"
+              />
+              <FieldRow
+                label="Date de signature"
+                value={extracted.calendar.signatureDate?.value}
+                type="date"
+              />
+              <FieldRow
+                label="Durée"
+                value={
+                  extracted.calendar.duration?.value
+                    ? `${extracted.calendar.duration.value} ans`
+                    : null
+                }
+              />
+              <FieldRow
+                label="Fréquence"
+                value={formatFrequency(extracted.rent.paymentFrequency?.value)}
+              />
+              <FieldRow
+                label="Loyer annuel bureaux HT"
+                value={extracted.rent.annualRentExclTaxExclCharges?.value}
+                type="currency"
+              />
+              <FieldRow
+                label="Loyer trimestriel bureaux HT"
+                value={extracted.rent.quarterlyRentExclTaxExclCharges?.value}
+                type="currency"
+              />
+              <FieldRow
+                label="Loyer annuel parking HT"
+                value={extracted.rent.annualParkingRentExclCharges?.value}
                 type="currency"
               />
             </div>
-          )}
-        </SectionCard>
-      )}
+          </SectionCard>
 
-      {/* Detailed schedule preview */}
-      {hasSchedule && (
-        <SectionCard
-          title={`Échéancier détaillé (${schedule.schedule.length} périodes)`}
-          icon={<Calendar className="w-3.5 h-3.5" strokeWidth={1.5} />}
-        >
-          <div className="overflow-x-auto -mx-4">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-gray-500 border-b border-gray-100">
-                  <th className="text-left font-medium py-2 px-4">Période</th>
-                  <th className="text-right font-medium py-2 px-4">Indice</th>
-                  <th className="text-right font-medium py-2 px-4">
-                    Bureaux HT
-                  </th>
-                  <th className="text-right font-medium py-2 px-4">
-                    Parking HT
-                  </th>
-                  <th className="text-right font-medium py-2 px-4">Net HT</th>
-                </tr>
-              </thead>
-              <tbody>
-                {schedule.schedule
-                  .slice(0, 12)
-                  .map((period: RentSchedulePeriod, idx: number) => {
-                    const periodLabel =
-                      period.periodType === "month"
-                        ? `${period.year}-${String(period.month).padStart(2, "0")}`
-                        : `${period.year} T${period.quarter}`
-
-                    return (
-                      <tr key={idx} className="border-b border-gray-50">
-                        <td className="py-2 px-4 font-medium text-gray-900">
-                          {periodLabel}
-                        </td>
-                        <td className="py-2 px-4 text-right text-gray-500">
-                          {period.indexValue.toFixed(2)}
-                        </td>
-                        <td className="py-2 px-4 text-right text-gray-700">
-                          {formatCurrency(period.officeRentHT)}
-                        </td>
-                        <td className="py-2 px-4 text-right text-gray-700">
-                          {formatCurrency(period.parkingRentHT)}
-                        </td>
-                        <td className="py-2 px-4 text-right font-medium text-emerald-600">
-                          {formatCurrency(period.netRentHT)}
-                        </td>
-                      </tr>
-                    )
-                  })}
-              </tbody>
-            </table>
-          </div>
-          {schedule.schedule.length > 12 && (
-            <p className="text-xs text-gray-400 mt-2 px-4">
-              ... et {schedule.schedule.length - 12} autres périodes (voir Excel
-              pour le détail complet)
-            </p>
+          {/* Schedule input parameters */}
+          {input && (
+            <SectionCard
+              title="Paramètres de calcul"
+              icon={<Calculator className="w-3.5 h-3.5" strokeWidth={1.5} />}
+            >
+              <div className="grid grid-cols-2 gap-x-6">
+                <FieldRow
+                  label="Date de début"
+                  value={input.startDate}
+                  type="date"
+                />
+                <FieldRow
+                  label="Date de fin"
+                  value={input.endDate}
+                  type="date"
+                />
+                <FieldRow
+                  label="Indice INSEE de base"
+                  value={input.baseIndexValue}
+                />
+                <FieldRow
+                  label="Fréquence"
+                  value={formatFrequency(input.paymentFrequency)}
+                />
+                <FieldRow
+                  label="Loyer bureaux / période"
+                  value={input.officeRentHT}
+                  type="currency"
+                />
+                <FieldRow
+                  label="Loyer parking / période"
+                  value={input.parkingRentHT}
+                  type="currency"
+                />
+              </div>
+            </SectionCard>
           )}
-        </SectionCard>
+
+          {/* Yearly totals */}
+          {hasSchedule && schedule.summary.yearlyTotals.length > 0 && (
+            <SectionCard
+              title="Totaux annuels"
+              icon={<TrendingUp className="w-3.5 h-3.5" strokeWidth={1.5} />}
+            >
+              <div className="overflow-x-auto -mx-4">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-gray-500 border-b border-gray-100">
+                      <th className="text-left font-medium py-2 px-4">Année</th>
+                      <th className="text-right font-medium py-2 px-4">
+                        Loyer base HT
+                      </th>
+                      <th className="text-right font-medium py-2 px-4">
+                        Charges HT
+                      </th>
+                      <th className="text-right font-medium py-2 px-4">
+                        Loyer net HT
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {schedule.summary.yearlyTotals.map(
+                      (year: YearlyTotalSummary) => (
+                        <tr key={year.year} className="border-b border-gray-50">
+                          <td className="py-2 px-4 font-medium text-gray-900">
+                            {year.year}
+                          </td>
+                          <td className="py-2 px-4 text-right text-gray-700">
+                            {formatCurrency(year.baseRentHT)}
+                          </td>
+                          <td className="py-2 px-4 text-right text-gray-700">
+                            {formatCurrency(year.chargesHT)}
+                          </td>
+                          <td className="py-2 px-4 text-right font-medium text-emerald-600">
+                            {formatCurrency(year.netRentHT)}
+                          </td>
+                        </tr>
+                      )
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {schedule.summary.depositHT > 0 && (
+                <div className="mt-3 pt-3 border-t border-gray-100">
+                  <FieldRow
+                    label="Dépôt de garantie HT"
+                    value={schedule.summary.depositHT}
+                    type="currency"
+                  />
+                </div>
+              )}
+            </SectionCard>
+          )}
+
+          {/* Detailed schedule preview */}
+          {hasSchedule && (
+            <SectionCard
+              title={`Échéancier détaillé (${schedule.schedule.length} périodes)`}
+              icon={<Calendar className="w-3.5 h-3.5" strokeWidth={1.5} />}
+            >
+              <div className="overflow-x-auto -mx-4">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-gray-500 border-b border-gray-100">
+                      <th className="text-left font-medium py-2 px-4">
+                        Période
+                      </th>
+                      <th className="text-right font-medium py-2 px-4">
+                        Indice
+                      </th>
+                      <th className="text-right font-medium py-2 px-4">
+                        Bureaux HT
+                      </th>
+                      <th className="text-right font-medium py-2 px-4">
+                        Parking HT
+                      </th>
+                      <th className="text-right font-medium py-2 px-4">
+                        Net HT
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {schedule.schedule
+                      .slice(0, 12)
+                      .map((period: RentSchedulePeriod, idx: number) => {
+                        const periodLabel =
+                          period.periodType === "month"
+                            ? `${period.year}-${String(period.month).padStart(2, "0")}`
+                            : `${period.year} T${period.quarter}`
+
+                        return (
+                          <tr key={idx} className="border-b border-gray-50">
+                            <td className="py-2 px-4 font-medium text-gray-900">
+                              {periodLabel}
+                            </td>
+                            <td className="py-2 px-4 text-right text-gray-500">
+                              {period.indexValue.toFixed(2)}
+                            </td>
+                            <td className="py-2 px-4 text-right text-gray-700">
+                              {formatCurrency(period.officeRentHT)}
+                            </td>
+                            <td className="py-2 px-4 text-right text-gray-700">
+                              {formatCurrency(period.parkingRentHT)}
+                            </td>
+                            <td className="py-2 px-4 text-right font-medium text-emerald-600">
+                              {formatCurrency(period.netRentHT)}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                  </tbody>
+                </table>
+              </div>
+              {schedule.schedule.length > 12 && (
+                <p className="text-xs text-gray-400 mt-2 px-4">
+                  ... et {schedule.schedule.length - 12} autres périodes (voir
+                  Excel pour le détail complet)
+                </p>
+              )}
+            </SectionCard>
+          )}
+        </div>
       )}
     </div>
   )

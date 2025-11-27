@@ -1,3 +1,8 @@
+import { config } from "dotenv"
+// Load .env.local first (overrides), then .env as fallback
+config({ path: ".env.local" })
+config({ path: ".env" })
+
 import { prisma } from "../app/lib/prisma"
 import { scrapeInseeRentalIndex } from "../app/lib/insee/scrape-rental-index"
 

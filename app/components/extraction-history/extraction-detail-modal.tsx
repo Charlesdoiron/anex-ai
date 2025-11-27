@@ -14,9 +14,24 @@ import {
   Receipt,
   Shield,
 } from "lucide-react"
-import type { LeaseExtractionResult } from "@/app/lib/extraction/types"
+import type {
+  LeaseExtractionResult,
+  ExtractedValue,
+} from "@/app/lib/extraction/types"
 import { exportExtractionToExcel } from "@/app/components/extraction/utils/excel-export"
 import { useEffect, useState, useRef } from "react"
+
+/**
+ * Extract the value from an ExtractedValue object
+ * Matches the logic used in excel-export.ts for consistency
+ */
+function getValue<T>(field: ExtractedValue<T> | undefined | null): T | null {
+  if (!field) return null
+  if (typeof field !== "object") return field as T
+  if (!("value" in field)) return null
+  if ("confidence" in field && field.confidence === "missing") return null
+  return field.value
+}
 
 interface ExtractionDetailModalProps {
   extraction: LeaseExtractionResult | null
@@ -178,11 +193,33 @@ function FieldRow({ label, value, type = "text" }: FieldRowProps) {
   )
 }
 
-function extractValue(field: unknown): unknown {
-  if (field && typeof field === "object" && "value" in field) {
-    return (field as { value: unknown }).value
+/**
+ * Get regime value - handles both { regime: { value } } and { value } structures
+ */
+function getRegimeValue(
+  regime: LeaseExtractionResult["regime"] | undefined
+): string | null {
+  if (!regime) return null
+  // New structure: { regime: { value, confidence } }
+  if ("regime" in regime && regime.regime) {
+    return getValue(regime.regime)
   }
-  return field
+  // Old structure: { value, confidence } directly
+  if ("value" in regime) {
+    return getValue(regime as unknown as ExtractedValue<string>)
+  }
+  return null
+}
+
+/**
+ * Format array or string value for display
+ */
+function formatArrayValue(value: unknown): string | null {
+  if (!value) return null
+  if (Array.isArray(value)) {
+    return value.length > 0 ? value.join(", ") : null
+  }
+  return String(value)
 }
 
 interface SectionCardProps {
@@ -221,15 +258,7 @@ function ExtractionContent({
           title="Régime du bail"
           icon={<Building2 className={iconClass} strokeWidth={iconStroke} />}
         >
-          <FieldRow
-            label="Type"
-            value={
-              extractValue(
-                (extraction.regime as { regime?: unknown })?.regime ||
-                  extraction.regime
-              ) as string
-            }
-          />
+          <FieldRow label="Type" value={getRegimeValue(extraction.regime)} />
         </SectionCard>
       )}
 
@@ -245,37 +274,23 @@ function ExtractionContent({
             </div>
             <FieldRow
               label="Nom"
-              value={extractValue(extraction.parties?.landlord?.name) as string}
+              value={getValue(extraction.parties?.landlord?.name)}
             />
             <FieldRow
               label="SIREN"
-              value={
-                extractValue(extraction.parties?.landlord?.siren) as string
-              }
+              value={getValue(extraction.parties?.landlord?.siren)}
             />
             <FieldRow
               label="Adresse"
-              value={
-                extractValue(extraction.parties?.landlord?.address) as string
-              }
+              value={getValue(extraction.parties?.landlord?.address)}
             />
             <FieldRow
               label="Email"
-              value={
-                extractValue(extraction.parties?.landlord?.email) as string
-              }
+              value={getValue(extraction.parties?.landlord?.email)}
             />
             <FieldRow
               label="Téléphone"
-              value={
-                extractValue(extraction.parties?.landlord?.phone) as string
-              }
-            />
-            <FieldRow
-              label="SIREN"
-              value={
-                extractValue(extraction.parties?.landlord?.siren) as string
-              }
+              value={getValue(extraction.parties?.landlord?.phone)}
             />
           </div>
           <div>
@@ -284,29 +299,23 @@ function ExtractionContent({
             </div>
             <FieldRow
               label="Nom"
-              value={extractValue(extraction.parties?.tenant?.name) as string}
+              value={getValue(extraction.parties?.tenant?.name)}
             />
             <FieldRow
               label="SIREN"
-              value={extractValue(extraction.parties?.tenant?.siren) as string}
+              value={getValue(extraction.parties?.tenant?.siren)}
             />
             <FieldRow
               label="Adresse"
-              value={
-                extractValue(extraction.parties?.tenant?.address) as string
-              }
+              value={getValue(extraction.parties?.tenant?.address)}
             />
             <FieldRow
               label="Email"
-              value={extractValue(extraction.parties?.tenant?.email) as string}
+              value={getValue(extraction.parties?.tenant?.email)}
             />
             <FieldRow
               label="Téléphone"
-              value={extractValue(extraction.parties?.tenant?.phone) as string}
-            />
-            <FieldRow
-              label="SIREN"
-              value={extractValue(extraction.parties?.tenant?.siren) as string}
+              value={getValue(extraction.parties?.tenant?.phone)}
             />
           </div>
         </div>
@@ -319,39 +328,33 @@ function ExtractionContent({
       >
         <FieldRow
           label="Destination"
-          value={extractValue(extraction.premises?.purpose) as string}
+          value={getValue(extraction.premises?.purpose)}
         />
         <FieldRow
           label="Désignation"
-          value={extractValue(extraction.premises?.designation) as string}
+          value={getValue(extraction.premises?.designation)}
         />
         <FieldRow
           label="Adresse"
-          value={extractValue(extraction.premises?.address) as string}
+          value={getValue(extraction.premises?.address)}
         />
         <FieldRow
           label="Surface"
           value={
-            extractValue(extraction.premises?.surfaceArea)
-              ? `${extractValue(extraction.premises?.surfaceArea)} m²`
+            getValue(extraction.premises?.surfaceArea)
+              ? `${getValue(extraction.premises?.surfaceArea)} m²`
               : null
           }
         />
         <FieldRow
           label="Étages"
-          value={
-            Array.isArray(extractValue(extraction.premises?.floors))
-              ? (extractValue(extraction.premises?.floors) as string[]).join(
-                  ", "
-                )
-              : (extractValue(extraction.premises?.floors) as string)
-          }
+          value={formatArrayValue(getValue(extraction.premises?.floors))}
         />
         <FieldRow
           label="Parking"
           value={
-            extractValue(extraction.premises?.parkingSpaces)
-              ? `${extractValue(extraction.premises?.parkingSpaces)} places`
+            getValue(extraction.premises?.parkingSpaces)
+              ? `${getValue(extraction.premises?.parkingSpaces)} places`
               : null
           }
         />
@@ -364,30 +367,30 @@ function ExtractionContent({
       >
         <FieldRow
           label="Signature"
-          value={extractValue(extraction.calendar?.signatureDate) as string}
+          value={getValue(extraction.calendar?.signatureDate)}
           type="date"
         />
         <FieldRow
           label="Prise d'effet"
-          value={extractValue(extraction.calendar?.effectiveDate) as string}
+          value={getValue(extraction.calendar?.effectiveDate)}
           type="date"
         />
         <FieldRow
           label="Fin du bail"
-          value={extractValue(extraction.calendar?.endDate) as string}
+          value={getValue(extraction.calendar?.endDate)}
           type="date"
         />
         <FieldRow
           label="Durée"
           value={
-            extractValue(extraction.calendar?.duration)
-              ? `${extractValue(extraction.calendar?.duration)} ans`
+            getValue(extraction.calendar?.duration)
+              ? `${getValue(extraction.calendar?.duration)} ans`
               : null
           }
         />
         <FieldRow
           label="Préavis"
-          value={extractValue(extraction.calendar?.noticePeriod) as string}
+          value={getValue(extraction.calendar?.noticePeriod)}
         />
       </SectionCard>
 
@@ -398,39 +401,27 @@ function ExtractionContent({
       >
         <FieldRow
           label="Loyer annuel HT/HC"
-          value={
-            extractValue(
-              extraction.rent?.annualRentExclTaxExclCharges
-            ) as number
-          }
+          value={getValue(extraction.rent?.annualRentExclTaxExclCharges)}
           type="currency"
         />
         <FieldRow
           label="Loyer trimestriel HT/HC"
-          value={
-            extractValue(
-              extraction.rent?.quarterlyRentExclTaxExclCharges
-            ) as number
-          }
+          value={getValue(extraction.rent?.quarterlyRentExclTaxExclCharges)}
           type="currency"
         />
         <FieldRow
           label="Loyer au m² / an"
-          value={
-            extractValue(
-              extraction.rent?.annualRentPerSqmExclTaxExclCharges
-            ) as number
-          }
+          value={getValue(extraction.rent?.annualRentPerSqmExclTaxExclCharges)}
           type="currency"
         />
         <FieldRow
           label="TVA applicable"
-          value={extractValue(extraction.rent?.isSubjectToVAT) as boolean}
+          value={getValue(extraction.rent?.isSubjectToVAT)}
           type="boolean"
         />
         <FieldRow
           label="Fréquence"
-          value={extractValue(extraction.rent?.paymentFrequency) as string}
+          value={getValue(extraction.rent?.paymentFrequency)}
         />
       </SectionCard>
 
@@ -441,26 +432,20 @@ function ExtractionContent({
       >
         <FieldRow
           label="Type d'indice"
-          value={extractValue(extraction.indexation?.indexationType) as string}
+          value={getValue(extraction.indexation?.indexationType)}
         />
         <FieldRow
           label="Trimestre de référence"
-          value={
-            extractValue(extraction.indexation?.referenceQuarter) as string
-          }
+          value={getValue(extraction.indexation?.referenceQuarter)}
         />
         <FieldRow
           label="Première indexation"
-          value={
-            extractValue(extraction.indexation?.firstIndexationDate) as string
-          }
+          value={getValue(extraction.indexation?.firstIndexationDate)}
           type="date"
         />
         <FieldRow
           label="Fréquence"
-          value={
-            extractValue(extraction.indexation?.indexationFrequency) as string
-          }
+          value={getValue(extraction.indexation?.indexationFrequency)}
         />
       </SectionCard>
 
@@ -471,27 +456,17 @@ function ExtractionContent({
       >
         <FieldRow
           label="Provision annuelle HT"
-          value={
-            extractValue(
-              extraction.charges?.annualChargesProvisionExclTax
-            ) as number
-          }
+          value={getValue(extraction.charges?.annualChargesProvisionExclTax)}
           type="currency"
         />
         <FieldRow
           label="Provision trimestrielle HT"
-          value={
-            extractValue(
-              extraction.charges?.quarterlyChargesProvisionExclTax
-            ) as number
-          }
+          value={getValue(extraction.charges?.quarterlyChargesProvisionExclTax)}
           type="currency"
         />
         <FieldRow
           label="Honoraires de gestion (preneur)"
-          value={
-            extractValue(extraction.charges?.managementFeesOnTenant) as boolean
-          }
+          value={getValue(extraction.charges?.managementFeesOnTenant)}
           type="boolean"
         />
       </SectionCard>
@@ -503,22 +478,14 @@ function ExtractionContent({
       >
         <FieldRow
           label="Dépôt de garantie"
-          value={
-            extractValue(extraction.securities?.securityDepositAmount) as number
-          }
+          value={getValue(extraction.securities?.securityDepositAmount)}
           type="currency"
         />
         <FieldRow
           label="Autres sûretés"
-          value={
-            Array.isArray(extractValue(extraction.securities?.otherSecurities))
-              ? (
-                  extractValue(
-                    extraction.securities?.otherSecurities
-                  ) as string[]
-                ).join(", ")
-              : (extractValue(extraction.securities?.otherSecurities) as string)
-          }
+          value={formatArrayValue(
+            getValue(extraction.securities?.otherSecurities)
+          )}
         />
       </SectionCard>
     </div>
