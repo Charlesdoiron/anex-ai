@@ -19,15 +19,18 @@ export function Header({ showLogo = true, className = "" }: HeaderProps) {
 
   return (
     <header
-      className={`border-b border-gray-300 dark:border-gray-700 bg-[#fef9f4] dark:bg-[#343541] px-4 py-3 ${className}`}
+      className={`border-b border-gray-200/80 bg-white/80 backdrop-blur-sm sticky top-0 z-50 shadow-sm ${className}`}
     >
-      <div className="max-w-7xl mx-auto flex items-center justify-between">
+      <div className="max-w-7xl mx-auto flex items-center justify-between px-4 sm:px-6 lg:px-8 py-3 sm:py-4">
         {showLogo && (
-          <Link href="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-green to-green-800 flex items-center justify-center">
+          <Link
+            href="/"
+            className="flex items-center gap-2.5 group transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green/50 focus-visible:ring-offset-2 rounded-lg px-1"
+          >
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-green to-green-800 flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow duration-300">
               <span className="text-white font-bold text-lg">A</span>
             </div>
-            <span className="font-semibold text-gray-900 dark:text-gray-100 text-lg">
+            <span className="font-semibold text-gray-900 text-lg tracking-tight">
               Axen AI
             </span>
           </Link>

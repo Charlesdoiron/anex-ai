@@ -57,11 +57,11 @@ export default function UploadFileWithHistory({
         onExtractionComplete={handleExtractionComplete}
       />
 
-      <ExtractionHistory
+      {/* <ExtractionHistory
         ref={historyRef}
         onViewExtraction={handleViewExtraction}
         toolType={toolType}
-      />
+      /> */}
 
       <ExtractionDetailModal
         extraction={selectedExtraction}
