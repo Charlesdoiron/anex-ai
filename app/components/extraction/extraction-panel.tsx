@@ -413,6 +413,10 @@ export function ExtractionPanel({ extraction }: ExtractionPanelProps) {
                 value={extraction.parties?.landlord?.name}
               />
               <FieldDisplay
+                label="SIREN"
+                value={extraction.parties?.landlord?.siren}
+              />
+              <FieldDisplay
                 label="Email"
                 value={extraction.parties?.landlord?.email}
               />
@@ -438,6 +442,10 @@ export function ExtractionPanel({ extraction }: ExtractionPanelProps) {
               <FieldDisplay
                 label="Nom"
                 value={extraction.parties?.tenant?.name}
+              />
+              <FieldDisplay
+                label="SIREN"
+                value={extraction.parties?.tenant?.siren}
               />
               <FieldDisplay
                 label="Email"
@@ -697,13 +705,18 @@ export function ExtractionPanel({ extraction }: ExtractionPanelProps) {
         defaultOpen={false}
       >
         <FieldDisplay
-          label="Taxe foncière refacturée"
+          label="Taxe foncière et TEOM refacturées"
           value={extraction.taxes?.propertyTaxRebilled}
           type="boolean"
         />
         <FieldDisplay
           label="Montant taxe foncière"
           value={extraction.taxes?.propertyTaxAmount}
+          type="number"
+        />
+        <FieldDisplay
+          label="Montant TEOM"
+          value={extraction.taxes?.teomAmount}
           type="number"
         />
         <FieldDisplay

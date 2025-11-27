@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^1.0.10",
+    "@mistralai/mistralai": "^1.10.0",
     "@petamoriken/float16": "^3.9.3",
     "@prisma/client": "^6.19.0",
     "@radix-ui/react-slot": "^1.2.4",

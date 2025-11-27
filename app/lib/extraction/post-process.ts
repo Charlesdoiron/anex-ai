@@ -18,6 +18,12 @@ export function postProcessExtraction(
 ): LeaseExtractionResult {
   const processed = { ...result }
 
+  // Normalize regime field structure (LLM sometimes returns inconsistent format)
+  processed.regime = normalizeRegimeField(processed.regime)
+
+  // Normalize parties SIREN fields
+  processed.parties = normalizePartiesSiren(processed.parties)
+
   // Calendar computed fields
   processed.calendar = computeCalendarFields(processed)
 
@@ -31,6 +37,80 @@ export function postProcessExtraction(
   processed.supportMeasures = computeSupportMeasuresFields(processed)
 
   return processed
+}
+
+/**
+ * Normalize regime field - LLM sometimes returns { value, confidence } instead of { regime: { value, confidence } }
+ */
+function normalizeRegimeField(
+  regime: LeaseExtractionResult["regime"]
+): LeaseExtractionResult["regime"] {
+  if (!regime) {
+    return {
+      regime: {
+        value: "unknown",
+        confidence: "missing",
+        source: "non trouvé",
+      },
+    }
+  }
+
+  // Check if regime has the correct structure { regime: ExtractedValue }
+  if (
+    regime.regime &&
+    typeof regime.regime === "object" &&
+    "value" in regime.regime
+  ) {
+    return regime
+  }
+
+  // If regime has { value, confidence } directly, wrap it
+  if ("value" in regime && "confidence" in regime) {
+    return {
+      regime: regime as unknown as LeaseExtractionResult["regime"]["regime"],
+    }
+  }
+
+  return regime
+}
+
+/**
+ * Normalize SIREN/SIRET/RCS - extract only digits and standardize
+ */
+function normalizePartiesSiren(
+  parties: LeaseExtractionResult["parties"]
+): LeaseExtractionResult["parties"] {
+  if (!parties) return parties
+
+  const normalizeSiren = (
+    siren: ExtractedValue<string | null>
+  ): ExtractedValue<string | null> => {
+    if (!siren || !siren.value) return siren
+    // Extract only digits from SIREN/SIRET/RCS
+    const digitsOnly = siren.value.replace(/\D/g, "")
+    if (digitsOnly.length >= 9) {
+      return { ...siren, value: digitsOnly }
+    }
+    return siren
+  }
+
+  return {
+    ...parties,
+    landlord: {
+      ...parties.landlord,
+      siren: normalizeSiren(parties.landlord.siren),
+    },
+    landlordRepresentative: parties.landlordRepresentative
+      ? {
+          ...parties.landlordRepresentative,
+          siren: normalizeSiren(parties.landlordRepresentative.siren),
+        }
+      : null,
+    tenant: {
+      ...parties.tenant,
+      siren: normalizeSiren(parties.tenant.siren),
+    },
+  }
 }
 
 function computeCalendarFields(

@@ -4,9 +4,21 @@ const IS_SERVERLESS =
   process.env.AWS_LAMBDA_FUNCTION_NAME !== undefined ||
   process.env.OCR_USE_JS === "true"
 
+// OCR engine selection: "auto" | "tesseract" | "mistral"
+// - "auto": Use Mistral if available, fallback to Tesseract
+// - "tesseract": Force Tesseract (local binary or JS)
+// - "mistral": Force Mistral (requires MISTRAL_API_KEY)
+const OCR_ENGINE = (process.env.OCR_ENGINE || "auto") as
+  | "auto"
+  | "tesseract"
+  | "mistral"
+
 export const OCR_CONFIG = {
   // Environment detection
   IS_SERVERLESS,
+
+  // OCR engine preference
+  OCR_ENGINE,
 
   // Tesseract binary (local development)
   TESSERACT_BINARY_PATH: process.env.PDF_OCR_BINARY_PATH || "tesseract",
@@ -40,4 +52,7 @@ export const OCR_CONFIG = {
     1,
     Number(process.env.PDF_VISION_CONCURRENCY || "5")
   ),
+
+  // Mistral OCR
+  MISTRAL_API_KEY: process.env.MISTRAL_API_KEY,
 }

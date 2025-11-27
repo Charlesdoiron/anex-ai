@@ -124,10 +124,18 @@ PARTIES À IDENTIFIER :
 
 INFORMATIONS À EXTRAIRE POUR CHAQUE PARTIE :
 - name : Nom complet (personne physique) ou dénomination sociale (société)
+- siren : Numéro SIREN (9 chiffres) ou SIRET (14 chiffres) de la société
 - email : Adresse email
 - phone : Numéro de téléphone
 - address : Adresse postale complète (siège social pour les sociétés)
 - siren : Numéro SIREN (9 chiffres) de l'entreprise si personne morale
+
+EXTRACTION DU SIREN/SIRET :
+- Le SIREN est un identifiant à 9 chiffres : XXX XXX XXX
+- Le SIRET est un identifiant à 14 chiffres : XXX XXX XXX XXXXX
+- Chercher dans : "RCS", "SIRET", "SIREN", "immatriculée sous le numéro"
+- Format possible : "123 456 789", "123456789", "RCS Paris 123 456 789"
+- Extraire uniquement les chiffres, sans espaces
 
 GESTION DES NOMS ILLISIBLES OU MASQUÉS :
 L'OCR peut produire du texte illisible pour les noms des parties :
@@ -159,10 +167,10 @@ INDICES COURANTS :
 - "domicile élu", "adresse de notification", "toute correspondance"
 
 EXEMPLES :
-- "La SCI IMMOBILIER PARISIEN, [...] représentée par M. Jean DUPONT, son gérant"
-  → landlord.name: "SCI IMMOBILIER PARISIEN", landlordRepresentative.name: "Jean DUPONT"
-- "La société TECH STARTUP SAS, au capital de 10.000 €, RCS Paris 123 456 789"
-  → tenant.name: "TECH STARTUP SAS"
+- "La SCI IMMOBILIER PARISIEN, RCS Paris 123 456 789, représentée par M. Jean DUPONT"
+  → landlord.name: "SCI IMMOBILIER PARISIEN", landlord.siren: "123456789", landlordRepresentative.name: "Jean DUPONT"
+- "La société TECH STARTUP SAS, au capital de 10.000 €, SIRET 123 456 789 00012"
+  → tenant.name: "TECH STARTUP SAS", tenant.siren: "12345678900012"
 - "La société @@@@@, au capital de..." (nom masqué)
   → name: null, confidence: "missing", rawText: "nom masqué dans le document"
 - "Toute notification sera adressée à contact@exemple.fr"
@@ -172,6 +180,7 @@ Format de sortie :
 {
   "landlord": {
     "name": { "value": "...", "confidence": "...", "source": "..." },
+    "siren": { "value": "..." ou null, "confidence": "...", "source": "..." },
     "email": { "value": "..." ou null, "confidence": "...", "source": "..." },
     "phone": { "value": "..." ou null, "confidence": "...", "source": "..." },
     "address": { "value": "..." ou null, "confidence": "...", "source": "..." },
@@ -334,6 +343,10 @@ CHAMPS À EXTRAIRE :
 
 1. LOYER PRINCIPAL (HORS TAXES, HORS CHARGES) :
 - annualRentExclTaxExclCharges : Loyer annuel HTHC (en euros, sans symbole)
+  IMPORTANT - CAS DU LOYER PROGRESSIF :
+  - Si le bail prévoit un loyer différent par année (ex: 79000€ en 2016, 82000€ en 2017...)
+  - Extraire le loyer de la PREMIÈRE ANNÉE (loyer initial)
+  - Mentionner dans rawText que le loyer est progressif avec les détails
 - quarterlyRentExclTaxExclCharges : Loyer trimestriel HTHC (SEULEMENT si explicite)
 - annualRentPerSqmExclTaxExclCharges : Loyer annuel au m² HTHC (SEULEMENT si explicite)
   - Ne PAS calculer : sera déduit automatiquement si absent
@@ -348,7 +361,13 @@ CHAMPS À EXTRAIRE :
 - isSubjectToVAT : Assujettissement à la TVA (true/false)
   - Rechercher : "option pour la TVA", "assujetti à la TVA", "TVA applicable"
 - paymentFrequency : Fréquence de paiement ("monthly" | "quarterly" | "annual")
-  - Termes : "mensuel", "trimestriel", "à terme échu", "d'avance"
+  INDICES POUR LA FRÉQUENCE :
+  - "trimestriellement", "par trimestre", "chaque trimestre" → "quarterly"
+  - "mensuellement", "par mois", "chaque mois" → "monthly"
+  - "annuellement", "par an" → "annual"
+  - "terme à échoir", "d'avance" = paiement anticipé (ne change pas la fréquence)
+  - Si provision pour charges "appelée en même temps que le loyer" → indice de fréquence
+  - Par DÉFAUT pour les baux commerciaux français : "quarterly"
 
 4. PÉNALITÉS DE RETARD :
 - latePaymentPenaltyConditions : Conditions des pénalités
@@ -368,6 +387,8 @@ ATTENTION AUX CONFUSIONS :
 EXEMPLES :
 - "Loyer annuel : 120.000 € HT HC, payable trimestriellement d'avance, soit 30.000 € par trimestre"
   → annualRent: 120000, quarterlyRent: 30000, paymentFrequency: "quarterly"
+- "Loyer de 79000€ pour 2016, 82000€ pour 2017, 84000€ pour 2018"
+  → annualRent: 79000, paymentFrequency: "quarterly", rawText: "Loyer progressif: 79000€ (2016), 82000€ (2017), 84000€ (2018)"
 - "500 €/m²/an pour 200 m², soit 100.000 € annuels"
   → annualRent: 100000, rentPerSqm: 500
 
@@ -414,35 +435,41 @@ export const TAXES_PROMPT = `Extraire les informations sur les impôts et taxes.
 CHAMPS À EXTRAIRE :
 
 1. TAXE FONCIÈRE :
-- propertyTaxRebilled : Refacturation au preneur (true/false)
+- propertyTaxRebilled : Refacturation de la taxe foncière ET de la TEOM au preneur (true/false)
   - Termes : "taxe foncière à la charge du preneur", "refacturation"
-- propertyTaxAmount : Montant TOTAL annuel (si mentionné)
+- propertyTaxAmount : Montant TOTAL annuel de la taxe foncière (si mentionné)
 
-2. TAXE SUR LES BUREAUX (Île-de-France) :
-- officeTaxAmount : Montant TOTAL de la taxe bureaux
+2. TEOM (Taxe d'Enlèvement des Ordures Ménagères) :
+- teomAmount : Montant TOTAL annuel de la TEOM (si mentionné)
+  - Souvent incluse avec la taxe foncière mais peut être séparée
+  - Termes : "TEOM", "ordures ménagères", "enlèvement des ordures"
+
+3. TAXE SUR LES BUREAUX ET LOCAUX COMMERCIAUX (Île-de-France) :
+- officeTaxAmount : Montant TOTAL annuel de la taxe bureaux
   - Applicable en région parisienne selon les zones
+  - Termes : "taxe sur les bureaux", "taxe annuelle sur les locaux à usage de bureaux", "TSB"
 
 ATTENTION - MONTANTS PAR M² vs MONTANTS TOTAUX :
 - Si le document donne "40 €/m²" ou "17 euros HT par m2", ceci est un montant PAR M²
-- propertyTaxAmount et officeTaxAmount doivent contenir les montants TOTAUX
+- Les champs doivent contenir les montants TOTAUX annuels
 - Si seul le montant par m² est donné, retourner null avec confidence "medium" et mentionner le montant par m² dans rawText
 
 INDICES À RECHERCHER :
 - "taxe foncière", "contribution foncière"
-- "TEOM" (taxe d'enlèvement des ordures ménagères)
+- "TEOM", "taxe d'enlèvement des ordures ménagères"
 - "taxe sur les bureaux", "taxe annuelle sur les locaux à usage de bureaux"
 - "à la charge du preneur", "supportée par le locataire"
 - "€/m²", "euros hors taxes par m2" = montant par mètre carré
 
 EXEMPLES :
-- "La taxe foncière sera refacturée au preneur au prorata de la surface occupée"
+- "La taxe foncière et la TEOM seront refacturées au preneur"
   → propertyTaxRebilled: true
+- "Taxe foncière : 8.000 €/an, TEOM : 1.200 €/an"
+  → propertyTaxAmount: 8000, teomAmount: 1200
 - "Taxe bureaux IDF estimée à 5.000 €/an"
   → officeTaxAmount: 5000
 - "la taxe foncière se monte à environ 40 euros hors taxes par m2"
   → propertyTaxAmount: null, rawText: "40 €/m² (montant par m², total non calculé)"
-- "la taxe sur les bureaux se monte a environ 17.08 euros hors taxes par m2"
-  → officeTaxAmount: null, rawText: "17.08 €/m² (montant par m², total non calculé)"
 
 Format de sortie JSON conforme à TaxesData.`
 

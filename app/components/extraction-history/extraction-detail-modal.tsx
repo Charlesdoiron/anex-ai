@@ -248,6 +248,12 @@ function ExtractionContent({
               value={extractValue(extraction.parties?.landlord?.name) as string}
             />
             <FieldRow
+              label="SIREN"
+              value={
+                extractValue(extraction.parties?.landlord?.siren) as string
+              }
+            />
+            <FieldRow
               label="Adresse"
               value={
                 extractValue(extraction.parties?.landlord?.address) as string
@@ -279,6 +285,10 @@ function ExtractionContent({
             <FieldRow
               label="Nom"
               value={extractValue(extraction.parties?.tenant?.name) as string}
+            />
+            <FieldRow
+              label="SIREN"
+              value={extractValue(extraction.parties?.tenant?.siren) as string}
             />
             <FieldRow
               label="Adresse"
