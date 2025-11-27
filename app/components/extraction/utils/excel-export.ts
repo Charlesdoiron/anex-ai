@@ -1057,7 +1057,21 @@ export async function exportExtractionToExcel(
 ): Promise<void> {
   const workbook = await createWorkbook(extraction)
   const fileName = extraction.fileName?.replace(/\.pdf$/i, "") || "bail"
-  await workbook.xlsx.writeFile(`${fileName}-extraction.xlsx`)
+
+  // Use writeBuffer for browser compatibility (writeFile uses Node.js streams)
+  const buffer = await workbook.xlsx.writeBuffer()
+  const blob = new Blob([buffer], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  })
+
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement("a")
+  link.href = url
+  link.download = `${fileName}-extraction.xlsx`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
 }
 
 export async function exportExtractionToExcelBuffer(

@@ -16,6 +16,7 @@ import {
   clearActiveJob,
   type PersistedJob,
 } from "@/app/lib/jobs/job-persistence"
+import { useSession } from "@/app/lib/auth-client"
 
 type JobStatus = "pending" | "processing" | "completed" | "failed" | null
 
@@ -36,6 +37,7 @@ const POLL_INTERVAL_BASE_MS = 1500
 const POLL_INTERVAL_MAX_MS = 4000
 
 export function JobTrackerProvider({ children }: { children: ReactNode }) {
+  const { data: session } = useSession()
   const [activeJob, setActiveJob] = useState<PersistedJob | null>(null)
   const [jobStatus, setJobStatus] = useState<JobStatus>(null)
   const [progress, setProgress] = useState(0)
@@ -45,6 +47,7 @@ export function JobTrackerProvider({ children }: { children: ReactNode }) {
 
   const pollingRef = useRef<NodeJS.Timeout | null>(null)
   const pollCountRef = useRef(0)
+  const previousSessionRef = useRef<typeof session>(undefined)
 
   const stopPolling = useCallback(() => {
     if (pollingRef.current) {
@@ -148,6 +151,18 @@ export function JobTrackerProvider({ children }: { children: ReactNode }) {
 
     return () => stopPolling()
   }, [pollJob, stopPolling])
+
+  // Clear job on sign out
+  useEffect(() => {
+    const wasAuthenticated = previousSessionRef.current !== undefined
+    const isNowUnauthenticated = !session
+
+    if (wasAuthenticated && isNowUnauthenticated) {
+      clearJob()
+    }
+
+    previousSessionRef.current = session
+  }, [session, clearJob])
 
   return (
     <JobTrackerContext.Provider
