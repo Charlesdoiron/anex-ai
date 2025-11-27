@@ -13,10 +13,22 @@ export function EnvChecker() {
     async function checkEnv() {
       try {
         const response = await fetch("/api/check-env")
+
+        // Check if response is ok and is JSON
+        if (!response.ok) {
+          return // Silently fail if API is not accessible
+        }
+
+        const contentType = response.headers.get("content-type")
+        if (!contentType || !contentType.includes("application/json")) {
+          return // Silently fail if response is not JSON (might be HTML redirect)
+        }
+
         const data = await response.json()
         setStatus(data)
       } catch (error) {
-        console.error("Failed to check environment variables:", error)
+        // Silently fail - don't show errors in console for expected failures
+        // (e.g., when API is not accessible on login page)
       }
     }
 

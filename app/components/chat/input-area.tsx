@@ -175,7 +175,7 @@ export function InputArea({
           )}
         </form>
         <div className="mt-3 text-xs text-gray-500 dark:text-gray-400 text-center">
-          Anexa AI can make mistakes. Check important info.
+          Axena AI can make mistakes. Check important info.
         </div>
       </div>
     </div>

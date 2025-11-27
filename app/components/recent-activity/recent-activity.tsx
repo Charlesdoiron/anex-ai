@@ -272,16 +272,6 @@ export default function RecentActivity({
             })}
           </div>
         )}
-
-        <div className="px-5 py-3 border-t border-gray-100">
-          <Link
-            href={`/agent/${agentSlug}/extraction-baux-commerciaux`}
-            className="flex items-center justify-center gap-2 w-full py-2 text-xs font-medium text-brand-green bg-brand-green/5 rounded-md hover:bg-brand-green/10 transition-colors"
-          >
-            <FileText size={14} />
-            <span>Nouvelle extraction</span>
-          </Link>
-        </div>
       </div>
 
       {selectedExtraction && (

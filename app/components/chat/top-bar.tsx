@@ -2,6 +2,7 @@
 
 import { UserMenu } from "../user-menu"
 import { Menu, FileText, Database } from "lucide-react"
+import Link from "next/link"
 
 interface TopBarProps {
   onToggleSidebar: () => void
@@ -37,9 +38,14 @@ export function TopBar({
         >
           <Menu size={20} className="text-gray-700 dark:text-gray-300" />
         </button>
-        <span className="font-semibold text-gray-900 dark:text-gray-100 text-sm sm:text-base">
-          Anex AI
-        </span>
+        <Link href="/" className="flex items-center gap-2">
+          <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center">
+            <span className="text-white font-bold text-sm">A</span>
+          </div>
+          <span className="font-semibold text-gray-900 dark:text-gray-100 text-sm sm:text-base">
+            Anex AI
+          </span>
+        </Link>
         {activeDocument && (
           <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-blue-100 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-700 rounded-lg max-w-[200px] md:max-w-xs">
             <FileText

@@ -8,8 +8,11 @@ export async function middleware(request: NextRequest) {
   const publicRoutes = ["/login", "/signup"]
   const isPublicRoute = publicRoutes.some((route) => pathname.startsWith(route))
 
-  // API routes for auth should always be accessible
-  if (pathname.startsWith("/api/auth")) {
+  // API routes for auth and check-env should always be accessible
+  if (
+    pathname.startsWith("/api/auth") ||
+    pathname.startsWith("/api/check-env")
+  ) {
     return NextResponse.next()
   }
 
@@ -17,16 +20,16 @@ export async function middleware(request: NextRequest) {
   const sessionToken = request.cookies.get("better-auth.session_token")
 
   // If accessing a protected route without a session, redirect to login
-  //   if (!isPublicRoute && !sessionToken) {
-  //     const url = new URL("/login", request.url)
-  //     url.searchParams.set("callbackUrl", pathname)
-  //     return NextResponse.redirect(url)
-  //   }
+  if (!isPublicRoute && !sessionToken) {
+    const url = new URL("/login", request.url)
+    url.searchParams.set("callbackUrl", pathname)
+    return NextResponse.redirect(url)
+  }
 
-  //   // If accessing auth pages with a valid session, redirect to home
-  //   if (isPublicRoute && sessionToken) {
-  //     return NextResponse.redirect(new URL("/", request.url))
-  //   }
+  // If accessing auth pages with a valid session, redirect to home
+  if (isPublicRoute && sessionToken) {
+    return NextResponse.redirect(new URL("/", request.url))
+  }
 
   return NextResponse.next()
 }
