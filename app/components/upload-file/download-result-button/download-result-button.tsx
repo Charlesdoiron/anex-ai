@@ -4,7 +4,7 @@ import { useState } from "react"
 import { Download, CheckCircle2, Eye } from "lucide-react"
 import type { LeaseExtractionResult } from "@/app/lib/extraction/types"
 import { exportExtractionToExcel } from "@/app/components/extraction/utils/excel-export"
-import { ExtractionModal } from "@/app/components/extraction/extraction-modal"
+import ExtractionDetailModal from "@/app/components/extraction-history/extraction-detail-modal"
 
 interface DownloadResultButtonProps {
   extraction: LeaseExtractionResult | null
@@ -19,7 +19,7 @@ export default function DownloadResultButton({
 }: DownloadResultButtonProps) {
   const [showModal, setShowModal] = useState(false)
 
-  function handleDownload() {
+  async function handleDownload() {
     if (!extraction) {
       console.error("No extraction result available")
       return
@@ -32,7 +32,7 @@ export default function DownloadResultButton({
     }
 
     try {
-      exportExtractionToExcel(extraction)
+      await exportExtractionToExcel(extraction)
     } catch (error) {
       console.error("Error exporting to Excel:", error)
       alert("Erreur lors de l'export Excel. Veuillez réessayer.")
@@ -90,13 +90,12 @@ export default function DownloadResultButton({
         </div>
       </div>
 
-      {/* Extraction Modal - opens directly on data view */}
-      <ExtractionModal
-        open={showModal}
-        onClose={() => setShowModal(false)}
-        extraction={extraction}
-        initialView="extraction"
-      />
+      {showModal && (
+        <ExtractionDetailModal
+          extraction={extraction}
+          onClose={() => setShowModal(false)}
+        />
+      )}
     </>
   )
 }

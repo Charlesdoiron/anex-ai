@@ -78,7 +78,7 @@ export default function RecentActivity({
         const json = await response.json()
         const extraction = json.extraction || json.data
         if (extraction) {
-          exportExtractionToExcel(extraction)
+          await exportExtractionToExcel(extraction)
         }
       }
     } catch (error) {

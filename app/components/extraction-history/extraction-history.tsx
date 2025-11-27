@@ -182,9 +182,9 @@ const ExtractionHistory = forwardRef<
         const extraction = json.extraction || json.data
         if (extraction) {
           if (isRentCalculationResult(extraction)) {
-            exportRentCalculationToExcel(extraction)
+            await exportRentCalculationToExcel(extraction)
           } else {
-            exportExtractionToExcel(extraction)
+            await exportExtractionToExcel(extraction)
           }
         }
       }

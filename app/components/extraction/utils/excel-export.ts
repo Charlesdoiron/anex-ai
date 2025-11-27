@@ -1,4 +1,4 @@
-import * as XLSX from "xlsx"
+import ExcelJS from "exceljs"
 import type {
   LeaseExtractionResult,
   ExtractedValue,
@@ -955,41 +955,115 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
   return rows
 }
 
-function createWorkbook(extraction: LeaseExtractionResult): XLSX.WorkBook {
-  const workbook = XLSX.utils.book_new()
+async function createWorkbook(
+  extraction: LeaseExtractionResult
+): Promise<ExcelJS.Workbook> {
+  const workbook = new ExcelJS.Workbook()
+  const worksheet = workbook.addWorksheet("Template livrable audit bail")
+
   const data = buildExportData(extraction)
 
-  const worksheet = XLSX.utils.aoa_to_sheet(data)
-
   // Set column widths to match template
-  worksheet["!cols"] = [
-    { wch: 65 }, // A: Thèmes
-    { wch: 35 }, // B: Bail value
-    { wch: 25 }, // C: Sub-value
-    { wch: 35 }, // D: Sub-value
-    { wch: 30 }, // E: Sub-value
-    { wch: 20 }, // F: Avenant
+  worksheet.columns = [
+    { width: 65 }, // A: Thèmes
+    { width: 35 }, // B: Bail value
+    { width: 25 }, // C: Sub-value
+    { width: 35 }, // D: Sub-value
+    { width: 30 }, // E: Sub-value
+    { width: 20 }, // F: Avenant
   ]
 
-  XLSX.utils.book_append_sheet(
-    workbook,
-    worksheet,
-    "Template livrable audit bail"
-  )
+  // Define border style
+  const thinBorder: Partial<ExcelJS.Border> = {
+    style: "thin",
+    color: { argb: "FF000000" },
+  }
+
+  const allBorders: Partial<ExcelJS.Borders> = {
+    top: thinBorder,
+    left: thinBorder,
+    bottom: thinBorder,
+    right: thinBorder,
+  }
+
+  // Apply data and formatting row by row
+  data.forEach((row, rowIndex) => {
+    const excelRow = worksheet.getRow(rowIndex + 1)
+    const firstCellValue = String(row[0] ?? "")
+    const isHeaderRow = rowIndex === 0
+    const isSectionHeader = /^\d+\.\s/.test(firstCellValue)
+
+    // Set row-level properties
+    if (isHeaderRow) {
+      excelRow.height = 20
+      excelRow.font = { bold: true, size: 11 }
+      excelRow.alignment = {
+        vertical: "middle",
+        horizontal: "center",
+        wrapText: true,
+      }
+      excelRow.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FFE7E6E6" },
+      }
+    } else if (isSectionHeader) {
+      excelRow.height = 20
+      excelRow.font = { bold: true, size: 11 }
+      excelRow.alignment = {
+        vertical: "middle",
+        horizontal: "left",
+        wrapText: true,
+      }
+      excelRow.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FFF2F2F2" },
+      }
+    } else {
+      excelRow.height = 18
+      excelRow.alignment = {
+        vertical: "top",
+        horizontal: "left",
+        wrapText: true,
+      }
+    }
+
+    // Apply cell values and borders
+    row.forEach((cellValue, colIndex) => {
+      const cell = excelRow.getCell(colIndex + 1)
+      cell.value = cellValue ?? ""
+      cell.border = allBorders
+
+      // Override alignment for header row cells (center)
+      if (isHeaderRow) {
+        cell.alignment = {
+          vertical: "middle",
+          horizontal: "center",
+          wrapText: true,
+        }
+      }
+    })
+  })
+
+  // Freeze header row
+  worksheet.views = [{ state: "frozen", ySplit: 1 }]
+
   return workbook
 }
 
-export function exportExtractionToExcel(
+export async function exportExtractionToExcel(
   extraction: LeaseExtractionResult
-): void {
-  const workbook = createWorkbook(extraction)
+): Promise<void> {
+  const workbook = await createWorkbook(extraction)
   const fileName = extraction.fileName?.replace(/\.pdf$/i, "") || "bail"
-  XLSX.writeFile(workbook, `${fileName}-extraction.xlsx`)
+  await workbook.xlsx.writeFile(`${fileName}-extraction.xlsx`)
 }
 
-export function exportExtractionToExcelBuffer(
+export async function exportExtractionToExcelBuffer(
   extraction: LeaseExtractionResult
-): Buffer {
-  const workbook = createWorkbook(extraction)
-  return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer
+): Promise<Buffer> {
+  const workbook = await createWorkbook(extraction)
+  const buffer = await workbook.xlsx.writeBuffer()
+  return Buffer.from(buffer)
 }

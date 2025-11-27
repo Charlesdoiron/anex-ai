@@ -26,10 +26,8 @@ import { RagStatusFeed } from "./chat/rag-status-feed"
 import type { LeaseExtractionResult } from "@/app/lib/extraction/types"
 import { exportExtractionToExcel } from "./extraction/utils/excel-export"
 
-const ExtractionModal = lazy(() =>
-  import("./extraction/extraction-modal").then((mod) => ({
-    default: mod.ExtractionModal,
-  }))
+const ExtractionDetailModal = lazy(
+  () => import("./extraction-history/extraction-detail-modal")
 )
 
 export function Chat() {
@@ -215,9 +213,9 @@ export function Chat() {
     await exportAllToPDF(messages as MessageWithSources[])
   }, [messages])
 
-  const handleExportExcel = useCallback(() => {
+  const handleExportExcel = useCallback(async () => {
     if (!extraction) return
-    exportExtractionToExcel(extraction)
+    await exportExtractionToExcel(extraction)
   }, [extraction])
 
   const hasAssistantMessages = messages.some(
@@ -278,14 +276,11 @@ export function Chat() {
           showExtractionPanel={showExtractionPanel}
         />
 
-        {activeDocument && showExtractionPanel && (
+        {activeDocument && showExtractionPanel && extraction && (
           <Suspense fallback={null}>
-            <ExtractionModal
-              open={true}
-              onClose={() => setShowExtractionPanel(false)}
+            <ExtractionDetailModal
               extraction={extraction}
-              isLoading={isLoadingExtraction}
-              error={extractionError}
+              onClose={() => setShowExtractionPanel(false)}
             />
           </Suspense>
         )}

@@ -34,7 +34,7 @@ async function main() {
   const result = await service.extractFromPdf(buffer, fileName)
 
   // Export to Excel buffer
-  const excelBuffer = exportExtractionToExcelBuffer(result)
+  const excelBuffer = await exportExtractionToExcelBuffer(result)
 
   // Save Excel file
   const outputPath = path.join(

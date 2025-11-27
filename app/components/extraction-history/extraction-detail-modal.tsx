@@ -59,10 +59,10 @@ export default function ExtractionDetailModal({
 
   if (!extraction) return null
 
-  function handleDownload() {
+  async function handleDownload() {
     if (!extraction) return
     try {
-      exportExtractionToExcel(extraction)
+      await exportExtractionToExcel(extraction)
     } catch (error) {
       console.error("Error exporting to Excel:", error)
     }
