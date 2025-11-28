@@ -9,6 +9,13 @@ export interface ToolCallOutput {
   output: string
 }
 
+export interface ToolCall {
+  type?: "function_call"
+  call_id: string
+  name: string
+  arguments?: string
+}
+
 export interface ToolCallResult {
   outputItem: ToolCallOutput
   sources?: SourceInfo[]
@@ -20,7 +27,7 @@ export interface ToolHandlerContext {
 }
 
 type ToolHandler = (
-  toolCall: any,
+  toolCall: ToolCall,
   context: ToolHandlerContext
 ) => Promise<ToolCallResult>
 
@@ -30,7 +37,7 @@ const handlers: Record<string, ToolHandler> = {
 }
 
 export async function handleToolCallWithRegistry(
-  toolCall: any,
+  toolCall: ToolCall,
   context: ToolHandlerContext
 ): Promise<ToolCallResult> {
   const handler = handlers[toolCall.name]
@@ -49,7 +56,7 @@ export async function handleToolCallWithRegistry(
 }
 
 async function handleRetrieveChunks(
-  toolCall: any,
+  toolCall: ToolCall,
   context: ToolHandlerContext
 ): Promise<ToolCallResult> {
   const { documentId, emitStatus } = context
@@ -155,7 +162,7 @@ async function handleRetrieveChunks(
 }
 
 async function handleComputeLeaseRentSchedule(
-  toolCall: any
+  toolCall: ToolCall
 ): Promise<ToolCallResult> {
   try {
     const args = JSON.parse(toolCall.arguments || "{}")

@@ -27,7 +27,49 @@ export interface CreateJobInput {
   toolType?: toolType
 }
 
+export interface DuplicateCheckResult {
+  isDuplicate: boolean
+  existingJobId?: string
+  message?: string
+}
+
 class ExtractionJobService {
+  /**
+   * Check if a similar job is already in progress for this user.
+   * Prevents accidental duplicate submissions (same file within 2 minutes).
+   */
+  async checkForDuplicate(
+    fileName: string,
+    fileSize: number,
+    userId?: string,
+    jobToolType?: toolType
+  ): Promise<DuplicateCheckResult> {
+    const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000)
+
+    const existingJob = await prisma.extractionJob.findFirst({
+      where: {
+        fileName,
+        fileSize,
+        userId: userId ?? null,
+        toolType: jobToolType ?? "extraction-lease",
+        status: { in: ["pending", "processing"] },
+        createdAt: { gte: twoMinutesAgo },
+      },
+      select: { id: true, status: true, createdAt: true },
+      orderBy: { createdAt: "desc" },
+    })
+
+    if (existingJob) {
+      return {
+        isDuplicate: true,
+        existingJobId: existingJob.id,
+        message: `Un job identique est déjà en cours (${existingJob.status})`,
+      }
+    }
+
+    return { isDuplicate: false }
+  }
+
   async createJob(input: CreateJobInput): Promise<string> {
     const toolType = input.toolType ?? "extraction-lease"
 

@@ -26,3 +26,4 @@ export function clearActiveJob(): void {
   if (typeof window === "undefined") return
   localStorage.removeItem(ACTIVE_JOB_KEY)
 }
+

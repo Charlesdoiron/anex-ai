@@ -1,9 +1,7 @@
-import OpenAI from "openai"
 import { RAG_CONFIG } from "../config"
+import { getOpenAIClient } from "@/app/lib/openai/client"
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+const openai = getOpenAIClient()
 
 export async function labelChunk(
   chunkText: string

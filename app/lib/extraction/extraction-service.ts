@@ -3,7 +3,7 @@
  * Handles structured extraction with retries and progress tracking
  */
 
-import OpenAI from "openai"
+import type { Response } from "openai/resources/responses/responses"
 import { extractPdfText } from "./pdf-extractor"
 import {
   SYSTEM_INSTRUCTIONS,
@@ -15,14 +15,14 @@ import type {
   ExtractionProgress,
   ExtractionStatus,
   ExtractionStageDurations,
+  ConfidenceLevel,
 } from "./types"
 import { postProcessExtraction } from "./post-process"
 import { computeRentScheduleFromExtraction } from "../lease/from-extraction"
 import { documentIngestionService } from "../rag/ingestion/document-ingestion-service"
+import { getOpenAIClient } from "@/app/lib/openai/client"
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+const openai = getOpenAIClient()
 
 const MAX_RETRIES = 3
 const EXTRACTION_MODEL =
@@ -36,14 +36,24 @@ const SECTIONS_PER_CALL = Math.max(
   Number(process.env.EXTRACTION_SECTIONS_PER_CALL || "4")
 )
 
+const CONFIDENCE_VALUES: ConfidenceLevel[] = [
+  "high",
+  "medium",
+  "low",
+  "missing",
+]
+
+type SectionExtractionValue = unknown
+type SectionExtractionMap = Record<string, SectionExtractionValue>
+
 interface BatchExtractionResult {
-  data?: Record<string, any>
+  data?: SectionExtractionMap
   retries: number
   error?: Error
 }
 
 interface SectionExtractionResult {
-  data?: any
+  data?: SectionExtractionValue
   retries: number
   error?: Error
 }
@@ -140,7 +150,7 @@ export class ExtractionService {
             return
           }
 
-          const sectionResults: Record<string, any> = {}
+          const sectionResults: SectionExtractionMap = {}
           const sectionErrors: Record<string, string | undefined> = {}
 
           for (const { section } of promptGroup) {
@@ -208,10 +218,13 @@ export class ExtractionService {
 
           for (const prompt of promptGroup) {
             const sectionKey = prompt.section as keyof LeaseExtractionResult
-            result[sectionKey] =
-              sectionResults[prompt.section] ??
+            const sectionValue =
+              (sectionResults[prompt.section] as
+                | LeaseExtractionResult[typeof sectionKey]
+                | undefined) ??
               result[sectionKey] ??
-              this.getDefaultSectionData(prompt.section)
+              (this.getDefaultSectionData(prompt.section) as LeaseExtractionResult[typeof sectionKey])
+            result[sectionKey] = sectionValue
 
             completedSections++
             const progressPercent = this.computeSectionProgress(
@@ -389,7 +402,7 @@ export class ExtractionService {
   private async extractSectionsBatch(
     documentText: string,
     prompts: ExtractionPrompt[]
-  ): Promise<Record<string, any>> {
+  ): Promise<SectionExtractionMap> {
     const sectionNames = prompts.map((prompt) => prompt.section)
     const sectionsPrompt = prompts
       .map(
@@ -435,15 +448,14 @@ export class ExtractionService {
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       throw new Error("Batch response is not a JSON object")
     }
-
-    return parsed as Record<string, any>
+    return parsed as SectionExtractionMap
   }
 
   private async extractSection(
     documentText: string,
     section: string,
     prompt: string
-  ): Promise<any> {
+  ): Promise<SectionExtractionValue> {
     const response = await openai.responses.create({
       model: EXTRACTION_MODEL,
       instructions: SYSTEM_INSTRUCTIONS,
@@ -477,8 +489,8 @@ export class ExtractionService {
     }
   }
 
-  private collectResponseText(response: any): string {
-    if (!response?.output) {
+  private collectResponseText(response: Response): string {
+    if (!response.output) {
       return ""
     }
 
@@ -506,7 +518,7 @@ export class ExtractionService {
     return text.slice(0, maxLength) + "\n\n[... document truncated ...]"
   }
 
-  private getDefaultSectionData(section: string): any {
+  private getDefaultSectionData(section: string): unknown {
     const missingValue = {
       value: null,
       confidence: "missing" as const,
@@ -696,34 +708,37 @@ export class ExtractionService {
     let lowConfidenceFields = 0
     let confidenceSum = 0
 
-    const countFields = (obj: any) => {
-      for (const key in obj) {
-        if (obj[key] && typeof obj[key] === "object") {
-          if ("confidence" in obj[key]) {
-            totalFields++
-            const conf = obj[key].confidence
+    const countFields = (node: unknown) => {
+      if (!node || typeof node !== "object") {
+        return
+      }
 
-            if (conf === "missing") {
-              missingFields++
-            } else {
-              extractedFields++
-              if (conf === "low") {
-                lowConfidenceFields++
-              }
-            }
+      const entries = Object.values(node as Record<string, unknown>)
+      for (const value of entries) {
+        if (isConfidenceField(value)) {
+          totalFields++
+          const conf = value.confidence
 
-            const confValue =
-              conf === "high"
-                ? 1
-                : conf === "medium"
-                  ? 0.7
-                  : conf === "low"
-                    ? 0.4
-                    : 0
-            confidenceSum += confValue
+          if (conf === "missing") {
+            missingFields++
           } else {
-            countFields(obj[key])
+            extractedFields++
+            if (conf === "low") {
+              lowConfidenceFields++
+            }
           }
+
+          const confValue =
+            conf === "high"
+              ? 1
+              : conf === "medium"
+                ? 0.7
+                : conf === "low"
+                  ? 0.4
+                  : 0
+          confidenceSum += confValue
+        } else {
+          countFields(value)
         }
       }
     }
@@ -789,6 +804,19 @@ export class ExtractionService {
       console.error("RAG ingestion failed:", error)
     }
   }
+}
+
+function isConfidenceField(
+  value: unknown
+): value is { confidence: ConfidenceLevel } & Record<string, unknown> {
+  if (!value || typeof value !== "object") {
+    return false
+  }
+  const confidence = (value as { confidence?: unknown }).confidence
+  return (
+    typeof confidence === "string" &&
+    CONFIDENCE_VALUES.includes(confidence as ConfidenceLevel)
+  )
 }
 
 async function processWithConcurrency<T>(
