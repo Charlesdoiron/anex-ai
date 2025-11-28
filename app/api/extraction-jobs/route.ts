@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/app/lib/auth"
 import { extractionJobService } from "@/app/lib/jobs/extraction-job-service"
+import { rateLimiter, EXTRACTION_JOB_LIMITS } from "@/app/lib/rate-limit"
 import type { toolType } from "@/app/static-data/agent"
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB
@@ -24,6 +25,28 @@ export async function POST(request: NextRequest) {
       }
 
       userId = session.user.id
+    }
+
+    const forwardedFor = request.headers
+      .get("x-forwarded-for")
+      ?.split(",")[0]
+      ?.trim()
+    const rateLimitKey = userId ?? forwardedFor ?? "anonymous"
+    const rateLimitResult = rateLimiter.check(
+      rateLimitKey,
+      EXTRACTION_JOB_LIMITS
+    )
+
+    if (!rateLimitResult.allowed) {
+      const retryAfter = String(rateLimitResult.resetInSeconds ?? 60)
+      return NextResponse.json(
+        {
+          error: "Rate limit exceeded",
+          message: rateLimitResult.reason,
+          resetInSeconds: rateLimitResult.resetInSeconds,
+        },
+        { status: 429, headers: { "Retry-After": retryAfter } }
+      )
     }
 
     const formData = await request.formData()
@@ -61,6 +84,26 @@ export async function POST(request: NextRequest) {
       toolTypeParam && VALID_TOOL_TYPES.includes(toolTypeParam as toolType)
         ? (toolTypeParam as toolType)
         : "extraction-lease"
+
+    const duplicateCheck = await extractionJobService.checkForDuplicate(
+      file.name,
+      file.size,
+      userId,
+      toolType
+    )
+
+    if (duplicateCheck.isDuplicate) {
+      return NextResponse.json(
+        {
+          error: "Duplicate job",
+          message:
+            duplicateCheck.message ||
+            "Un job identique est déjà en cours de traitement",
+          existingJobId: duplicateCheck.existingJobId,
+        },
+        { status: 409 }
+      )
+    }
 
     const buffer = Buffer.from(await file.arrayBuffer())
 
