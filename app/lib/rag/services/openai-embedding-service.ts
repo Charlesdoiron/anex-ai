@@ -1,15 +1,14 @@
-import OpenAI from "openai"
+import type OpenAI from "openai"
 import { EmbeddingService } from "./embedding-service"
 import { RAG_CONFIG } from "../config"
+import { getOpenAIClient } from "@/app/lib/openai/client"
 
 export class OpenAIEmbeddingService implements EmbeddingService {
   private openai: OpenAI
   private model: string
 
   constructor() {
-    this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    })
+    this.openai = getOpenAIClient()
     this.model = RAG_CONFIG.embeddingModel
   }
 

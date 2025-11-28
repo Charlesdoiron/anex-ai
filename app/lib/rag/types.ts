@@ -1,11 +1,23 @@
+export type JsonPrimitive = string | number | boolean | null
+export type JsonValue = JsonPrimitive | JsonObject | JsonArray
+export type JsonArray = JsonValue[]
+export interface JsonObject {
+  [key: string]: JsonValue
+}
+
 export interface Document {
   id: string
   fileName: string
   fileSize?: number
   pageCount: number
-  createdAt: string // ISO string for JSON serialization
+  createdAt: string
   updatedAt: string
-  metadata?: Record<string, any>
+  metadata?: JsonObject
+}
+
+export interface ChunkMetadata extends JsonObject {
+  summary?: string
+  label?: string
 }
 
 export interface Chunk {
@@ -13,11 +25,7 @@ export interface Chunk {
   documentId: string
   text: string
   pageNumber: number
-  metadata?: {
-    summary?: string
-    label?: string
-    [key: string]: any
-  }
+  metadata?: ChunkMetadata
   embedding?: number[]
 }
 

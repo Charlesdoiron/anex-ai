@@ -4,12 +4,12 @@
  * Local: pdf-parse with Tesseract/Vision fallback
  */
 
-import OpenAI from "openai"
 import { createRequire } from "module"
 import { OCR_CONFIG } from "./ocr/config"
 import { TesseractEngine } from "./ocr/tesseract-engine"
 import { TesseractJsEngine } from "./ocr/tesseract-js-engine"
 import { MistralOcrEngine } from "./ocr/mistral-engine"
+import { getOptionalOpenAIClient } from "@/app/lib/openai/client"
 
 interface PdfMetadataInfo {
   Title?: string
@@ -50,8 +50,7 @@ const require = createRequire(import.meta.url)
 const PAGE_DELIMITER = "\n___PAGE_BREAK___\n"
 const VISION_OCR_ENABLED = process.env.PDF_ENABLE_VISION_OCR !== "false"
 
-const openAiApiKey = process.env.OPENAI_API_KEY
-const visionClient = openAiApiKey ? new OpenAI({ apiKey: openAiApiKey }) : null
+const visionClient = getOptionalOpenAIClient()
 
 export async function extractPdfText(
   buffer: Buffer,

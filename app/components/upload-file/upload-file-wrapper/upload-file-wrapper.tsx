@@ -23,6 +23,7 @@ export default function UploadFileWrapper({
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const {
     isProcessing,
+    isSubmitting,
     processingStatus,
     extractionResult,
     error,
@@ -106,6 +107,7 @@ export default function UploadFileWrapper({
         onAction={selectedFile ? handleExtractionClick : undefined}
         label={label}
         toolType={toolType}
+        isSubmitting={isSubmitting}
       />
     )
   }
@@ -118,6 +120,7 @@ export default function UploadFileWrapper({
       onAction={selectedFile ? handleExtractionClick : undefined}
       actionLabel={label}
       toolType={toolType}
+      isSubmitting={isSubmitting}
     />
   )
 }

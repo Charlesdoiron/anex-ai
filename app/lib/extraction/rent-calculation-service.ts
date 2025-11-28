@@ -3,7 +3,6 @@
  * Only extracts the minimum required fields for INSEE-indexed rent schedule
  */
 
-import OpenAI from "openai"
 import { extractPdfText } from "./pdf-extractor"
 import {
   RENT_CALCULATION_SYSTEM_INSTRUCTIONS,
@@ -19,10 +18,9 @@ import type {
   ComputeLeaseRentScheduleResult,
   ComputeLeaseRentScheduleInput,
 } from "../lease/types"
+import { getOpenAIClient } from "@/app/lib/openai/client"
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+const openai = getOpenAIClient()
 
 const EXTRACTION_MODEL =
   process.env.OPENAI_EXTRACTION_MODEL?.trim() || "gpt-5-mini"

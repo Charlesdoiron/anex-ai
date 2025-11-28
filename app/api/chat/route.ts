@@ -1,14 +1,24 @@
 import { randomUUID } from "crypto"
+import type OpenAI from "openai"
+import type {
+  ResponseCreateParamsStreaming,
+  ResponseStreamEvent,
+} from "openai/resources/responses/responses"
 import { NextRequest } from "next/server"
-import OpenAI from "openai"
-import { auth } from "@/app/lib/auth"
-import { getTools, ToolName } from "@/app/lib/ai/tools/definitions"
-import { handleToolCallWithRegistry } from "@/app/lib/ai/tools/handlers"
-import { RAG_CONFIG } from "@/app/lib/rag/config"
+import { z } from "zod"
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+import { auth } from "@/app/lib/auth"
+import { getTools, type ToolName } from "@/app/lib/ai/tools/definitions"
+import {
+  handleToolCallWithRegistry,
+  type ToolCall,
+  type ToolCallOutput,
+} from "@/app/lib/ai/tools/handlers"
+import { RAG_CONFIG } from "@/app/lib/rag/config"
+import {
+  getOpenAIClient,
+  MissingOpenAIKeyError,
+} from "@/app/lib/openai/client"
 
 const GENERAL_SYSTEM_PROMPT =
   "Tu es Anex AI, assistant juridique spécialisé dans l'analyse de baux commerciaux. Tu aides les professionnels de l'immobilier en France à comprendre et analyser leurs contrats de bail. Tu réponds uniquement en français et tu cites toujours tes sources avec précision."
@@ -16,81 +26,118 @@ const GENERAL_SYSTEM_PROMPT =
 const EXTRACTION_SYSTEM_PROMPT =
   "Tu es Anex AI, assistant d'extraction. Transforme les derniers messages en synthèse structurée (sections numérotées, tableaux ou listes). Rappelle les points manquants et reste factuel."
 
+const MessagePartSchema = z.union([
+  z.string(),
+  z
+    .object({
+      text: z.string().optional(),
+      content: z.string().optional(),
+    })
+    .passthrough(),
+])
+
+const RawMessageSchema = z
+  .object({
+    role: z.enum(["user", "assistant", "system"]),
+    content: z
+      .union([
+        z.string(),
+        z.array(MessagePartSchema),
+        z.record(z.unknown()),
+      ])
+      .optional(),
+    parts: z.array(MessagePartSchema).optional(),
+  })
+  .passthrough()
+
+const optionalTrimmedString = () =>
+  z
+    .string()
+    .trim()
+    .transform((value) => (value.length ? value : undefined))
+    .optional()
+
+const ChatRequestSchema = z.object({
+  messages: z.array(RawMessageSchema).min(1, "messages must include entries"),
+  extractData: z.boolean().optional().default(false),
+  data: z
+    .object({
+      documentId: optionalTrimmedString(),
+      fileName: optionalTrimmedString(),
+    })
+    .optional(),
+})
+
+type RawMessage = z.infer<typeof RawMessageSchema>
+type MessagePart = z.infer<typeof MessagePartSchema>
+type AssistantRole = "user" | "assistant" | "system"
+
+interface NormalizedMessage {
+  role: AssistantRole
+  content: string
+}
+
+type ConversationItem =
+  | NormalizedMessage
+  | ToolCallOutput
+  | Record<string, unknown>
+
+interface HandleConversationArgs {
+  openai: OpenAI
+  conversationItems: ConversationItem[]
+  instructions: string
+  tools?: ReturnType<typeof getTools>
+  modelName: string
+  extractData: boolean
+  documentId?: string
+  controller: ReadableStreamDefaultController
+  encoder: TextEncoder
+}
+
+type OutputItem = {
+  type?: string
+  [key: string]: unknown
+}
+
 export async function POST(req: NextRequest) {
-  if (!process.env.OPENAI_API_KEY) {
-    return new Response(
-      JSON.stringify({ error: "OPENAI_API_KEY is not configured." }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
-    )
+  let openai: OpenAI
+  try {
+    openai = getOpenAIClient()
+  } catch (error) {
+    if (error instanceof MissingOpenAIKeyError) {
+      return new Response(
+        JSON.stringify({ error: "OPENAI_API_KEY is not configured." }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      )
+    }
+    throw error
   }
 
   await auth.api.getSession({ headers: req.headers }).catch(() => null)
 
-  const body = await req.json()
-  const { messages, extractData, data } = body
-  const documentId: string | undefined = data?.documentId
-  const documentName: string | undefined = data?.fileName
-
-  if (!Array.isArray(messages)) {
+  const parsedBody = ChatRequestSchema.safeParse(await req.json())
+  if (!parsedBody.success) {
     return new Response(
-      JSON.stringify({ error: "messages must be an array." }),
+      JSON.stringify({
+        error: "Invalid request body",
+        message: parsedBody.error.errors
+          .map((issue) => issue.message)
+          .join("; "),
+      }),
       { status: 400, headers: { "Content-Type": "application/json" } }
     )
   }
 
-  const normalizedMessages = messages.map((msg: any) => {
-    // Vercel AI SDK shape: { role, parts: [{ text }] }
-    if (Array.isArray(msg.parts)) {
-      const partsText = msg.parts
-        .map((part: any) => {
-          if (typeof part === "string") {
-            return part
-          }
-          if (part?.text) {
-            return part.text
-          }
-          if (part?.content) {
-            return part.content
-          }
-          return ""
-        })
-        .join(" ")
-      return {
-        role: msg.role,
-        content: partsText,
-      }
-    }
+  const { messages: rawMessages, extractData, data } = parsedBody.data
+  const documentId = data?.documentId
+  const documentName = data?.fileName
 
-    if (typeof msg.content === "string") {
-      return msg
-    }
-
-    if (Array.isArray(msg.content)) {
-      const textParts = msg.content
-        .map((part: any) => {
-          if (typeof part === "string") {
-            return part
-          }
-          if (part?.text) {
-            return part.text
-          }
-          if (part?.content) {
-            return part.content
-          }
-          return ""
-        })
-        .join(" ")
-      return { role: msg.role, content: textParts }
-    }
-
-    return { role: msg.role, content: String(msg.content ?? "") }
-  })
+  const normalizedMessages = normalizeMessages(rawMessages)
 
   const lastUserMessage = [...normalizedMessages]
     .reverse()
     .find((msg) => msg.role === "user")
-  const userQuestion =
-    typeof lastUserMessage?.content === "string" ? lastUserMessage.content : ""
+  const userQuestion = lastUserMessage?.content ?? ""
 
   const shouldUseRag = Boolean(documentId && userQuestion.trim())
   const modelName = shouldUseRag ? RAG_CONFIG.responsesModel : "gpt-5-mini"
@@ -126,10 +173,8 @@ export async function POST(req: NextRequest) {
       async start(controller) {
         try {
           await handleConversation({
-            conversationItems: normalizedMessages.map((msg) => ({
-              role: msg.role,
-              content: msg.content,
-            })),
+            openai,
+            conversationItems: [...normalizedMessages],
             instructions,
             tools,
             modelName,
@@ -165,30 +210,69 @@ export async function POST(req: NextRequest) {
   }
 }
 
-type ConversationItem =
-  | {
-      role: "user" | "assistant" | "system"
-      content: string
-    }
-  | {
-      type: "function_call_output"
-      call_id: string
-      output: string
-    }
-  | {
-      type: string
-      [key: string]: any
+function normalizeMessages(messages: RawMessage[]): NormalizedMessage[] {
+  return messages.map((message) => {
+    if (Array.isArray(message.parts) && message.parts.length) {
+      return {
+        role: message.role,
+        content: joinMessageParts(message.parts),
+      }
     }
 
-interface HandleConversationArgs {
-  conversationItems: ConversationItem[]
-  instructions: string
-  tools: any[] | undefined
-  modelName: string
-  extractData: boolean
-  documentId: string | undefined
-  controller: ReadableStreamDefaultController
-  encoder: TextEncoder
+    if (typeof message.content === "string") {
+      return { role: message.role, content: message.content }
+    }
+
+    if (Array.isArray(message.content)) {
+      return {
+        role: message.role,
+        content: joinMessageParts(message.content),
+      }
+    }
+
+    return {
+      role: message.role,
+      content: stringifyUnknownContent(message.content),
+    }
+  })
+}
+
+function joinMessageParts(parts: MessagePart[]): string {
+  return parts
+    .map((part) => {
+      if (typeof part === "string") {
+        return part
+      }
+      if (typeof part === "object" && part) {
+        if (typeof part.text === "string") {
+          return part.text
+        }
+        if (typeof part.content === "string") {
+          return part.content
+        }
+      }
+      return ""
+    })
+    .filter((segment) => segment.length > 0)
+    .join(" ")
+    .trim()
+}
+
+function stringifyUnknownContent(content: unknown): string {
+  if (content == null) {
+    return ""
+  }
+  if (typeof content === "string") {
+    return content
+  }
+  if (typeof content === "number" || typeof content === "boolean") {
+    return String(content)
+  }
+  try {
+    return JSON.stringify(content)
+  } catch {
+    return ""
+  }
 }
 
 function enqueueDataEvent(
@@ -215,6 +299,7 @@ function sendStatusEvent(
 }
 
 async function handleConversation({
+  openai,
   conversationItems,
   instructions,
   tools,
@@ -226,6 +311,7 @@ async function handleConversation({
 }: HandleConversationArgs) {
   while (true) {
     const { toolCalls, outputItems } = await streamResponses({
+      openai,
       conversationItems,
       instructions,
       tools,
@@ -255,6 +341,7 @@ async function handleConversation({
 }
 
 async function streamResponses({
+  openai,
   conversationItems,
   instructions,
   tools,
@@ -263,27 +350,30 @@ async function streamResponses({
   encoder,
   extractData,
 }: {
+  openai: OpenAI
   conversationItems: ConversationItem[]
   instructions: string
-  tools?: any[]
+  tools?: ReturnType<typeof getTools>
   modelName: string
   controller: ReadableStreamDefaultController
   encoder: TextEncoder
   extractData: boolean
-}): Promise<{ toolCalls: any[]; outputItems: any[] }> {
-  // les models comme gpt-5-mini nesupportent pas le parm temperature
+}): Promise<{ toolCalls: ToolCall[]; outputItems: OutputItem[] }> {
   const supportsTemperature =
     !modelName.startsWith("gpt-5") &&
     !modelName.startsWith("o1") &&
     !modelName.startsWith("o3") &&
     !modelName.startsWith("o4")
 
-  const requestConfig: any = {
+  const requestConfig: ResponseCreateParamsStreaming = {
     model: modelName,
     input: conversationItems,
     instructions,
     stream: true,
-    ...(supportsTemperature && { temperature: extractData ? 0.1 : 0.3 }),
+  }
+
+  if (supportsTemperature) {
+    requestConfig.temperature = extractData ? 0.1 : 0.3
   }
 
   if (tools?.length) {
@@ -291,40 +381,93 @@ async function streamResponses({
     requestConfig.tool_choice = "auto"
   }
 
-  const stream = await openai.responses.create(requestConfig)
+  const responseStream = (await openai.responses.create(
+    requestConfig
+  )) as AsyncIterable<ResponseStreamEvent>
 
-  const outputItems: any[] = []
-  const toolCalls: any[] = []
-  const partialItems = new Map<number, any>()
+  const outputItems: OutputItem[] = []
+  const toolCalls: ToolCall[] = []
+  const partialItems = new Map<number, OutputItem>()
 
-  for await (const event of stream as any) {
+  for await (const event of responseStream) {
     switch (event.type) {
       case "response.output_item.added":
-        partialItems.set(event.output_index, event.item)
-        break
-      case "response.function_call_arguments.delta": {
-        const item = partialItems.get(event.output_index)
-        if (item) {
-          item.arguments = (item.arguments || "") + event.delta
+        if (isOutputItemAddedEvent(event)) {
+          partialItems.set(event.output_index, event.item)
         }
         break
-      }
+      case "response.function_call_arguments.delta":
+        if (
+          typeof event.output_index === "number" &&
+          typeof event.delta === "string"
+        ) {
+          const item = partialItems.get(event.output_index)
+          if (item) {
+            const existingArgs =
+              typeof item.arguments === "string" ? item.arguments : ""
+            item.arguments = existingArgs + event.delta
+          }
+        }
+        break
       case "response.output_text.delta":
-        controller.enqueue(encoder.encode(`0:${JSON.stringify(event.delta)}\n`))
-        break
-      case "response.output_item.done": {
-        const finalItem = event.item
-        outputItems.push(finalItem)
-        if (finalItem.type === "function_call") {
-          toolCalls.push(finalItem)
+        if (typeof event.delta === "string") {
+          controller.enqueue(encoder.encode(`0:${JSON.stringify(event.delta)}\n`))
         }
-        partialItems.delete(event.output_index)
         break
-      }
+      case "response.output_item.done":
+        if (isOutputItemDoneEvent(event)) {
+          const finalItem = event.item
+          outputItems.push(finalItem)
+          if (isToolCallItem(finalItem)) {
+            toolCalls.push(finalItem)
+          }
+          partialItems.delete(event.output_index)
+        }
+        break
       default:
         break
     }
   }
 
   return { toolCalls, outputItems }
+}
+
+function isOutputItem(value: unknown): value is OutputItem {
+  return typeof value === "object" && value !== null
+}
+
+function isOutputItemAddedEvent(
+  event: ResponseStreamEvent
+): event is ResponseStreamEvent & {
+  type: "response.output_item.added"
+  output_index: number
+  item: OutputItem
+} {
+  return (
+    event.type === "response.output_item.added" &&
+    typeof (event as { output_index?: unknown }).output_index === "number" &&
+    isOutputItem((event as { item?: unknown }).item)
+  )
+}
+
+function isOutputItemDoneEvent(
+  event: ResponseStreamEvent
+): event is ResponseStreamEvent & {
+  type: "response.output_item.done"
+  output_index: number
+  item: OutputItem
+} {
+  return (
+    event.type === "response.output_item.done" &&
+    typeof (event as { output_index?: unknown }).output_index === "number" &&
+    isOutputItem((event as { item?: unknown }).item)
+  )
+}
+
+function isToolCallItem(item: OutputItem): item is ToolCall {
+  return (
+    item.type === "function_call" &&
+    typeof item.call_id === "string" &&
+    typeof item.name === "string"
+  )
 }

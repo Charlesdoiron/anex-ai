@@ -12,6 +12,7 @@ interface ErrorDisplayProps {
   onAction?: () => void
   label?: string
   toolType: toolType
+  isSubmitting?: boolean
 }
 
 export default function ErrorDisplay({
@@ -22,6 +23,7 @@ export default function ErrorDisplay({
   onAction,
   label,
   toolType,
+  isSubmitting = false,
 }: ErrorDisplayProps) {
   return (
     <div className="space-y-4">
@@ -42,6 +44,7 @@ export default function ErrorDisplay({
         onAction={selectedFile ? onAction : undefined}
         actionLabel={label}
         toolType={toolType}
+        isSubmitting={isSubmitting}
       />
     </div>
   )

@@ -7,6 +7,7 @@ import type { toolType } from "@/app/static-data/agent"
 
 interface UseExtractionReturn {
   isProcessing: boolean
+  isSubmitting: boolean
   processingStatus: string | null
   extractionResult: LeaseExtractionResult | null
   error: string | null
@@ -38,6 +39,7 @@ export function useExtraction(
     null
   )
   const [localError, setLocalError] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Sync tracker result to local state
   useEffect(() => {
@@ -58,8 +60,11 @@ export function useExtraction(
 
   const handleExtraction = useCallback(
     async (file: File) => {
+      if (isSubmitting) return
+
       setLocalResult(null)
       setLocalError(null)
+      setIsSubmitting(true)
 
       try {
         const formData = new FormData()
@@ -71,18 +76,22 @@ export function useExtraction(
           body: formData,
         })
 
-        if (!response.ok) {
-          const data = await response.json().catch(() => ({}))
-          throw new Error(data.message || `Erreur HTTP ${response.status}`)
+        const data = await response.json().catch(() => ({}))
+
+        // Handle duplicate job - use existing job instead of showing error
+        if (response.status === 409 && data.existingJobId) {
+          startJob(data.existingJobId, file.name)
+          return
         }
 
-        const data = await response.json()
+        if (!response.ok) {
+          throw new Error(data.message || `Erreur HTTP ${response.status}`)
+        }
 
         if (!data.jobId) {
           throw new Error("Pas de jobId retourné par le serveur")
         }
 
-        // Start tracking globally
         startJob(data.jobId, file.name)
       } catch (err) {
         const errorMsg =
@@ -90,19 +99,23 @@ export function useExtraction(
             ? err.message
             : "Erreur lors du traitement du PDF"
         setLocalError(errorMsg)
+      } finally {
+        setIsSubmitting(false)
       }
     },
-    [startJob, toolType]
+    [startJob, toolType, isSubmitting]
   )
 
   const reset = useCallback(() => {
     clearJob()
     setLocalResult(null)
     setLocalError(null)
+    setIsSubmitting(false)
   }, [clearJob])
 
   return {
     isProcessing,
+    isSubmitting,
     processingStatus,
     extractionResult: localResult || trackerResult,
     error: localError || trackerError,

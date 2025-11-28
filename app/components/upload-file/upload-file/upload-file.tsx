@@ -11,6 +11,7 @@ interface UploadFileProps {
   actionLabel?: string
   className?: string
   toolType: toolType
+  isSubmitting?: boolean
 }
 
 const MAX_FILE_SIZE = 30 * 1024 * 1024 // 30MB in bytes
@@ -23,6 +24,7 @@ export default function UploadFile({
   onAction,
   actionLabel = "Valider",
   className = "",
+  isSubmitting = false,
 }: UploadFileProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [isDragging, setIsDragging] = useState(false)
@@ -207,17 +209,25 @@ export default function UploadFile({
 
           <button
             onClick={onAction}
-            disabled={!onAction}
+            disabled={!onAction || isSubmitting}
             className={`
               w-full rounded-md px-4 py-2.5 text-sm font-medium transition-all duration-300
+              flex items-center justify-center gap-2
               ${
-                onAction
+                onAction && !isSubmitting
                   ? "bg-brand-green text-white hover:bg-brand-green/90 cursor-pointer"
                   : "bg-gray-100 text-gray-400 cursor-not-allowed"
               }
             `}
           >
-            {actionLabel}
+            {isSubmitting ? (
+              <>
+                <span className="w-4 h-4 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin" />
+                Envoi en cours...
+              </>
+            ) : (
+              actionLabel
+            )}
           </button>
         </div>
       )}
