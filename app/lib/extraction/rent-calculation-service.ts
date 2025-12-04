@@ -3,8 +3,6 @@
  * Only extracts the minimum required fields for INSEE-indexed rent schedule
  */
 
-import type { Response } from "openai/resources/responses/responses"
-
 import { extractPdfText } from "./pdf-extractor"
 import {
   RENT_CALCULATION_SYSTEM_INSTRUCTIONS,
@@ -23,6 +21,10 @@ import {
   type ComputeLeaseRentScheduleResult,
 } from "../lease/types"
 import { getOpenAIClient } from "@/app/lib/openai/client"
+import {
+  collectResponseText,
+  truncateText,
+} from "@/app/lib/openai/response-utils"
 
 const openai = getOpenAIClient()
 
@@ -197,7 +199,7 @@ export class RentCalculationExtractionService {
           input: [
             {
               role: "user",
-              content: `Document text:\n\n${this.truncateText(
+              content: `Document text:\n\n${truncateText(
                 documentText,
                 40000
               )}\n\n${RENT_CALCULATION_EXTRACTION_PROMPT}`,
@@ -213,7 +215,7 @@ export class RentCalculationExtractionService {
           },
         })
 
-        const outputText = this.collectResponseText(response)
+        const outputText = collectResponseText(response)
         if (!outputText) {
           throw new Error("Aucune réponse reçue du modèle")
         }
@@ -426,30 +428,6 @@ export class RentCalculationExtractionService {
         indexationType: missing,
       },
     }
-  }
-
-  private collectResponseText(response: Response): string {
-    if (!response?.output) return ""
-
-    let outputText = ""
-    for (const item of response.output) {
-      if (item.type === "message" && Array.isArray(item.content)) {
-        for (const content of item.content) {
-          if (
-            content.type === "output_text" &&
-            typeof content.text === "string"
-          ) {
-            outputText += content.text
-          }
-        }
-      }
-    }
-    return outputText
-  }
-
-  private truncateText(text: string, maxLength: number): string {
-    if (text.length <= maxLength) return text
-    return text.slice(0, maxLength) + "\n\n[... document truncated ...]"
   }
 
   private generateDocumentId(): string {

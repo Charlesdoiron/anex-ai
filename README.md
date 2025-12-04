@@ -160,6 +160,11 @@ SKIP_AUTH=true
 # Database
 DATABASE_URL=postgresql://...
 
+# INSEE Rental Index URLs (for rent calculation)
+INSEE_ILAT_URL=https://www.insee.fr/fr/statistiques/serie/001617112
+INSEE_ILC_URL=https://www.insee.fr/fr/statistiques/serie/001532540
+INSEE_ICC_URL=https://www.insee.fr/fr/statistiques/serie/000008630
+
 # OCR Configuration
 PDF_OCR_BINARY_PATH=tesseract
 PDF_OCR_LANG=fra+eng

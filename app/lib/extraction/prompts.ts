@@ -1093,31 +1093,60 @@ export interface ExtractionPrompt {
   retryable: boolean
 }
 
-export const EXTRACTION_PROMPTS: ExtractionPrompt[] = [
-  { section: "regime", prompt: REGIME_PROMPT, retryable: true },
-  { section: "parties", prompt: PARTIES_PROMPT, retryable: true },
-  { section: "premises", prompt: PREMISES_PROMPT, retryable: true },
-  { section: "calendar", prompt: CALENDAR_PROMPT, retryable: true },
-  {
-    section: "supportMeasures",
-    prompt: SUPPORT_MEASURES_PROMPT,
-    retryable: true,
-  },
-  { section: "rent", prompt: RENT_PROMPT, retryable: true },
-  { section: "indexation", prompt: INDEXATION_PROMPT, retryable: true },
-  { section: "taxes", prompt: TAXES_PROMPT, retryable: true },
-  { section: "charges", prompt: CHARGES_PROMPT, retryable: true },
-  { section: "insurance", prompt: INSURANCE_PROMPT, retryable: true },
-  { section: "securities", prompt: SECURITIES_PROMPT, retryable: true },
-  { section: "inventory", prompt: INVENTORY_PROMPT, retryable: true },
-  { section: "maintenance", prompt: MAINTENANCE_PROMPT, retryable: true },
-  { section: "restitution", prompt: RESTITUTION_PROMPT, retryable: true },
-  { section: "transfer", prompt: TRANSFER_PROMPT, retryable: true },
-  {
-    section: "environmentalAnnexes",
+type PromptDefinition = {
+  prompt: string
+  retryable: boolean
+}
+
+const PROMPT_ORDER: ExtractionSection[] = [
+  "regime",
+  "parties",
+  "premises",
+  "calendar",
+  "supportMeasures",
+  "rent",
+  "indexation",
+  "taxes",
+  "charges",
+  "insurance",
+  "securities",
+  "inventory",
+  "maintenance",
+  "restitution",
+  "transfer",
+  "environmentalAnnexes",
+  "otherAnnexes",
+  "other",
+]
+
+export const PROMPT_DEFINITIONS: Record<ExtractionSection, PromptDefinition> = {
+  regime: { prompt: REGIME_PROMPT, retryable: true },
+  parties: { prompt: PARTIES_PROMPT, retryable: true },
+  premises: { prompt: PREMISES_PROMPT, retryable: true },
+  calendar: { prompt: CALENDAR_PROMPT, retryable: true },
+  supportMeasures: { prompt: SUPPORT_MEASURES_PROMPT, retryable: true },
+  rent: { prompt: RENT_PROMPT, retryable: true },
+  indexation: { prompt: INDEXATION_PROMPT, retryable: true },
+  taxes: { prompt: TAXES_PROMPT, retryable: true },
+  charges: { prompt: CHARGES_PROMPT, retryable: true },
+  insurance: { prompt: INSURANCE_PROMPT, retryable: true },
+  securities: { prompt: SECURITIES_PROMPT, retryable: true },
+  inventory: { prompt: INVENTORY_PROMPT, retryable: true },
+  maintenance: { prompt: MAINTENANCE_PROMPT, retryable: true },
+  restitution: { prompt: RESTITUTION_PROMPT, retryable: true },
+  transfer: { prompt: TRANSFER_PROMPT, retryable: true },
+  environmentalAnnexes: {
     prompt: ENVIRONMENTAL_ANNEXES_PROMPT,
     retryable: true,
   },
-  { section: "otherAnnexes", prompt: OTHER_ANNEXES_PROMPT, retryable: true },
-  { section: "other", prompt: OTHER_PROMPT, retryable: true },
-]
+  otherAnnexes: { prompt: OTHER_ANNEXES_PROMPT, retryable: true },
+  other: { prompt: OTHER_PROMPT, retryable: true },
+}
+
+export const EXTRACTION_PROMPTS: ExtractionPrompt[] = PROMPT_ORDER.map(
+  (section) => ({
+    section,
+    prompt: PROMPT_DEFINITIONS[section].prompt,
+    retryable: PROMPT_DEFINITIONS[section].retryable,
+  })
+)

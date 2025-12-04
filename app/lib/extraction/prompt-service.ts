@@ -50,44 +50,38 @@ export interface PromptTestResult {
   durationMs: number
 }
 
-const inMemoryOverrides = new Map<string, PromptOverride>()
+type PromptSection = ExtractionSection | "system"
+
+const inMemoryOverrides = new Map<PromptSection, PromptOverride>()
 
 export class PromptService {
   /**
    * Get all prompts with their current state and metadata
    */
   async getAllPrompts(): Promise<PromptWithMetadata[]> {
-    const prompts: PromptWithMetadata[] = []
-
-    // System prompt
     const systemOverride = await this.getOverride("system")
-    prompts.push({
-      section: "system",
-      label: SYSTEM_PROMPT_METADATA.label,
-      currentPrompt: systemOverride?.prompt ?? SYSTEM_INSTRUCTIONS,
-      defaultPrompt: SYSTEM_INSTRUCTIONS,
-      isOverridden: Boolean(systemOverride),
-      retryable: false,
-      updatedAt: systemOverride?.updatedAt,
-      updatedBy: systemOverride?.updatedBy,
-    })
+    const systemPrompt = this.buildPromptWithMetadata(
+      "system",
+      SYSTEM_PROMPT_METADATA.label,
+      SYSTEM_INSTRUCTIONS,
+      false,
+      systemOverride
+    )
 
-    // Section prompts
-    for (const metadata of PROMPT_METADATA) {
-      const override = await this.getOverride(metadata.section)
-      prompts.push({
-        section: metadata.section,
-        label: metadata.label,
-        currentPrompt: override?.prompt ?? metadata.prompt,
-        defaultPrompt: metadata.prompt,
-        isOverridden: Boolean(override),
-        retryable: metadata.retryable,
-        updatedAt: override?.updatedAt,
-        updatedBy: override?.updatedBy,
+    const sectionPrompts = await Promise.all(
+      PROMPT_METADATA.map(async (metadata) => {
+        const override = await this.getOverride(metadata.section)
+        return this.buildPromptWithMetadata(
+          metadata.section,
+          metadata.label,
+          metadata.prompt,
+          metadata.retryable,
+          override
+        )
       })
-    }
+    )
 
-    return prompts
+    return [systemPrompt, ...sectionPrompts]
   }
 
   /**
@@ -98,16 +92,13 @@ export class PromptService {
   ): Promise<PromptWithMetadata | null> {
     if (section === "system") {
       const override = await this.getOverride("system")
-      return {
-        section: "system",
-        label: SYSTEM_PROMPT_METADATA.label,
-        currentPrompt: override?.prompt ?? SYSTEM_INSTRUCTIONS,
-        defaultPrompt: SYSTEM_INSTRUCTIONS,
-        isOverridden: Boolean(override),
-        retryable: false,
-        updatedAt: override?.updatedAt,
-        updatedBy: override?.updatedBy,
-      }
+      return this.buildPromptWithMetadata(
+        "system",
+        SYSTEM_PROMPT_METADATA.label,
+        SYSTEM_INSTRUCTIONS,
+        false,
+        override
+      )
     }
 
     const metadata = PROMPT_METADATA.find((p) => p.section === section)
@@ -116,23 +107,20 @@ export class PromptService {
     }
 
     const override = await this.getOverride(section)
-    return {
-      section: metadata.section,
-      label: metadata.label,
-      currentPrompt: override?.prompt ?? metadata.prompt,
-      defaultPrompt: metadata.prompt,
-      isOverridden: Boolean(override),
-      retryable: metadata.retryable,
-      updatedAt: override?.updatedAt,
-      updatedBy: override?.updatedBy,
-    }
+    return this.buildPromptWithMetadata(
+      metadata.section,
+      metadata.label,
+      metadata.prompt,
+      metadata.retryable,
+      override
+    )
   }
 
   /**
    * Update a prompt (creates an override)
    */
   async updatePrompt(
-    section: ExtractionSection | "system",
+    section: PromptSection,
     prompt: string,
     userId?: string
   ): Promise<PromptWithMetadata> {
@@ -163,9 +151,7 @@ export class PromptService {
   /**
    * Reset a prompt to its default (removes override)
    */
-  async resetPrompt(
-    section: ExtractionSection | "system"
-  ): Promise<PromptWithMetadata> {
+  async resetPrompt(section: PromptSection): Promise<PromptWithMetadata> {
     // TODO: When DB is ready, delete from database
     // await prisma.extractionPrompt.delete({ where: { section } }).catch(() => {})
 
@@ -270,12 +256,31 @@ export class PromptService {
   }
 
   private async getOverride(
-    section: ExtractionSection | "system"
+    section: PromptSection
   ): Promise<PromptOverride | null> {
     // TODO: When DB is ready, query database
     // return prisma.extractionPrompt.findUnique({ where: { section } })
 
     return inMemoryOverrides.get(section) ?? null
+  }
+
+  private buildPromptWithMetadata(
+    section: PromptSection,
+    label: string,
+    defaultPrompt: string,
+    retryable: boolean,
+    override?: PromptOverride | null
+  ): PromptWithMetadata {
+    return {
+      section,
+      label,
+      currentPrompt: override?.prompt ?? defaultPrompt,
+      defaultPrompt,
+      isOverridden: Boolean(override),
+      retryable,
+      updatedAt: override?.updatedAt,
+      updatedBy: override?.updatedBy,
+    }
   }
 }
 

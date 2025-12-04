@@ -3,7 +3,6 @@
  * Handles structured extraction with retries and progress tracking
  */
 
-import type { Response } from "openai/resources/responses/responses"
 import { extractPdfText } from "./pdf-extractor"
 import type { PdfExtractionResult } from "./pdf-extractor"
 import {
@@ -20,9 +19,14 @@ import type {
   ExtractionSection,
 } from "./types"
 import { postProcessExtraction } from "./post-process"
+import { getExtractionServiceOptions } from "./prompt-service"
 import { computeRentScheduleFromExtraction } from "../lease/from-extraction"
 import { documentIngestionService } from "../rag/ingestion/document-ingestion-service"
 import { getOpenAIClient } from "@/app/lib/openai/client"
+import {
+  collectResponseText,
+  truncateText,
+} from "@/app/lib/openai/response-utils"
 
 const openai = getOpenAIClient()
 
@@ -76,9 +80,11 @@ export interface ExtractionServiceOptions {
 export class ExtractionService {
   private progressCallback?: ProgressCallback
   private partialResultCallback?: PartialResultCallback
-  private readonly systemInstructions: string
-  private readonly extractionPrompts: ExtractionPrompt[]
+  private systemInstructions: string
+  private extractionPrompts: ExtractionPrompt[]
   private readonly ragIngestionEnabled: boolean
+  private promptsLoaded = false
+  private promptsLoadingPromise: Promise<void> | null = null
 
   constructor(
     progressCallback?: ProgressCallback,
@@ -90,6 +96,9 @@ export class ExtractionService {
     this.systemInstructions = options?.systemInstructions ?? SYSTEM_INSTRUCTIONS
     this.extractionPrompts = options?.prompts ?? EXTRACTION_PROMPTS
     this.ragIngestionEnabled = options?.enableRagIngestion !== false
+    this.promptsLoaded = Boolean(
+      options?.systemInstructions && options?.prompts
+    )
   }
 
   private emitProgress(
@@ -173,6 +182,7 @@ export class ExtractionService {
     startTime: number,
     stageTimings: ExtractionStageDurations
   ): Promise<LeaseExtractionResult> {
+    await this.ensurePromptsLoaded()
     let totalRetries = 0
 
     try {
@@ -476,11 +486,11 @@ export class ExtractionService {
 
     const response = await openai.responses.create({
       model: EXTRACTION_MODEL,
-      instructions: SYSTEM_INSTRUCTIONS,
+      instructions: this.systemInstructions,
       input: [
         {
           role: "user",
-          content: `Document text:\n\n${this.truncateText(
+          content: `Document text:\n\n${truncateText(
             documentText,
             50000
           )}\n\nExtract all sections simultaneously and respond with a single JSON object whose top-level keys exactly match: ${sectionNames
@@ -498,7 +508,7 @@ export class ExtractionService {
       },
     })
 
-    const outputText = this.collectResponseText(response)
+    const outputText = collectResponseText(response)
 
     if (!outputText) {
       throw new Error(
@@ -521,11 +531,14 @@ export class ExtractionService {
   ): Promise<SectionExtractionValue> {
     const response = await openai.responses.create({
       model: EXTRACTION_MODEL,
-      instructions: SYSTEM_INSTRUCTIONS,
+      instructions: this.systemInstructions,
       input: [
         {
           role: "user",
-          content: `Document text:\n\n${this.truncateText(documentText, 50000)}\n\n${prompt}`,
+          content: `Document text:\n\n${truncateText(
+            documentText,
+            50000
+          )}\n\n${prompt}`,
         },
       ],
       text: {
@@ -538,7 +551,7 @@ export class ExtractionService {
       },
     })
 
-    const outputText = this.collectResponseText(response)
+    const outputText = collectResponseText(response)
 
     if (!outputText) {
       throw new Error(`No output received for section ${section}`)
@@ -550,35 +563,6 @@ export class ExtractionService {
       console.error(`Failed to parse JSON for section ${section}:`, outputText)
       throw new Error(`Invalid JSON response for section ${section}`)
     }
-  }
-
-  private collectResponseText(response: Response): string {
-    if (!response.output) {
-      return ""
-    }
-
-    let outputText = ""
-    for (const item of response.output) {
-      if (item.type === "message" && Array.isArray(item.content)) {
-        for (const content of item.content) {
-          if (
-            content.type === "output_text" &&
-            typeof content.text === "string"
-          ) {
-            outputText += content.text
-          }
-        }
-      }
-    }
-
-    return outputText
-  }
-
-  private truncateText(text: string, maxLength: number): string {
-    if (text.length <= maxLength) {
-      return text
-    }
-    return text.slice(0, maxLength) + "\n\n[... document truncated ...]"
   }
 
   private getDefaultSectionData(section: string): unknown {
@@ -881,6 +865,26 @@ export class ExtractionService {
     } catch (error) {
       console.error("RAG ingestion failed:", error)
     }
+  }
+
+  private async ensurePromptsLoaded(): Promise<void> {
+    if (this.promptsLoaded) {
+      return
+    }
+    if (!this.promptsLoadingPromise) {
+      this.promptsLoadingPromise = (async () => {
+        const { systemInstructions, prompts } =
+          await getExtractionServiceOptions()
+        this.systemInstructions = systemInstructions
+        this.extractionPrompts = prompts
+        this.promptsLoaded = true
+        this.promptsLoadingPromise = null
+      })().catch((error) => {
+        this.promptsLoadingPromise = null
+        throw error
+      })
+    }
+    await this.promptsLoadingPromise
   }
 }
 
