@@ -620,7 +620,7 @@ export class ExtractionService {
         }
       case "indexation":
         return {
-          indexationClause: missingValue,
+          hasIndexationClause: missingValue,
           indexationType: missingValue,
           referenceQuarter: missingValue,
           firstIndexationDate: missingValue,

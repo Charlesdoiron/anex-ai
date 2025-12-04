@@ -1,5 +1,29 @@
 export type PaymentFrequency = "monthly" | "quarterly"
 
+export type LeaseIndexType = "ILAT" | "ILC" | "ICC" | "IRL"
+
+export const SUPPORTED_LEASE_INDEX_TYPES: LeaseIndexType[] = [
+  "ILAT",
+  "ILC",
+  "ICC",
+  "IRL",
+]
+
+export const DEFAULT_LEASE_INDEX_TYPE: LeaseIndexType = "ILAT"
+
+export function toLeaseIndexType(
+  value: string | null | undefined
+): LeaseIndexType | null {
+  if (!value) {
+    return null
+  }
+
+  const normalized = value.trim().toUpperCase()
+  return SUPPORTED_LEASE_INDEX_TYPES.some((type) => type === normalized)
+    ? (normalized as LeaseIndexType)
+    : null
+}
+
 export interface KnownIndexPointInput {
   effectiveDate: string
   indexValue: number
@@ -10,6 +34,7 @@ export interface ComputeLeaseRentScheduleInput {
   endDate: string
   paymentFrequency: PaymentFrequency
   baseIndexValue: number
+  indexType?: LeaseIndexType
   knownIndexPoints?: KnownIndexPointInput[]
   chargesGrowthRate?: number
   officeRentHT: number

@@ -16,9 +16,11 @@ import {
   buildIndexInputsForLease,
   getInseeRentalIndexSeries,
 } from "../lease/insee-rental-index-service"
-import type {
-  ComputeLeaseRentScheduleResult,
-  ComputeLeaseRentScheduleInput,
+import {
+  DEFAULT_LEASE_INDEX_TYPE,
+  toLeaseIndexType,
+  type ComputeLeaseRentScheduleInput,
+  type ComputeLeaseRentScheduleResult,
 } from "../lease/types"
 import { getOpenAIClient } from "@/app/lib/openai/client"
 
@@ -39,6 +41,9 @@ export interface RentCalculationExtractedData {
     quarterlyRentExclTaxExclCharges: ExtractedValue<number | null>
     annualParkingRentExclCharges: ExtractedValue<number | null>
     paymentFrequency: ExtractedValue<"monthly" | "quarterly" | null>
+  }
+  indexation?: {
+    indexationType: ExtractedValue<string | null>
   }
 }
 
@@ -259,8 +264,16 @@ export class RentCalculationExtractionService {
         }
       }
 
-      const series = await getInseeRentalIndexSeries()
-      const horizonYears = 3
+      const indexType =
+        toLeaseIndexType(data.indexation?.indexationType?.value) ??
+        DEFAULT_LEASE_INDEX_TYPE
+
+      const DEFAULT_HORIZON_YEARS = 3
+      const durationYears =
+        data.calendar.duration.value ?? DEFAULT_HORIZON_YEARS
+      const horizonYears = durationYears
+
+      const series = await getInseeRentalIndexSeries(indexType)
       const { baseIndexValue, knownIndexPoints } = buildIndexInputsForLease(
         startDate,
         horizonYears,
@@ -293,7 +306,6 @@ export class RentCalculationExtractionService {
         paymentFrequency
       )
 
-      const durationYears = data.calendar.duration.value ?? horizonYears
       const endDate = this.toEndDate(startDate, durationYears)
 
       const scheduleInput: ComputeLeaseRentScheduleInput = {
@@ -301,6 +313,7 @@ export class RentCalculationExtractionService {
         endDate,
         paymentFrequency,
         baseIndexValue,
+        indexType,
         knownIndexPoints,
         officeRentHT: officeRentPerPeriod,
         parkingRentHT: parkingRentPerPeriod || undefined,
@@ -366,6 +379,7 @@ export class RentCalculationExtractionService {
     const missing: ExtractedValue<null> = {
       value: null,
       confidence: "missing" as ConfidenceLevel,
+      rawText: "Non mentionné",
     }
 
     return {
@@ -383,6 +397,9 @@ export class RentCalculationExtractionService {
           parsed?.rent?.annualParkingRentExclCharges ?? missing,
         paymentFrequency: parsed?.rent?.paymentFrequency ?? missing,
       },
+      indexation: {
+        indexationType: parsed?.indexation?.indexationType ?? missing,
+      },
     }
   }
 
@@ -390,6 +407,7 @@ export class RentCalculationExtractionService {
     const missing: ExtractedValue<null> = {
       value: null,
       confidence: "missing" as ConfidenceLevel,
+      rawText: "Non mentionné",
     }
 
     return {
@@ -403,6 +421,9 @@ export class RentCalculationExtractionService {
         quarterlyRentExclTaxExclCharges: missing,
         annualParkingRentExclCharges: missing,
         paymentFrequency: missing,
+      },
+      indexation: {
+        indexationType: missing,
       },
     }
   }

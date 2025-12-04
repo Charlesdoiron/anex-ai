@@ -163,10 +163,11 @@ export interface RentData {
 
 // 7. Indexation
 export interface IndexationData {
-  indexationClause: ExtractedValue<string | null>
+  hasIndexationClause: ExtractedValue<boolean | string | null> // "Oui"/"Non" or boolean
+  indexationClause?: ExtractedValue<string | null> // legacy
   indexationType: ExtractedValue<string | null> // ILC, ILAT, ICC, etc.
   referenceQuarter: ExtractedValue<string | null>
-  firstIndexationDate: ExtractedValue<string | null> // ISO date
+  firstIndexationDate: ExtractedValue<string | null> // recurring date or ISO date
   indexationFrequency: ExtractedValue<"annual" | "quarterly" | "other" | null>
 }
 

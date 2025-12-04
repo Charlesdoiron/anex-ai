@@ -1,13 +1,15 @@
 import type { LeaseExtractionResult } from "@/app/lib/extraction/types"
-import {
-  type ComputeLeaseRentScheduleInput,
-  type ComputeLeaseRentScheduleResult,
-} from "./types"
 import { computeLeaseRentSchedule } from "./rent-schedule-calculator"
 import {
   buildIndexInputsForLease,
   getInseeRentalIndexSeries,
 } from "./insee-rental-index-service"
+import {
+  DEFAULT_LEASE_INDEX_TYPE,
+  toLeaseIndexType,
+  type ComputeLeaseRentScheduleInput,
+  type ComputeLeaseRentScheduleResult,
+} from "./types"
 
 export async function computeRentScheduleFromExtraction(
   extraction: LeaseExtractionResult
@@ -44,8 +46,12 @@ async function buildScheduleInputFromExtraction(
     return null
   }
 
+  const detectedIndexType =
+    toLeaseIndexType(extraction.indexation?.indexationType?.value) ??
+    DEFAULT_LEASE_INDEX_TYPE
+
   const horizonYears = 3
-  const series = await getInseeRentalIndexSeries()
+  const series = await getInseeRentalIndexSeries(detectedIndexType)
 
   const indexStartDate = effectiveDate || signatureDate || startDate
   if (!indexStartDate) {
@@ -91,6 +97,7 @@ async function buildScheduleInputFromExtraction(
     endDate,
     paymentFrequency,
     baseIndexValue,
+    indexType: detectedIndexType,
     knownIndexPoints,
     officeRentHT: officeRentPerPeriod,
     parkingRentHT: parkingRentPerPeriod || undefined,

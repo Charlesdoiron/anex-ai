@@ -218,8 +218,9 @@ function buildClientTemplateExport(
     padRow(["Échéance de paiement", formatFrequency(frequency)], LEGEND_COL)
   )
 
+  const indexTypeName = input?.indexType || "ILAT"
   const indexRef = startDate
-    ? `ILAT T${getQuarter(startDate.getUTCMonth() + 1)} ${startDate.getUTCFullYear() - 1}`
+    ? `${indexTypeName} T${getQuarter(startDate.getUTCMonth() + 1)} ${startDate.getUTCFullYear()}`
     : "—"
   data.push(
     padRow(
@@ -320,7 +321,14 @@ function buildClientTemplateExport(
   // Build column data from schedule
   const columns: ColumnData[] = []
 
-  // Base bail column
+  // Base bail column - use period-appropriate rent values
+  const baseOfficeRent = isQuarterly ? officeRentPerQuarter : monthlyOfficeRent
+  const baseParkingRent = isQuarterly
+    ? parkingRentPerQuarter
+    : monthlyParkingRent
+  const baseCharges = isQuarterly ? chargesPerQuarter : chargesPerQuarter / 3
+  const baseTaxes = isQuarterly ? taxesPerQuarter : taxesPerQuarter / 3
+
   const baseDeposit = (monthlyOfficeRent + monthlyParkingRent) * depositMonths
   const baseFranchise =
     (monthlyOfficeRent + monthlyParkingRent) * franchiseMonths
@@ -334,16 +342,13 @@ function buildClientTemplateExport(
     depositHT: roundCurrency(baseDeposit),
     franchiseHT: roundCurrency(baseFranchise),
     incentivesHT: incentiveAmount,
-    officeRentHT: roundCurrency(officeRentPerQuarter),
-    parkingRentHT: roundCurrency(parkingRentPerQuarter),
-    chargesHT: chargesPerQuarter,
-    taxesHT: taxesPerQuarter,
+    officeRentHT: roundCurrency(baseOfficeRent),
+    parkingRentHT: roundCurrency(baseParkingRent),
+    chargesHT: roundCurrency(baseCharges),
+    taxesHT: roundCurrency(baseTaxes),
     otherHT: 0,
     totalHT: roundCurrency(
-      officeRentPerQuarter +
-        parkingRentPerQuarter +
-        chargesPerQuarter +
-        taxesPerQuarter
+      baseOfficeRent + baseParkingRent + baseCharges + baseTaxes
     ),
   })
 

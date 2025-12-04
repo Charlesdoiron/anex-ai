@@ -54,12 +54,18 @@ async function main() {
   console.log(
     `  - Payment Frequency: ${result.extractedData.rent.paymentFrequency.value}`
   )
+  console.log(
+    `  - Indexation Type: ${
+      result.extractedData.indexation?.indexationType?.value ?? "—"
+    }`
+  )
 
   if (result.scheduleInput) {
     console.log("\n=== SCHEDULE INPUT ===")
     console.log(`  - Start Date: ${result.scheduleInput.startDate}`)
     console.log(`  - End Date: ${result.scheduleInput.endDate}`)
     console.log(`  - Base Index: ${result.scheduleInput.baseIndexValue}`)
+    console.log(`  - Index Type: ${result.scheduleInput.indexType || "—"}`)
     console.log(`  - Office Rent/Period: ${result.scheduleInput.officeRentHT}`)
     console.log(
       `  - Parking Rent/Period: ${result.scheduleInput.parkingRentHT || 0}`
@@ -140,6 +146,10 @@ function createTestSheet(
   data.push([
     "Fréquence",
     result.extractedData.rent.paymentFrequency.value || "—",
+  ])
+  data.push([
+    "Indice d'indexation",
+    result.extractedData.indexation?.indexationType?.value || "—",
   ])
   data.push([])
 

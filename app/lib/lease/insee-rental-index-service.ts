@@ -1,5 +1,9 @@
 import { prisma } from "@/app/lib/prisma"
-import type { KnownIndexPointInput } from "./types"
+import {
+  DEFAULT_LEASE_INDEX_TYPE,
+  type KnownIndexPointInput,
+  type LeaseIndexType,
+} from "./types"
 
 export interface InseeRentalIndexPoint {
   year: number
@@ -7,9 +11,15 @@ export interface InseeRentalIndexPoint {
   value: number
 }
 
-export async function getInseeRentalIndexSeries(): Promise<
-  InseeRentalIndexPoint[]
-> {
+export async function getInseeRentalIndexSeries(
+  indexType: LeaseIndexType = DEFAULT_LEASE_INDEX_TYPE
+): Promise<InseeRentalIndexPoint[]> {
+  if (indexType !== DEFAULT_LEASE_INDEX_TYPE) {
+    console.warn(
+      `[INSEE] Série ${indexType} demandée mais indisponible. Utilisation du fallback ${DEFAULT_LEASE_INDEX_TYPE}.`
+    )
+  }
+
   const rows = await prisma.insee_rental_reference_index.findMany({
     orderBy: [{ year: "asc" }, { quarter: "asc" }],
   })

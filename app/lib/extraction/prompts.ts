@@ -529,6 +529,8 @@ CHAMPS À EXTRAIRE :
   - "ILC" : Indice des Loyers Commerciaux (le plus courant)
   - "ILAT" : Indice des Loyers des Activités Tertiaires
   - "ICC" : Indice du Coût de la Construction (ancien, moins utilisé)
+  - "IRL" : Indice de Référence des Loyers (principalement habitation)
+  - Retourner UNIQUEMENT l'acronyme (ILC / ILAT / ICC / IRL)
   - Autre indice spécifique
 
 2. RÉFÉRENCES ET FRÉQUENCE :
@@ -553,7 +555,7 @@ CHAMPS À EXTRAIRE :
 
 INDICES À RECHERCHER :
 - "révision du loyer", "indexation", "clause d'échelle mobile"
-- "ILC publié par l'INSEE", "ILAT", "ICC"
+- "ILC publié par l'INSEE", "ILAT", "ICC", "IRL"
 - "indice de référence", "indice de base", "indice de départ"
 - "révision annuelle", "chaque année à la date anniversaire"
 - Valeur numérique de l'indice (ex: "108,40", "137,15")
