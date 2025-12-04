@@ -1,8 +1,14 @@
 import { randomUUID } from "crypto"
 import type OpenAI from "openai"
 import type {
+  EasyInputMessage,
   ResponseCreateParamsStreaming,
+  ResponseInput,
+  ResponseInputItem,
+  ResponseOutputItem,
+  ResponseOutputMessage,
   ResponseStreamEvent,
+  Tool,
 } from "openai/resources/responses/responses"
 import { NextRequest } from "next/server"
 import { z } from "zod"
@@ -15,10 +21,7 @@ import {
   type ToolCallOutput,
 } from "@/app/lib/ai/tools/handlers"
 import { RAG_CONFIG } from "@/app/lib/rag/config"
-import {
-  getOpenAIClient,
-  MissingOpenAIKeyError,
-} from "@/app/lib/openai/client"
+import { getOpenAIClient, MissingOpenAIKeyError } from "@/app/lib/openai/client"
 
 const GENERAL_SYSTEM_PROMPT =
   "Tu es Anex AI, assistant juridique spécialisé dans l'analyse de baux commerciaux. Tu aides les professionnels de l'immobilier en France à comprendre et analyser leurs contrats de bail. Tu réponds uniquement en français et tu cites toujours tes sources avec précision."
@@ -40,11 +43,7 @@ const RawMessageSchema = z
   .object({
     role: z.enum(["user", "assistant", "system"]),
     content: z
-      .union([
-        z.string(),
-        z.array(MessagePartSchema),
-        z.record(z.unknown()),
-      ])
+      .union([z.string(), z.array(MessagePartSchema), z.record(z.unknown())])
       .optional(),
     parts: z.array(MessagePartSchema).optional(),
   })
@@ -70,23 +69,23 @@ const ChatRequestSchema = z.object({
 
 type RawMessage = z.infer<typeof RawMessageSchema>
 type MessagePart = z.infer<typeof MessagePartSchema>
-type AssistantRole = "user" | "assistant" | "system"
+type AssistantRole = Extract<
+  EasyInputMessage["role"],
+  "user" | "assistant" | "system"
+>
 
-interface NormalizedMessage {
+type NormalizedMessage = EasyInputMessage & {
   role: AssistantRole
   content: string
 }
 
-type ConversationItem =
-  | NormalizedMessage
-  | ToolCallOutput
-  | Record<string, unknown>
+type ConversationItem = ResponseInputItem
 
 interface HandleConversationArgs {
   openai: OpenAI
   conversationItems: ConversationItem[]
   instructions: string
-  tools?: ReturnType<typeof getTools>
+  tools?: Tool[]
   modelName: string
   extractData: boolean
   documentId?: string
@@ -94,10 +93,7 @@ interface HandleConversationArgs {
   encoder: TextEncoder
 }
 
-type OutputItem = {
-  type?: string
-  [key: string]: unknown
-}
+type OutputItem = ResponseOutputItem
 
 export async function POST(req: NextRequest) {
   let openai: OpenAI
@@ -133,6 +129,7 @@ export async function POST(req: NextRequest) {
   const documentName = data?.fileName
 
   const normalizedMessages = normalizeMessages(rawMessages)
+  const conversationItems: ConversationItem[] = [...normalizedMessages]
 
   const lastUserMessage = [...normalizedMessages]
     .reverse()
@@ -174,7 +171,7 @@ export async function POST(req: NextRequest) {
         try {
           await handleConversation({
             openai,
-            conversationItems: [...normalizedMessages],
+            conversationItems,
             instructions,
             tools,
             modelName,
@@ -214,23 +211,30 @@ function normalizeMessages(messages: RawMessage[]): NormalizedMessage[] {
   return messages.map((message) => {
     if (Array.isArray(message.parts) && message.parts.length) {
       return {
+        type: "message" as const,
         role: message.role,
         content: joinMessageParts(message.parts),
       }
     }
 
     if (typeof message.content === "string") {
-      return { role: message.role, content: message.content }
+      return {
+        type: "message" as const,
+        role: message.role,
+        content: message.content,
+      }
     }
 
     if (Array.isArray(message.content)) {
       return {
+        type: "message" as const,
         role: message.role,
         content: joinMessageParts(message.content),
       }
     }
 
     return {
+      type: "message" as const,
       role: message.role,
       content: stringifyUnknownContent(message.content),
     }
@@ -322,7 +326,12 @@ async function handleConversation({
     })
 
     if (outputItems.length > 0) {
-      conversationItems.push(...outputItems)
+      const inputsFromOutputs = outputItems
+        .map(mapOutputItemToConversationItem)
+        .filter((item): item is ConversationItem => item !== null)
+      if (inputsFromOutputs.length) {
+        conversationItems.push(...inputsFromOutputs)
+      }
     }
 
     if (!toolCalls.length) {
@@ -353,7 +362,7 @@ async function streamResponses({
   openai: OpenAI
   conversationItems: ConversationItem[]
   instructions: string
-  tools?: ReturnType<typeof getTools>
+  tools?: Tool[]
   modelName: string
   controller: ReadableStreamDefaultController
   encoder: TextEncoder
@@ -367,7 +376,7 @@ async function streamResponses({
 
   const requestConfig: ResponseCreateParamsStreaming = {
     model: modelName,
-    input: conversationItems,
+    input: conversationItems as ResponseInput,
     instructions,
     stream: true,
   }
@@ -402,16 +411,17 @@ async function streamResponses({
           typeof event.delta === "string"
         ) {
           const item = partialItems.get(event.output_index)
-          if (item) {
-            const existingArgs =
-              typeof item.arguments === "string" ? item.arguments : ""
-            item.arguments = existingArgs + event.delta
+          if (item && isToolCallItem(item)) {
+            const existingArgs = item.arguments ?? ""
+            item.arguments = `${existingArgs}${event.delta}`
           }
         }
         break
       case "response.output_text.delta":
         if (typeof event.delta === "string") {
-          controller.enqueue(encoder.encode(`0:${JSON.stringify(event.delta)}\n`))
+          controller.enqueue(
+            encoder.encode(`0:${JSON.stringify(event.delta)}\n`)
+          )
         }
         break
       case "response.output_item.done":
@@ -470,4 +480,40 @@ function isToolCallItem(item: OutputItem): item is ToolCall {
     typeof item.call_id === "string" &&
     typeof item.name === "string"
   )
+}
+
+function mapOutputItemToConversationItem(
+  item: ResponseOutputItem
+): ConversationItem | null {
+  if (item.type === "message") {
+    const text = extractOutputMessageText(item)
+    if (!text) {
+      return null
+    }
+    return {
+      type: "message" as const,
+      role: "assistant",
+      content: text,
+    }
+  }
+  if (item.type === "function_call") {
+    return item
+  }
+  return null
+}
+
+function extractOutputMessageText(message: ResponseOutputMessage): string {
+  return message.content
+    .map((content) => {
+      if (content.type === "output_text") {
+        return content.text
+      }
+      if (content.type === "refusal") {
+        return content.refusal
+      }
+      return ""
+    })
+    .filter((segment) => segment.length > 0)
+    .join("\n")
+    .trim()
 }

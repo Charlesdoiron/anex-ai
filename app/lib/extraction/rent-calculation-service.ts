@@ -3,6 +3,8 @@
  * Only extracts the minimum required fields for INSEE-indexed rent schedule
  */
 
+import type { Response } from "openai/resources/responses/responses"
+
 import { extractPdfText } from "./pdf-extractor"
 import {
   RENT_CALCULATION_SYSTEM_INSTRUCTIONS,
@@ -405,7 +407,7 @@ export class RentCalculationExtractionService {
     }
   }
 
-  private collectResponseText(response: OpenAI.Responses.Response): string {
+  private collectResponseText(response: Response): string {
     if (!response?.output) return ""
 
     let outputText = ""

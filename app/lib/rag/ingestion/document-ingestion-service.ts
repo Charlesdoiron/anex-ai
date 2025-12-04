@@ -2,7 +2,7 @@ import { randomUUID } from "crypto"
 import { splitText } from "./chunking"
 import { documentRepository } from "../storage/fs-document-repository"
 import { embeddingService } from "../services/openai-embedding-service"
-import type { Chunk } from "../types"
+import type { Chunk, JsonObject } from "../types"
 
 const DEFAULT_CHUNK_SIZE = 1200
 const DEFAULT_CHUNK_OVERLAP = 200
@@ -13,7 +13,7 @@ export interface IngestionPayload {
   pageCount: number
   pages: string[]
   rawText: string
-  metadata?: Record<string, unknown>
+  metadata?: JsonObject
 }
 
 export class DocumentIngestionService {

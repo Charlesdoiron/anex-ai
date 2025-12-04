@@ -1,20 +1,16 @@
+import type {
+  ResponseFunctionToolCall,
+  ResponseInputItem,
+} from "openai/resources/responses/responses"
+
 import { computeLeaseRentSchedule } from "@/app/lib/lease/rent-schedule-calculator"
 import { ComputeLeaseRentScheduleInput } from "@/app/lib/lease/types"
 import { searchService } from "@/app/lib/rag/services/search-service"
 import { SourceInfo } from "@/app/lib/rag/types"
 
-export interface ToolCallOutput {
-  type: "function_call_output"
-  call_id: string
-  output: string
-}
+export type ToolCallOutput = ResponseInputItem.FunctionCallOutput
 
-export interface ToolCall {
-  type?: "function_call"
-  call_id: string
-  name: string
-  arguments?: string
-}
+export type ToolCall = ResponseFunctionToolCall & { arguments?: string }
 
 export interface ToolCallResult {
   outputItem: ToolCallOutput

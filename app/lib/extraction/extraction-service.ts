@@ -16,6 +16,7 @@ import type {
   ExtractionStatus,
   ExtractionStageDurations,
   ConfidenceLevel,
+  ExtractionSection,
 } from "./types"
 import { postProcessExtraction } from "./post-process"
 import { computeRentScheduleFromExtraction } from "../lease/from-extraction"
@@ -45,6 +46,8 @@ const CONFIDENCE_VALUES: ConfidenceLevel[] = [
 
 type SectionExtractionValue = unknown
 type SectionExtractionMap = Record<string, SectionExtractionValue>
+type ExtractionSectionsMap = Pick<LeaseExtractionResult, ExtractionSection>
+type LeaseSectionKey = keyof ExtractionSectionsMap
 
 interface BatchExtractionResult {
   data?: SectionExtractionMap
@@ -136,6 +139,15 @@ export class ExtractionService {
         pageCount: pdfData.pageCount,
         usedOcrEngine: pdfData.usedOcrEngine,
       }
+      const sectionStore = result as Partial<ExtractionSectionsMap>
+      const getSectionValue = <K extends LeaseSectionKey>(key: K) =>
+        sectionStore[key]
+      const setSectionValue = <K extends LeaseSectionKey>(
+        key: K,
+        value: ExtractionSectionsMap[K]
+      ) => {
+        sectionStore[key] = value
+      }
 
       const totalSections = EXTRACTION_PROMPTS.length
       const groupedPrompts = chunkItems(EXTRACTION_PROMPTS, SECTIONS_PER_CALL)
@@ -217,14 +229,16 @@ export class ExtractionService {
           }
 
           for (const prompt of promptGroup) {
-            const sectionKey = prompt.section as keyof LeaseExtractionResult
+            const sectionKey = prompt.section as LeaseSectionKey
             const sectionValue =
               (sectionResults[prompt.section] as
-                | LeaseExtractionResult[typeof sectionKey]
+                | ExtractionSectionsMap[typeof sectionKey]
                 | undefined) ??
-              result[sectionKey] ??
-              (this.getDefaultSectionData(prompt.section) as LeaseExtractionResult[typeof sectionKey])
-            result[sectionKey] = sectionValue
+              getSectionValue(sectionKey) ??
+              (this.getDefaultSectionData(
+                prompt.section
+              ) as ExtractionSectionsMap[typeof sectionKey])
+            setSectionValue(sectionKey, sectionValue)
 
             completedSections++
             const progressPercent = this.computeSectionProgress(
@@ -431,7 +445,7 @@ export class ExtractionService {
         },
       },
       reasoning: {
-        effort: "minimal",
+        effort: "low",
       },
     })
 
@@ -471,7 +485,7 @@ export class ExtractionService {
         },
       },
       reasoning: {
-        effort: "minimal",
+        effort: "low",
       },
     })
 
@@ -522,7 +536,8 @@ export class ExtractionService {
     const missingValue = {
       value: null,
       confidence: "missing" as const,
-      source: "not found",
+      source: "Document entier",
+      rawText: "Non mentionné",
     }
 
     switch (section) {
@@ -638,6 +653,7 @@ export class ExtractionService {
         }
       case "securities":
         return {
+          securityDepositDescription: missingValue,
           securityDepositAmount: missingValue,
           otherSecurities: { ...missingValue, value: [] },
         }
@@ -790,15 +806,24 @@ export class ExtractionService {
     pages: string[]
   ): Promise<void> {
     try {
+      const metadataPayload = result.extractionMetadata
+        ? {
+            extractionMetadata: {
+              ...result.extractionMetadata,
+              stageDurations: {
+                ...result.extractionMetadata.stageDurations,
+              },
+            },
+          }
+        : undefined
+
       await documentIngestionService.ingest({
         documentId: result.documentId,
         fileName: result.fileName,
         pageCount: result.pageCount,
         pages,
         rawText: result.rawText,
-        metadata: {
-          extractionMetadata: result.extractionMetadata,
-        },
+        metadata: metadataPayload,
       })
     } catch (error) {
       console.error("RAG ingestion failed:", error)

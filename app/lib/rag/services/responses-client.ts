@@ -1,4 +1,11 @@
-import type { ResponseOutputItem } from "openai/resources/responses/responses"
+import type {
+  ResponseFunctionToolCall,
+  ResponseInput,
+  ResponseInputItem,
+  ResponseOutputItem,
+  ResponseOutputMessage,
+  Tool,
+} from "openai/resources/responses/responses"
 
 import { retrieveChunksTool } from "@/app/lib/ai/tools/definitions"
 import {
@@ -11,22 +18,18 @@ import { RAG_CONFIG } from "../config"
 import { SourceInfo } from "../types"
 
 const openai = getOpenAIClient()
-const TOOLS = [retrieveChunksTool]
+const TOOLS: Tool[] = [retrieveChunksTool]
 
-type ConversationMessage = {
-  role: "user" | "assistant" | "system"
-  content: string
-}
-
-type ConversationInput = ConversationMessage | ToolCallOutput
+type ConversationItem = ResponseInputItem
 
 export async function generateAnswerWithRAG(
   question: string,
   documentId: string,
   instructions = "You are a precise data extraction assistant. Use the retrieve_chunks tool to find information in the document to answer the question. Answer ONLY based on the retrieved context."
 ): Promise<{ answer: string; sources: SourceInfo[] }> {
-  const messages: ConversationInput[] = [
+  const messages: ConversationItem[] = [
     {
+      type: "message",
       role: "user",
       content: question,
     },
@@ -36,7 +39,7 @@ export async function generateAnswerWithRAG(
 }
 
 async function runConversation(
-  inputMessages: ConversationInput[],
+  inputMessages: ConversationItem[],
   documentId: string,
   instructions: string,
   previousResponseId?: string,
@@ -45,7 +48,7 @@ async function runConversation(
   try {
     const response = await openai.responses.create({
       model: RAG_CONFIG.responsesModel,
-      input: inputMessages,
+      input: inputMessages as ResponseInput,
       tools: TOOLS,
       instructions,
       previous_response_id: previousResponseId,
@@ -54,7 +57,7 @@ async function runConversation(
     })
 
     let toolCallItem: ToolCall | null = null
-    let assistantMessage: ResponseOutputItem | null = null
+    let assistantMessage: ResponseOutputMessage | null = null
 
     for (const item of response.output) {
       if (isAssistantMessage(item)) {
@@ -91,18 +94,18 @@ async function runConversation(
 
 function isAssistantMessage(
   item: ResponseOutputItem
-): item is Extract<ResponseOutputItem, { type: "message"; role: "assistant" }> {
-  return item.type === "message" && (item as { role?: unknown }).role === "assistant"
+): item is ResponseOutputMessage {
+  return item.type === "message" && item.role === "assistant"
 }
 
 function isFunctionToolCall(
   item: ResponseOutputItem
-): item is ToolCall {
+): item is ResponseFunctionToolCall {
   return item.type === "function_call"
 }
 
-function extractAssistantText(message: ResponseOutputItem | null): string {
-  if (!message || message.type !== "message") {
+function extractAssistantText(message: ResponseOutputMessage | null): string {
+  if (!message) {
     return ""
   }
   const output = message.content.find(

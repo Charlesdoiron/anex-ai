@@ -34,4 +34,3 @@ export function getOptionalOpenAIClient(): OpenAI | null {
     throw error
   }
 }
-

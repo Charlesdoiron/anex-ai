@@ -24,6 +24,12 @@ export function postProcessExtraction(
   // Normalize parties SIREN fields
   processed.parties = normalizePartiesSiren(processed.parties)
 
+  // Normalize rent field structure (LLM sometimes returns nested format)
+  processed.rent = normalizeRentField(processed.rent)
+
+  // Normalize indexation field structure
+  processed.indexation = normalizeIndexationField(processed.indexation)
+
   // Calendar computed fields
   processed.calendar = computeCalendarFields(processed)
 
@@ -35,6 +41,9 @@ export function postProcessExtraction(
 
   // Support measures computed fields (needs rent)
   processed.supportMeasures = computeSupportMeasuresFields(processed)
+
+  // Securities computed fields (needs rent)
+  processed.securities = computeSecuritiesFields(processed)
 
   return processed
 }
@@ -50,7 +59,8 @@ function normalizeRegimeField(
       regime: {
         value: "unknown",
         confidence: "missing",
-        source: "non trouvé",
+        source: "Document entier",
+        rawText: "Non mentionné",
       },
     }
   }
@@ -111,6 +121,105 @@ function normalizePartiesSiren(
       siren: normalizeSiren(parties.tenant.siren),
     },
   }
+}
+
+/**
+ * Normalize rent field - LLM sometimes returns nested structures like
+ * { "LOYER_PRINCIPAL_HT_HC": { annualRentExclTaxExclCharges: {...} } }
+ * instead of flat { annualRentExclTaxExclCharges: {...} }
+ */
+function normalizeRentField(
+  rent: LeaseExtractionResult["rent"]
+): LeaseExtractionResult["rent"] {
+  if (!rent) return rent
+
+  // Expected flat keys
+  const expectedKeys = [
+    "annualRentExclTaxExclCharges",
+    "quarterlyRentExclTaxExclCharges",
+    "annualRentPerSqmExclTaxExclCharges",
+    "annualParkingRentExclCharges",
+    "quarterlyParkingRentExclCharges",
+    "annualParkingRentPerUnitExclCharges",
+    "isSubjectToVAT",
+    "paymentFrequency",
+    "latePaymentPenaltyConditions",
+    "latePaymentPenaltyAmount",
+  ]
+
+  // Check if any expected key exists at top level
+  const hasExpectedKeys = expectedKeys.some((key) => key in rent)
+
+  if (hasExpectedKeys) {
+    return rent
+  }
+
+  // Try to flatten nested structure
+  const flattened: Record<string, unknown> = {}
+
+  for (const [, value] of Object.entries(rent)) {
+    if (value && typeof value === "object" && !("value" in value)) {
+      // This is a nested section, extract its fields
+      for (const [innerKey, innerValue] of Object.entries(
+        value as Record<string, unknown>
+      )) {
+        if (expectedKeys.includes(innerKey)) {
+          flattened[innerKey] = innerValue
+        }
+      }
+    }
+  }
+
+  // Return flattened if we found any expected keys, otherwise return original
+  if (Object.keys(flattened).length > 0) {
+    return flattened as unknown as LeaseExtractionResult["rent"]
+  }
+
+  return rent
+}
+
+/**
+ * Normalize indexation field - similar to rent, LLM returns nested structures
+ */
+function normalizeIndexationField(
+  indexation: LeaseExtractionResult["indexation"]
+): LeaseExtractionResult["indexation"] {
+  if (!indexation) return indexation
+
+  const expectedKeys = [
+    "indexationClause",
+    "hasIndexationClause",
+    "indexationType",
+    "referenceQuarter",
+    "firstIndexationDate",
+    "indexationFrequency",
+  ]
+
+  const hasExpectedKeys = expectedKeys.some((key) => key in indexation)
+
+  if (hasExpectedKeys) {
+    return indexation
+  }
+
+  const flattened: Record<string, unknown> = {}
+
+  for (const [, value] of Object.entries(indexation)) {
+    if (value && typeof value === "object" && !("value" in value)) {
+      for (const [innerKey, innerValue] of Object.entries(
+        value as Record<string, unknown>
+      )) {
+        if (expectedKeys.includes(innerKey)) {
+          flattened[innerKey] = innerValue
+        }
+      }
+    }
+  }
+
+  if (Object.keys(flattened).length > 0) {
+    return flattened as unknown as LeaseExtractionResult["indexation"]
+  }
+
+  return indexation
 }
 
 function computeCalendarFields(
@@ -423,6 +532,58 @@ function computeSupportMeasuresFields(
   return support
 }
 
+function computeSecuritiesFields(
+  result: LeaseExtractionResult
+): LeaseExtractionResult["securities"] {
+  const securities = { ...result.securities }
+
+  // Compute securityDepositAmount from description if it mentions months + annual rent
+  if (
+    !hasValue(securities.securityDepositAmount) &&
+    hasValue(result.rent?.annualRentExclTaxExclCharges)
+  ) {
+    const annualRent = result.rent.annualRentExclTaxExclCharges.value
+
+    if (typeof annualRent === "number" && annualRent > 0) {
+      // Try to extract number of months from description
+      const description = securities.securityDepositDescription?.value
+      if (typeof description === "string") {
+        // Match patterns like "3 mois", "trois (3) mois", "trois mois"
+        const monthsMatch = description.match(
+          /(\d+)\s*mois|trois\s*(?:\(\d+\))?\s*mois|deux\s*(?:\(\d+\))?\s*mois/i
+        )
+
+        let months: number | null = null
+        if (monthsMatch) {
+          if (monthsMatch[1]) {
+            months = parseInt(monthsMatch[1], 10)
+          } else if (description.toLowerCase().includes("trois")) {
+            months = 3
+          } else if (description.toLowerCase().includes("deux")) {
+            months = 2
+          }
+        }
+
+        if (months && months > 0) {
+          const monthlyRent = annualRent / 12
+          const sourceConfidence = minConfidence(
+            securities.securityDepositDescription?.confidence,
+            result.rent.annualRentExclTaxExclCharges.confidence
+          )
+
+          securities.securityDepositAmount = {
+            value: roundCurrency(months * monthlyRent),
+            confidence: sourceConfidence,
+            source: `calculé depuis ${months} mois × loyer mensuel`,
+          }
+        }
+      }
+    }
+  }
+
+  return securities
+}
+
 // --- Utility functions ---
 
 function hasValue<T>(field: ExtractedValue<T> | undefined | null): boolean {
@@ -449,12 +610,24 @@ function minConfidence(
   return order[minIndex]
 }
 
+/**
+ * Add years to a date and return J-1 (the day before the anniversary)
+ * Example: 2016-12-19 + 9 years = 2025-12-18 (not 2025-12-19)
+ * This follows French lease convention where the end date is the day before the anniversary
+ */
 function addYearsToDate(isoDate: string, years: number): string {
   const date = new Date(isoDate)
   date.setUTCFullYear(date.getUTCFullYear() + years)
+  // J-1: subtract one day to get the day before the anniversary
+  date.setUTCDate(date.getUTCDate() - 1)
   return date.toISOString().split("T")[0]!
 }
 
+/**
+ * Compute next triennial date from effective date, returning J-1
+ * Example: effective 2025-10-10 → first triennial 2028-10-09 (J-1 of 3rd anniversary)
+ * This follows French lease convention where triennial dates are the day before the anniversary
+ */
 function computeNextTriennialDate(effectiveDateISO: string): string | null {
   const effectiveDate = new Date(effectiveDateISO)
   const now = new Date()
@@ -466,7 +639,7 @@ function computeNextTriennialDate(effectiveDateISO: string): string | null {
     nextTriennial.setUTCFullYear(nextTriennial.getUTCFullYear() + 3)
   }
 
-  // If the next triennial is more than 9 years from effective date,
+  // If the next triennial is more than 12 years from effective date,
   // the lease might have ended or been renewed
   const yearsFromStart =
     (nextTriennial.getTime() - effectiveDate.getTime()) /
@@ -475,6 +648,9 @@ function computeNextTriennialDate(effectiveDateISO: string): string | null {
   if (yearsFromStart > 12) {
     return null
   }
+
+  // J-1: subtract one day to get the day before the anniversary
+  nextTriennial.setUTCDate(nextTriennial.getUTCDate() - 1)
 
   return nextTriennial.toISOString().split("T")[0]!
 }

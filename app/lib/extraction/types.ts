@@ -37,6 +37,26 @@ export interface ExtractionProgress {
   error?: string
 }
 
+export type ExtractionSection =
+  | "regime"
+  | "parties"
+  | "premises"
+  | "calendar"
+  | "supportMeasures"
+  | "rent"
+  | "indexation"
+  | "taxes"
+  | "charges"
+  | "insurance"
+  | "securities"
+  | "inventory"
+  | "maintenance"
+  | "restitution"
+  | "transfer"
+  | "environmentalAnnexes"
+  | "otherAnnexes"
+  | "other"
+
 export interface ExtractionStageDurations {
   pdfProcessingMs: number
   extractionMs: number
@@ -180,8 +200,9 @@ export interface InsuranceData {
 
 // 11. Sûretés
 export interface SecuritiesData {
+  securityDepositDescription: ExtractedValue<string | null>
   securityDepositAmount: ExtractedValue<number | null>
-  otherSecurities: ExtractedValue<string[]>
+  otherSecurities: ExtractedValue<string[] | string | null>
 }
 
 // 12. États des lieux

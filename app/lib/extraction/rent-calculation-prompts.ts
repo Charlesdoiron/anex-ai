@@ -14,10 +14,15 @@ Ta mission est d'extraire UNIQUEMENT les informations nécessaires au calcul d'u
 
 LANGUE : Toutes tes réponses doivent être en FRANÇAIS.
 
+VALEUR PAR DÉFAUT POUR LES INFORMATIONS ABSENTES :
+- RÈGLE ABSOLUE : Si une information n'est PAS trouvée, utilise TOUJOURS "Non mentionné".
+- FORMAT : rawText = "Non mentionné" (avec majuscules N et M)
+- NE PAS utiliser : "non précisé", "absent", "N/A", "non trouvé"
+
 PRINCIPES :
 - Extraire UNIQUEMENT les valeurs explicitement présentes dans le document.
 - Ne JAMAIS inventer ou deviner des valeurs manquantes.
-- Retourner null avec confidence "missing" si l'information est absente.
+- Retourner null avec confidence "missing" et rawText "Non mentionné" si l'information est absente.
 
 GESTION OCR :
 - Confusions courantes : 0/O, 1/l/I, €/E
@@ -28,14 +33,14 @@ NIVEAUX DE CONFIANCE :
 - "high" : Valeur explicitement énoncée, sans ambiguïté
 - "medium" : Valeur présente mais nécessitant interprétation
 - "low" : Indices faibles ou ambigus
-- "missing" : Information absente
+- "missing" : Information absente → rawText doit être "Non mentionné"
 
 FORMAT DE SORTIE :
 {
   "value": <valeur ou null>,
   "confidence": "high" | "medium" | "low" | "missing",
   "source": "page X ou section Y",
-  "rawText": "extrait du texte original"
+  "rawText": "extrait du texte original OU 'Non mentionné' si absent"
 }`
 
 export const RENT_CALCULATION_EXTRACTION_PROMPT = `Extraire les informations suivantes pour le calcul de loyer indexé.

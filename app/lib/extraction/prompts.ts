@@ -1,3 +1,5 @@
+import type { ExtractionSection } from "./types"
+
 /**
  * Prompts d'extraction pour les baux commerciaux français
  * Utilisation de l'API Responses d'OpenAI avec sortie structurée
@@ -24,13 +26,26 @@ Ta mission est d'extraire des informations précises à partir de documents de b
 
 LANGUE DE RÉPONSE :
 - Toutes tes réponses (rawText, source, descriptions) doivent être en FRANÇAIS.
-- N'utilise JAMAIS d'anglais dans tes réponses (pas de "not found", "missing", etc.).
-- Si une information est absente, utilise : "non mentionné", "non précisé", "absent du document".
+- N'utilise JAMAIS d'anglais dans tes réponses (pas de "not found", "missing", "not specified", etc.).
+
+VALEUR PAR DÉFAUT POUR LES INFORMATIONS ABSENTES :
+- RÈGLE ABSOLUE : Si une information n'est PAS trouvée dans le document, utilise TOUJOURS "Non mentionné".
+- Cette règle s'applique à TOUS les champs : rawText, descriptions textuelles, valeurs de type chaîne.
+- FORMAT EXACT : "Non mentionné" (avec majuscule N et M, sans guillemets dans la valeur JSON)
+
+EXEMPLES DE BONNES PRATIQUES :
+- ❌ MAUVAIS : "non précisé", "absent du document", "non indiqué", "N/A", "non trouvé", "pas mentionné"
+- ✅ BON : "Non mentionné"
+- ❌ MAUVAIS : rawText: "Aucune information trouvée"
+- ✅ BON : rawText: "Non mentionné"
+- ❌ MAUVAIS : value: null, rawText: "absent"
+- ✅ BON : value: null, rawText: "Non mentionné"
 
 PRINCIPES FONDAMENTAUX :
 - Extraire UNIQUEMENT les informations explicitement présentes dans le document.
 - Ne JAMAIS inventer, déduire de connaissances externes, ou deviner des valeurs manquantes.
 - Il est TOUJOURS préférable de retourner null (avec confidence "missing") qu'une valeur imprécise ou spéculative.
+- Pour les champs manquants : value = null, confidence = "missing", rawText = "Non mentionné"
 
 GESTION DE LA QUALITÉ OCR :
 Le texte provient souvent d'une reconnaissance optique de caractères (OCR) et peut contenir des erreurs :
@@ -78,37 +93,65 @@ Pour chaque champ extrait :
   "rawText": "extrait du texte original supportant la valeur" (optionnel mais recommandé)
 }
 
+EXEMPLES DE FORMAT DE SORTIE :
+
+1. Information trouvée :
+{
+  "value": "Bail commercial",
+  "confidence": "high",
+  "source": "page 1",
+  "rawText": "BAIL COMMERCIAL entre les soussignés"
+}
+
+2. Information NON trouvée (VALEUR PAR DÉFAUT) :
+{
+  "value": null,
+  "confidence": "missing",
+  "source": "Document entier",
+  "rawText": "Non mentionné"
+}
+
+3. Information partielle ou ambiguë :
+{
+  "value": null,
+  "confidence": "missing",
+  "source": "section X",
+  "rawText": "Non mentionné"
+}
+
+IMPORTANT : Même si value = null, rawText doit TOUJOURS contenir "Non mentionné" (pas de chaîne vide, pas d'autre texte).
+
 Tu recevras le texte complet du document et devras extraire des sections spécifiques.`
 
 export const REGIME_PROMPT = `Extraire le régime juridique du bail.
 
-VALEURS POSSIBLES :
-- "commercial" : Bail commercial classique (L.145-1 et suivants du Code de commerce)
-- "civil" : Bail de droit commun (Code civil)
-- "précaire" : Convention d'occupation précaire
-- "dérogatoire" : Bail dérogatoire (≤ 3 ans, article L.145-5)
-- "à construire" : Bail à construire
-- "à construction" : Bail à construction (emphytéotique)
+VALEURS POSSIBLES (utiliser ces formulations exactes) :
+- "Bail commercial" : Bail commercial classique (L.145-1 et suivants du Code de commerce)
+- "Bail civil" : Bail de droit commun (Code civil)
+- "Convention d'occupation précaire" : Convention d'occupation précaire
+- "Bail dérogatoire" : Bail dérogatoire (≤ 3 ans, article L.145-5)
+- "Bail à construire" : Bail à construire
+- "Bail à construction" : Bail à construction (emphytéotique)
 - "BEFA" : Bail en l'État Futur d'Achèvement
-- "unknown" : Type non identifiable
+- "unknown" : Type non identifiable (utiliser cette valeur exacte)
 
 INDICES À RECHERCHER :
 - Titre du document : "BAIL COMMERCIAL", "CONTRAT DE BAIL", etc.
-- Références légales : "L.145-1", "Code de commerce", "Code civil"
+- Références légales : "L.145-1", "Code de commerce", "statut des baux commerciaux"
 - Durée : Un bail de 3/6/9 ans suggère un bail commercial
 - Mentions explicites : "bail dérogatoire", "convention précaire"
-- "Type 3/6/9" = bail commercial
+- "donne à bail commercial" dans le texte
 
 EXEMPLES :
-- "Le présent BAIL COMMERCIAL est consenti..." → regime: "commercial"
-- "BAIL COMMERCIAL de Type 3/6/9" → regime: "commercial"
-- "Convention d'occupation précaire..." → regime: "précaire"
-- "Bail dérogatoire de 23 mois en application de l'article L.145-5..." → regime: "dérogatoire"
+- "Le présent BAIL COMMERCIAL est consenti..." → regime: "Bail commercial"
+- "statut des baux commerciaux" → regime: "Bail commercial"
+- "Convention d'occupation précaire..." → regime: "Convention d'occupation précaire"
+- "Bail dérogatoire de 23 mois en application de l'article L.145-5..." → regime: "Bail dérogatoire"
 
 IMPORTANT - Format de sortie EXACT :
 {
   "regime": {
-    "value": "commercial",
+    "value": "Bail commercial",
     "confidence": "high",
     "source": "page X ou section Y",
     "rawText": "extrait du texte"
@@ -119,16 +162,18 @@ export const PARTIES_PROMPT = `Extraire les informations sur toutes les parties 
 
 PARTIES À IDENTIFIER :
 1. Bailleur (propriétaire) : personne physique ou morale qui loue le bien
-2. Représentant du bailleur : mandataire, gérant, administrateur de biens (si applicable)
+2. Représentant du bailleur (UNIQUEMENT si mandataire externe) : administrateur de biens, société de gestion
+   - NE PAS inclure : le gérant/président qui signe pour la société (c'est un représentant légal, pas un mandataire)
+   - NE PAS inclure : une personne qui "représente" la société pour signer
+   - INCLURE UNIQUEMENT : un tiers mandaté (ex: agence immobilière, administrateur de biens externe)
 3. Preneur (locataire) : personne physique ou morale qui prend le bien en location
 
 INFORMATIONS À EXTRAIRE POUR CHAQUE PARTIE :
 - name : Nom complet (personne physique) ou dénomination sociale (société)
 - siren : Numéro SIREN (9 chiffres) ou SIRET (14 chiffres) de la société
-- email : Adresse email
+- email : Adresse email (IMPORTANT : chercher dans section "Notifications")
 - phone : Numéro de téléphone
 - address : Adresse postale complète (siège social pour les sociétés)
-- siren : Numéro SIREN (9 chiffres) de l'entreprise si personne morale
 
 EXTRACTION DU SIREN/SIRET :
 - Le SIREN est un identifiant à 9 chiffres : XXX XXX XXX
@@ -141,58 +186,63 @@ GESTION DES NOMS ILLISIBLES OU MASQUÉS :
 L'OCR peut produire du texte illisible pour les noms des parties :
 - Caractères remplacés par des symboles : "@@@", "###", "***", "EEEE", "XXXX"
 - Texte corrompu : "La i son si¢ge socia!", "Ee: 2. capital dc"
-- Espaces ou caractères manquants
 Dans ces cas :
 - Si le texte est partiellement lisible, extraire ce qui est lisible
 - Si le texte est totalement corrompu, retourner null avec confidence "missing"
 - Mentionner dans rawText : "nom masqué ou illisible dans le document"
 
-OÙ CHERCHER LES EMAILS ET TÉLÉPHONES :
-Les coordonnées peuvent se trouver dans plusieurs endroits du document :
-- En-tête ou pied de page du document
-- Section "Notifications" ou "Correspondances" (adresses pour les envois)
-- Après le nom des parties dans le préambule
-- Dans les annexes ou conditions particulières
-- Format email : xxx@xxx.xx (attention OCR : @ peut devenir "a", "©")
+OÙ CHERCHER LES EMAILS ET TÉLÉPHONES (PRIORITAIRE) :
+1. ARTICLE "NOTIFICATIONS" ou "CORRESPONDANCES" - chercher en priorité ici !
+   - Termes : "toute notification", "toute correspondance", "adresse électronique"
+   - Souvent situé vers la fin du bail (articles 20-30)
+2. En-tête ou pied de page du document
+3. Après le nom des parties dans le préambule
+4. Dans les annexes ou conditions particulières
+- Format email : xxx@xxx.xx (attention OCR : @ peut devenir "a", "©", "(a)")
 - Format téléphone : 01 XX XX XX XX, +33 X XX XX XX XX, 06.XX.XX.XX.XX
 
-INDICES COURANTS :
+INDICES COURANTS POUR IDENTIFIER LES PARTIES :
 - "ENTRE LES SOUSSIGNÉS :", "D'UNE PART :", "D'AUTRE PART :"
 - "ci-après dénommé le Bailleur / le Preneur"
-- "représenté par M./Mme X en qualité de..."
 - Forme juridique : SCI, SARL, SAS, SA, EURL, etc.
 - RCS, SIRET, SIREN, capital social
-- Le SIREN est un numéro à 9 chiffres (les 9 premiers chiffres du SIRET)
-- Format SIREN : "123 456 789" ou "123456789" (avec ou sans espaces)
-- "domicile élu", "adresse de notification", "toute correspondance"
+- "domicile élu", "adresse de notification"
 
 EXEMPLES :
-- "La SCI IMMOBILIER PARISIEN, RCS Paris 123 456 789, représentée par M. Jean DUPONT"
-  → landlord.name: "SCI IMMOBILIER PARISIEN", landlord.siren: "123456789", landlordRepresentative.name: "Jean DUPONT"
-- "La société TECH STARTUP SAS, au capital de 10.000 €, SIRET 123 456 789 00012"
-  → tenant.name: "TECH STARTUP SAS", tenant.siren: "12345678900012"
+- "La SCI IMMOBILIER, RCS Paris 123 456 789, dont le gérant est M. Jean DUPONT"
+  → landlord.name: "SCI IMMOBILIER", landlord.siren: "123456789"
+  → landlordRepresentative: null (le gérant n'est pas un mandataire externe)
+- "La SCI IMMOBILIER, représentée par la société GESTION IMMO, administrateur de biens"
+  → landlord.name: "SCI IMMOBILIER", landlordRepresentative.name: "GESTION IMMO"
+- "Article 25 - Notifications : par email à contact@exemple.fr pour le Bailleur"
+  → landlord.email: "contact@exemple.fr"
+- Email non trouvé dans le document
+  → landlord.email: { value: null, confidence: "missing", source: "Document entier", rawText: "Non mentionné" }
 - "La société @@@@@, au capital de..." (nom masqué)
-  → name: null, confidence: "missing", rawText: "nom masqué dans le document"
-- "Toute notification sera adressée à contact@exemple.fr"
-  → email: "contact@exemple.fr"
+  → name: { value: null, confidence: "missing", source: "...", rawText: "Non mentionné" }
 
-Format de sortie :
+FORMAT DE SORTIE :
 {
   "landlord": {
     "name": { "value": "...", "confidence": "...", "source": "..." },
     "siren": { "value": "..." ou null, "confidence": "...", "source": "..." },
     "email": { "value": "..." ou null, "confidence": "...", "source": "..." },
     "phone": { "value": "..." ou null, "confidence": "...", "source": "..." },
-    "address": { "value": "..." ou null, "confidence": "...", "source": "..." },
-    "siren": { "value": "..." ou null, "confidence": "...", "source": "..." }
+    "address": { "value": "..." ou null, "confidence": "...", "source": "..." }
   },
-  "landlordRepresentative": { ... } ou null,
-  "tenant": {
+  "landlordRepresentative": null ou {
     "name": { "value": "...", "confidence": "...", "source": "..." },
+    "siren": { "value": "..." ou null, "confidence": "...", "source": "..." },
     "email": { "value": "..." ou null, "confidence": "...", "source": "..." },
     "phone": { "value": "..." ou null, "confidence": "...", "source": "..." },
-    "address": { "value": "..." ou null, "confidence": "...", "source": "..." },
-    "siren": { "value": "..." ou null, "confidence": "...", "source": "..." }
+    "address": { "value": "..." ou null, "confidence": "...", "source": "..." }
+  },
+  "tenant": {
+    "name": { "value": "...", "confidence": "...", "source": "..." },
+    "siren": { "value": "..." ou null, "confidence": "...", "source": "..." },
+    "email": { "value": "..." ou null, "confidence": "...", "source": "..." },
+    "phone": { "value": "..." ou null, "confidence": "...", "source": "..." },
+    "address": { "value": "..." ou null, "confidence": "...", "source": "..." }
   }
 }`
 
@@ -200,72 +250,88 @@ export const PREMISES_PROMPT = `Extraire la description détaillée des locaux l
 
 CHAMPS À EXTRAIRE :
 
-1. DESTINATION ET IDENTIFICATION :
-- purpose (destination) : Usage autorisé des locaux (bureaux, commerce, activité, etc.)
-- designation : Description générale des locaux
+1. DÉSIGNATION ET DESTINATION :
+- designation : Description générale des locaux loués (ex: "Local mixte activités/bureaux et 4 places de parking")
+  - Inclure les éléments loués : bâtiments, parkings, caves, etc.
+  - Chercher dans l'article "Désignation" ou "Définition des locaux"
+- purpose (destination) : Usage autorisé des locaux avec exclusions éventuelles
+  - Format : "Usage de [activité]. Exclusion : [activités interdites]"
+  - Chercher les termes : "à usage de", "destiné à", "exclusivement", "à l'exclusion de"
+  - Ex: "Usage d'activités et de bureaux. Exclusion : réception du public, vente au public"
 - address : Adresse complète des locaux
 
 2. CARACTÉRISTIQUES DU BÂTIMENT :
 - buildingYear : Année de construction (important pour diagnostics amiante si avant 1997)
+  - Si non mentionné, retourner "Non mentionné"
 - floors : Étages concernés (liste : ["RDC", "1er", "2ème", etc.])
+  - Si non mentionné, retourner "Non mentionné"
 - lotNumbers : Numéros de lot (copropriété)
+  - Format : "Lots X, Y, Z" ou "Non mentionné"
 
 3. SURFACES :
-- surfaceArea : Surface TOTALE en m² des locaux loués
+- surfaceArea : Surface TOTALE en m² des locaux loués (VALEUR NUMÉRIQUE UNIQUEMENT)
   
-  RÈGLES IMPORTANTES POUR LA SURFACE :
-  - Extraire la surface TOTALE mentionnée, pas les surfaces partielles
-  - Si plusieurs unités/lots sont loués, prendre la somme ou la surface globale
+  RÈGLES IMPORTANTES :
+  - Retourner UNIQUEMENT le nombre, sans unité (ex: 218 et non "218 m²")
+  - Si plusieurs surfaces sont données (bureaux: X m², activités: Y m²), les ADDITIONNER
+  - Si pas de total explicite mais des surfaces détaillées, les additionner
   - Privilégier : "surface totale", "surface exploitée", "superficie totale"
-  - Ne pas confondre avec les surfaces détaillées par zone (vente, réserve, mezzanine)
   
-  CORRECTION DES ERREURS OCR POUR LES SURFACES :
-  - "m?" → "m²" (le ? est une erreur OCR du ²)
-  - "m'" → "m²" (l'apostrophe est une erreur OCR du ²)
-  - "m 2" → "m²"
-  - "m2" → "m²"
-  - "mètres carrés", "metres carres" → m²
+  CORRECTION DES ERREURS OCR :
+  - "m?" → "m²", "m'" → "m²", "m 2" → "m²", "m2" → "m²"
   - Les points dans les nombres (3.613) sont des séparateurs de milliers = 3613
   
-  EXEMPLES DE SURFACES :
-  - "surface totale de 3.613 m?" → surfaceArea: 3613
-  - "Surface Exploitée de 1 610 m?" → surfaceArea: 1610
-  - "d'une superficie de 250 m'" → surfaceArea: 250
+  EXEMPLES :
+  - "surface totale de 218 m²" → surfaceArea: 218
+  - "Bureaux : 278 m² et 41 m², Activités : 117 m² et 542 m²" → surfaceArea: 978
+  - "0 m²" ou surface non trouvée → mentionner dans rawText les surfaces partielles trouvées
 
 4. AMÉNAGEMENTS :
-- isPartitioned : Locaux cloisonnés ou en open space
-- hasFurniture : Présence de mobilier
-- furnishingConditions : Description des conditions de mobilier
+- isPartitioned : Locaux cloisonnés ?
+  - Valeurs : "Oui, [détails]" / "Non" / "Non mentionné"
+  - Ex: "Oui, plusieurs salles de réunion notamment"
+- hasFurniture : Présence de mobilier ?
+  - Valeurs : "Oui" / "Non" / "Non mentionné"
+- furnishingConditions (clause de garnissement) : Obligation de garnir les locaux
+  - Chercher : "garnir", "tenir garnis", "meubles et objets mobiliers"
+  - Si présent, extraire le texte de la clause
+  - Sinon : "Non mentionné"
 - signageConditions : Conditions d'enseigne/signalétique
+  - Chercher article "enseigne" ou sous-article dans travaux/aménagements
+  - Ex: "Pose d'enseigne soumise à autorisation du bailleur"
+  - Sinon : "Non mentionné"
 
 5. ESPACES ANNEXES :
-- hasOutdoorSpace : Espace extérieur (terrasse, cour)
-- hasArchiveSpace : Local d'archives
+- hasOutdoorSpace : Espace extérieur (terrasse, cour) - "Oui" / "Non" (non mentionné = Non)
+- hasArchiveSpace : Local d'archives - "Oui" / "Non" (non mentionné = Non)
 - parkingSpaces : Nombre de places de parking voitures (nombre entier, 0 si absent)
 - twoWheelerSpaces : Places deux-roues motorisés
 - bikeSpaces : Places vélos
 
 6. TANTIÈMES / QUOTE-PART :
-- shareWithCommonAreas : Quote-part parties communes (en millièmes ou pourcentage)
+- shareWithCommonAreas : Quote-part parties communes
+  - Format : valeur ou "Non mentionné"
 - shareWithoutCommonAreas : Quote-part hors parties communes
+  - Format : valeur ou "Non mentionné"
 - totalBuildingShare : Tantièmes sur l'ensemble de l'immeuble
 
-EXEMPLES :
-- "Locaux à usage de BUREAUX situés au 3ème étage, d'une surface de 250 m²"
-  → purpose: "bureaux", floors: ["3ème"], surfaceArea: 250
-- "15 emplacements de stationnement en sous-sol (-1)"
-  → parkingSpaces: 15
-- "L'Ensemble Immobilier d'une surface totale de 3.613 m? comprend trois unités"
-  → surfaceArea: 3613 (surface TOTALE, pas les unités individuelles)
-- "Locaux n° 3, d'une Surface Exploitée de 1 610 m?"
-  → surfaceArea: 1610
+EXEMPLES COMPLETS :
+- "Local mixte activités/bureaux d'une surface de 218 m² et 4 places de parking"
+  → designation: "Local mixte activités/bureaux et 4 places de parking (n°1,2,3,4)"
+  → surfaceArea: 218, parkingSpaces: 4
+- "À usage exclusif de bureaux, à l'exclusion de toute activité de réception du public"
+  → purpose: "Usage exclusif de bureaux. Exclusion : activité de réception du public"
+- Année de construction non mentionnée dans le document
+  → buildingYear: { value: null, confidence: "missing", source: "Document entier", rawText: "Non mentionné" }
+- Étages non mentionnés
+  → floors: { value: null, confidence: "missing", source: "Document entier", rawText: "Non mentionné" }
+- Clause d'enseigne absente
+  → signageConditions: { value: null, confidence: "missing", source: "Document entier", rawText: "Non mentionné" }
 
-ATTENTION - CAS COMPLEXES :
-- Si le bail porte sur UN SEUL lot parmi plusieurs, extraire la surface de CE lot
-- Si le bail porte sur TOUS les lots, extraire la surface TOTALE
-- En cas de doute, mentionner dans rawText les différentes surfaces trouvées
-
-Format de sortie JSON avec tous les champs ayant value, confidence, source.`
+Format de sortie JSON avec tous les champs ayant value, confidence, source.
+IMPORTANT : 
+- surfaceArea doit être un NOMBRE, pas une chaîne avec unité.
+- Pour TOUS les champs manquants : value = null, rawText = "Non mentionné" (exactement cette formulation).`
 
 export const CALENDAR_PROMPT = `Extraire toutes les dates et durées liées au bail.
 
@@ -273,38 +339,61 @@ CHAMPS À EXTRAIRE :
 
 1. DATES CLÉS :
 - signatureDate : Date de signature du bail (format ISO : YYYY-MM-DD)
+  - Se trouve généralement en fin de bail, avant les annexes, avec "Fait à..."
+  - Si non trouvée : "Non mentionné"
 - effectiveDate : Date de prise d'effet / entrée en jouissance
-- earlyAccessDate : Date de mise à disposition anticipée (si différente)
-- endDate : Date de fin du bail (peut être calculée : effectiveDate + duration)
+- earlyAccessDate : Date de mise à disposition anticipée (si différente de effectiveDate)
+- endDate : Date de fin du bail
+  - IMPORTANT : la date de fin est la VEILLE de l'anniversaire, pas le jour même
+  - Exemple : bail du 10/10/2025 pour 10 ans → fin le 09/10/2035 (J-1)
 
 2. DURÉE :
-- duration : Durée du bail en années (typiquement 3, 6, 9 ou 12 ans)
+- duration : Durée du bail en années (nombre entier : 3, 6, 9, 10, 12...)
+  - Format de sortie : "X ans" (ex: "9 ans", "10 ans")
 
 3. ÉCHÉANCES :
-- nextTriennialDate : Prochaine échéance triennale (SEULEMENT si explicitement mentionnée)
-  - Pour un bail 3/6/9, c'est la prochaine date où le locataire peut donner congé
-  - Ne PAS calculer toi-même, extraire uniquement si présent dans le texte
+- nextTriennialDate : Prochaine échéance triennale
+  - IMPORTANT : l'échéance est la VEILLE de l'anniversaire triennal
+  - Exemple : bail du 10/10/2025 → première échéance le 09/10/2028 (J-1 du 3ème anniversaire)
+  - Ne PAS calculer toi-même si non explicitement mentionnée
 
 4. PRÉAVIS ET RÉSILIATION :
-- noticePeriod : Délai de préavis (ex: "6 mois avant l'échéance triennale")
-- terminationConditions : Conditions de résiliation (congé, clause résolutoire)
-- renewalConditions : Conditions de renouvellement
+- noticePeriod : Durée du préavis UNIQUEMENT
+  - Format simple : "6 mois" (pas "6 mois avant l'échéance triennale")
+  - Chercher dans article "durée" ou "congé"
+- terminationConditions : Modalités pour donner congé
+  - Chercher : forme de l'envoi (RAR, acte de commissaire de justice, acte extrajudiciaire)
+  - Format attendu : "Par [moyen] pour le preneur / pour le bailleur"
+  - Ex: "Par lettre recommandée AR ou acte extrajudiciaire"
+- renewalConditions : Conditions de renouvellement à l'échéance du bail
+  - Chercher dans article "renouvellement" ou "fin de bail"
+  - Inclure : durée du renouvellement, conditions sur le loyer
+  - Ex: "Durée : 9 ans. Loyer : plus haute valeur entre valeur locative et loyer indexé"
+  - Si non mentionné : "Non mentionné dans le bail"
 
-IMPORTANT - NE PAS CALCULER :
-- Si endDate n'est pas explicitement mentionnée, laisser null (sera calculée automatiquement)
-- Si nextTriennialDate n'est pas explicitement mentionnée, laisser null (sera calculée automatiquement)
+IMPORTANT - CALCUL DES DATES (J-1) :
+- La date de fin de bail et les échéances triennales sont calculées comme la VEILLE de l'anniversaire
+- Bail commençant le 19/12/2016 pour 9 ans : fin le 18/12/2025 (pas le 19/12/2025)
+- Bail commençant le 10/10/2025 : 1ère échéance triennale le 09/10/2028
 
 ATTENTION AUX FORMATS DE DATE :
 - Formats français : "1er janvier 2024", "01/01/2024", "1 janvier 2024"
 - OCR peut altérer : "1er" → "1 er", "janvier" → "janvler"
 
 EXEMPLES :
-- "Le présent bail est consenti pour une durée de NEUF ANNEES ENTIERES ET CONSECUTIVES à compter du 1er avril 2023"
-  → duration: 9, effectiveDate: "2023-04-01", endDate: "2032-04-01"
-- "Le preneur pourra donner congé à chaque échéance triennale moyennant un préavis de six mois"
-  → noticePeriod: "6 mois avant échéance triennale"
+- "bail de 9 ans à compter du 19 décembre 2016"
+  → duration: "9 ans", effectiveDate: "2016-12-19", endDate: "2025-12-18"
+- "préavis de six mois avant l'échéance par lettre recommandée AR"
+  → noticePeriod: "6 mois", terminationConditions: "Par lettre recommandée AR"
+- "renouvellement pour 9 ans au loyer de marché"
+  → renewalConditions: "Durée : 9 ans. Loyer : valeur locative de marché"
+- Date de signature non trouvée dans le document
+  → signatureDate: { value: null, confidence: "missing", source: "Document entier", rawText: "Non mentionné" }
+- Conditions de renouvellement absentes
+  → renewalConditions: { value: null, confidence: "missing", source: "Document entier", rawText: "Non mentionné" }
 
-Format de sortie JSON avec dates en format ISO (YYYY-MM-DD).`
+Format de sortie JSON avec dates en format ISO (YYYY-MM-DD).
+IMPORTANT : Pour les champs manquants, rawText doit être "Non mentionné" (exactement cette formulation).`
 
 export const SUPPORT_MEASURES_PROMPT = `Extraire les mesures d'accompagnement accordées au preneur.
 
@@ -312,28 +401,52 @@ CHAMPS À EXTRAIRE :
 
 1. FRANCHISE DE LOYER :
 - hasRentFreeperiod : Présence d'une franchise de loyer (true/false)
-- rentFreePeriodMonths : Nombre de mois de franchise
+- rentFreePeriodDescription : Description DÉTAILLÉE de la franchise
+  - Format attendu : "[Durée] applicable [période] pour un montant de [X] €HT"
+  - Inclure : durée en mois, période d'application, montant si mentionné
+  - Si plusieurs périodes de franchise, les lister toutes
+  - Ex: "6 mois applicable à la date d'effet pour un montant de 56 235 €HT"
+  - Ex: "Franchise de loyer consentie jusqu'au 8 janvier 2017"
+- rentFreePeriodMonths : Nombre total de mois de franchise (tous périodes confondues)
 - rentFreePeriodAmount : Montant total de la franchise en euros HT (SEULEMENT si explicite)
-  - Ne PAS calculer : sera déduit automatiquement si absent
 
-2. AUTRES MESURES :
-- hasOtherMeasures : Présence d'autres mesures d'accompagnement
-- otherMeasuresDescription : Description des autres mesures
-  - Contribution aux travaux d'aménagement
+2. AUTRES MESURES D'ACCOMPAGNEMENT :
+- hasOtherMeasures : Présence d'autres mesures d'accompagnement (true/false)
+- otherMeasuresDescription : Description détaillée des autres mesures
+  Types de mesures à rechercher :
+  - Contribution aux travaux d'aménagement du preneur (avec montant)
+    Ex: "Contribution aux travaux d'aménagement du preneur pour un montant de 50 000 €HT"
+  - Aménagements réalisés par le bailleur
+    Ex: "Divers aménagements à la charge du bailleur (installation de stores, création d'espace vitré)"
   - Prise en charge de frais de déménagement
   - Réduction temporaire de loyer (paliers progressifs)
-
+  
 INDICES À RECHERCHER :
 - "franchise de loyer", "exemption de loyer", "gratuité de loyer"
 - "mesures d'accompagnement", "avantages consentis"
+- Article ou sous-article "mesures d'accompagnement" dans la section loyer
+- "participation aux travaux", "contribution du bailleur", "à la charge du bailleur"
 - "paliers de loyer", "loyer progressif"
-- "participation aux travaux", "contribution du bailleur"
+
+OÙ CHERCHER :
+- Article "Loyer" et ses sous-articles
+- Article dédié "Mesures d'accompagnement"
+- Article "Travaux" (pour les aménagements bailleur)
 
 EXEMPLES :
-- "Le bailleur accorde au preneur une franchise de loyer de 3 mois, soit 15.000 € HT"
-  → hasRentFreeperiod: true, rentFreePeriodMonths: 3, rentFreePeriodAmount: 15000
-- "Le loyer sera de 1.000 €/mois la 1ère année, 1.500 € la 2ème année, puis 2.000 €"
-  → hasOtherMeasures: true, otherMeasuresDescription: "Loyer progressif sur 3 ans"
+- "Franchise de 6 mois à compter de la date d'effet soit 56 235 € + 4 mois à compter du 36ème mois"
+  → hasRentFreeperiod: true
+  → rentFreePeriodDescription: "6 mois applicable à la date d'effet pour 56 235 €HT + 4 mois à compter du 36ème mois"
+  → rentFreePeriodMonths: 10
+  
+- "Le bailleur versera au preneur 50.000 € HT pour ses travaux d'aménagement"
+  → hasOtherMeasures: true
+  → otherMeasuresDescription: "Contribution aux travaux d'aménagement du preneur pour un montant de 50 000 €HT"
+
+- "Franchise jusqu'au 8 janvier 2017, soit 0.6 mois"
+  → hasRentFreeperiod: true
+  → rentFreePeriodDescription: "Franchise de loyer consentie jusqu'au 8 janvier 2017"
+  → rentFreePeriodMonths: 0.6
 
 Format de sortie JSON conforme à SupportMeasuresData.`
 
@@ -353,31 +466,43 @@ CHAMPS À EXTRAIRE :
 
 2. LOYER PARKING :
 - annualParkingRentExclCharges : Loyer annuel parkings HTHC
-- quarterlyParkingRentExclCharges : Loyer trimestriel parkings (SEULEMENT si explicite)
-- annualParkingRentPerUnitExclCharges : Loyer par place (SEULEMENT si explicite)
-  - Ne PAS calculer : sera déduit automatiquement si absent
+  - Si le loyer parking n'est PAS mentionné séparément : "Inclus dans le loyer initial des locaux"
+  - Si explicitement 0 ou gratuit : 0
+  - Sinon extraire le montant
+- quarterlyParkingRentExclCharges : Loyer trimestriel parkings
+  - Si non mentionné séparément : "Inclus dans le loyer initial des locaux"
+- annualParkingRentPerUnitExclCharges : Loyer par place
+  - Si non mentionné séparément : "Inclus dans le loyer"
+  - Ne PAS calculer : sera déduit automatiquement si explicite
 
 3. TVA ET MODALITÉS :
 - isSubjectToVAT : Assujettissement à la TVA (true/false)
   - Rechercher : "option pour la TVA", "assujetti à la TVA", "TVA applicable"
-- paymentFrequency : Fréquence de paiement ("monthly" | "quarterly" | "annual")
+- paymentFrequency : Description de la périodicité de paiement
+  - Format attendu : "[Fréquence] [modalité]"
+  - Ex: "Trimestriel d'avance", "Premier jour ouvrable de chaque trimestre"
+  - "terme à échoir" / "d'avance" = paiement au début de la période
+  - "terme échu" = paiement en fin de période
   INDICES POUR LA FRÉQUENCE :
-  - "trimestriellement", "par trimestre", "chaque trimestre" → "quarterly"
-  - "mensuellement", "par mois", "chaque mois" → "monthly"
-  - "annuellement", "par an" → "annual"
-  - "terme à échoir", "d'avance" = paiement anticipé (ne change pas la fréquence)
-  - Si provision pour charges "appelée en même temps que le loyer" → indice de fréquence
-  - Par DÉFAUT pour les baux commerciaux français : "quarterly"
+  - "trimestriellement", "par trimestre", "chaque trimestre" → Trimestriel
+  - "mensuellement", "par mois", "chaque mois" → Mensuel
+  - "annuellement", "par an" → Annuel
 
 4. PÉNALITÉS DE RETARD :
-- latePaymentPenaltyConditions : Conditions des pénalités
-- latePaymentPenaltyAmount : Montant ou taux des pénalités
+- latePaymentPenaltyConditions : Description COMPLÈTE des conditions de pénalités
+  - Inclure : délai avant application, moyens de notification, montant/taux
+  - Format : "[Taux/montant] [conditions d'application]"
+  - Chercher dans article "sanctions", "pénalités", "retard de paiement"
+  - Ex: "10% de toutes les sommes exigibles à l'expiration d'un délai de 15 jours"
+  - Ex: "Taux de base bancaire + 3 points après mise en demeure par RAR restée 8 jours sans suite"
+- latePaymentPenaltyAmount : Montant ou taux des pénalités (valeur uniquement)
 
 INDICES COURANTS :
 - "Le loyer annuel est fixé à...", "soit un loyer de X € HT/an"
 - "payable par trimestre", "terme à échoir", "terme échu"
 - "€ HT", "hors taxes", "HTHC", "hors taxes et hors charges"
 - "intérêts de retard au taux légal majoré de X points"
+- "clause pénale", "indemnité forfaitaire"
 
 ATTENTION AUX CONFUSIONS :
 - Loyer HT vs TTC (toujours extraire HT)
@@ -385,12 +510,12 @@ ATTENTION AUX CONFUSIONS :
 - Loyer mensuel vs trimestriel vs annuel
 
 EXEMPLES :
-- "Loyer annuel : 120.000 € HT HC, payable trimestriellement d'avance, soit 30.000 € par trimestre"
-  → annualRent: 120000, quarterlyRent: 30000, paymentFrequency: "quarterly"
-- "Loyer de 79000€ pour 2016, 82000€ pour 2017, 84000€ pour 2018"
-  → annualRent: 79000, paymentFrequency: "quarterly", rawText: "Loyer progressif: 79000€ (2016), 82000€ (2017), 84000€ (2018)"
-- "500 €/m²/an pour 200 m², soit 100.000 € annuels"
-  → annualRent: 100000, rentPerSqm: 500
+- "Loyer annuel : 120.000 € HT HC, payable trimestriellement d'avance"
+  → annualRent: 120000, quarterlyRent: 30000, paymentFrequency: "Trimestriel d'avance"
+- Loyer 16800€ sans mention parking séparé avec 4 parkings
+  → annualRent: 16800, annualParkingRent: "Inclus dans le loyer initial des locaux"
+- "À défaut de paiement, 10% des sommes dues après 15 jours"
+  → latePaymentPenaltyConditions: "10% de toutes les sommes exigibles à l'expiration d'un délai de 15 jours"
 
 Format : valeurs numériques SANS symbole € ni séparateurs de milliers.`
 
@@ -399,7 +524,7 @@ export const INDEXATION_PROMPT = `Extraire les clauses d'indexation du loyer.
 CHAMPS À EXTRAIRE :
 
 1. CLAUSE ET TYPE :
-- indexationClause : Texte de la clause d'indexation
+- hasIndexationClause : Présence d'une clause d'indexation (true/false) - répondre "Oui" ou "Non"
 - indexationType : Type d'indice utilisé
   - "ILC" : Indice des Loyers Commerciaux (le plus courant)
   - "ILAT" : Indice des Loyers des Activités Tertiaires
@@ -407,26 +532,48 @@ CHAMPS À EXTRAIRE :
   - Autre indice spécifique
 
 2. RÉFÉRENCES ET FRÉQUENCE :
-- referenceQuarter : Trimestre de référence (ex: "T2 2023", "2ème trimestre 2023")
-  - Si non explicite, retourner null avec confidence "missing"
-  - NE PAS écrire "not explicitly given" ou autre texte anglais
-- firstIndexationDate : Date de première indexation (format ISO)
-- indexationFrequency : Fréquence ("annual" | "quarterly" | "other")
+- referenceQuarter : Trimestre et valeur de l'indice de référence
+  - Format attendu : "Dernier indice publié à la date d'effet soit [TYPE] [TRIMESTRE] à [VALEUR]"
+  - Ex: "Dernier indice publié à la date d'effet soit ILC 2T2016 à 108,40"
+  - Ex: "Dernier indice publié à la date d'effet soit ILAT 2T2025 à 137,15"
+  - Chercher la valeur de l'indice mentionnée dans le bail
+  - Si valeur non mentionnée mais trimestre oui : "[TYPE] [TRIMESTRE]"
+  - Si non explicite : "Non mentionné"
+  
+- firstIndexationDate : Date de la première indexation - format RÉCURRENT
+  - Format attendu : "Le [jour] [mois] de chaque année" (pas une date spécifique)
+  - Ex: "Le 19 décembre de chaque année"
+  - Ex: "Le 10 octobre de chaque année"
+  - OU "À chaque date anniversaire du bail"
+  - NE PAS donner une date spécifique comme "2017-12-19"
+  
+- indexationFrequency : Fréquence de l'indexation
+  - Valeurs : "Annuellement" / "Trimestriellement" / "Autre"
+  - NE PAS utiliser "annual" ou "quarterly"
 
 INDICES À RECHERCHER :
 - "révision du loyer", "indexation", "clause d'échelle mobile"
 - "ILC publié par l'INSEE", "ILAT", "ICC"
-- "indice de référence", "indice de base"
+- "indice de référence", "indice de base", "indice de départ"
 - "révision annuelle", "chaque année à la date anniversaire"
+- Valeur numérique de l'indice (ex: "108,40", "137,15")
 
 FORMULE TYPE :
 Nouveau loyer = Loyer actuel × (Indice nouveau / Indice de base)
 
 EXEMPLES :
-- "Le loyer sera révisé annuellement selon l'ILC, première révision au 1er janvier 2025, indice de référence T2 2024"
-  → indexationType: "ILC", firstIndexationDate: "2025-01-01", referenceQuarter: "T2 2024", indexationFrequency: "annual"
-- "Indexation sur l'ILAT, trimestre de référence : 4ème trimestre 2023"
-  → indexationType: "ILAT", referenceQuarter: "T4 2023"
+- "Indexation annuelle sur l'ILC, indice de base 2T2016 à 108,40, première révision le 19 décembre 2017"
+  → hasIndexationClause: "Oui"
+  → indexationType: "ILC"
+  → referenceQuarter: "Dernier indice publié à la date d'effet soit ILC 2T2016 à 108,40"
+  → firstIndexationDate: "Le 19 décembre de chaque année"
+  → indexationFrequency: "Annuellement"
+
+- "Révision selon l'ILAT du 2ème trimestre 2025"
+  → hasIndexationClause: "Oui"
+  → indexationType: "ILAT"
+  → referenceQuarter: "ILAT 2T2025"
+  → indexationFrequency: "Annuellement"
 
 Format de sortie JSON conforme à IndexationData.`
 
@@ -434,42 +581,49 @@ export const TAXES_PROMPT = `Extraire les informations sur les impôts et taxes.
 
 CHAMPS À EXTRAIRE :
 
-1. TAXE FONCIÈRE :
-- propertyTaxRebilled : Refacturation de la taxe foncière ET de la TEOM au preneur (true/false)
-  - Termes : "taxe foncière à la charge du preneur", "refacturation"
-- propertyTaxAmount : Montant TOTAL annuel de la taxe foncière (si mentionné)
+1. REFACTURATION DES TAXES AU PRENEUR :
+- propertyTaxRebilled : Refacturation de la taxe foncière et TEOM au preneur
+  FORMAT DE RÉPONSE : Description textuelle de ce qui est refacturé
+  - Ex: "le Preneur devra par ailleurs rembourser au Bailleur : la taxe d'enlèvement des ordures ménagères, la quote-part de taxe foncière afférente aux Locaux Loués"
+  - Ex: "Oui" (si simplement mentionné que c'est à la charge du preneur)
+  - Ex: "Non mentionné" (si pas de clause)
+  
+  INDICES : "taxe foncière à la charge du preneur", "refacturation", "rembourser au Bailleur"
 
-2. TEOM (Taxe d'Enlèvement des Ordures Ménagères) :
-- teomAmount : Montant TOTAL annuel de la TEOM (si mentionné)
-  - Souvent incluse avec la taxe foncière mais peut être séparée
-  - Termes : "TEOM", "ordures ménagères", "enlèvement des ordures"
-
-3. TAXE SUR LES BUREAUX ET LOCAUX COMMERCIAUX (Île-de-France) :
-- officeTaxAmount : Montant TOTAL annuel de la taxe bureaux
-  - Applicable en région parisienne selon les zones
-  - Termes : "taxe sur les bureaux", "taxe annuelle sur les locaux à usage de bureaux", "TSB"
+2. PROVISIONS POUR TAXES (montants si mentionnés) :
+- propertyTaxAmount : Provision annuelle pour taxe foncière (en euros)
+  - Retourner "Non mentionné" si pas de montant indiqué
+- teomAmount : Provision annuelle pour TEOM (en euros)
+  - Retourner "Non mentionné" si pas de montant indiqué
+- officeTaxAmount : Provision annuelle pour taxe bureaux (en euros, IDF uniquement)
+  - Retourner "Non mentionné" si pas de montant indiqué
+- parkingTaxAmount : Provision annuelle pour taxe sur emplacements de parking
+  - Retourner "Non mentionné" si pas de montant indiqué
 
 ATTENTION - MONTANTS PAR M² vs MONTANTS TOTAUX :
 - Si le document donne "40 €/m²" ou "17 euros HT par m2", ceci est un montant PAR M²
 - Les champs doivent contenir les montants TOTAUX annuels
-- Si seul le montant par m² est donné, retourner null avec confidence "medium" et mentionner le montant par m² dans rawText
+- Si seul le montant par m² est donné : retourner "Non mentionné" et mentionner le montant par m² dans rawText
+
+OÙ CHERCHER :
+- Article "charges" ou sous-article "charges"
+- Annexe "état récapitulatif des charges"
+- Article sur les obligations financières du preneur
 
 INDICES À RECHERCHER :
 - "taxe foncière", "contribution foncière"
-- "TEOM", "taxe d'enlèvement des ordures ménagères"
-- "taxe sur les bureaux", "taxe annuelle sur les locaux à usage de bureaux"
+- "TEOM", "taxe d'enlèvement des ordures ménagères", "ordures ménagères"
+- "taxe sur les bureaux", "TSB"
 - "à la charge du preneur", "supportée par le locataire"
-- "€/m²", "euros hors taxes par m2" = montant par mètre carré
+- "provision", "acompte"
 
 EXEMPLES :
-- "La taxe foncière et la TEOM seront refacturées au preneur"
-  → propertyTaxRebilled: true
-- "Taxe foncière : 8.000 €/an, TEOM : 1.200 €/an"
-  → propertyTaxAmount: 8000, teomAmount: 1200
-- "Taxe bureaux IDF estimée à 5.000 €/an"
-  → officeTaxAmount: 5000
-- "la taxe foncière se monte à environ 40 euros hors taxes par m2"
-  → propertyTaxAmount: null, rawText: "40 €/m² (montant par m², total non calculé)"
+- "Le preneur remboursera la taxe foncière et la TEOM"
+  → propertyTaxRebilled: "Oui, taxe foncière et TEOM à la charge du preneur"
+  → propertyTaxAmount: "Non mentionné", teomAmount: "Non mentionné"
+
+- "Provision annuelle pour taxe foncière : 2.040 €"
+  → propertyTaxAmount: 2040
 
 Format de sortie JSON conforme à TaxesData.`
 
@@ -552,30 +706,59 @@ export const SECURITIES_PROMPT = `Extraire les sûretés et garanties.
 CHAMPS À EXTRAIRE :
 
 1. DÉPÔT DE GARANTIE :
-- securityDepositAmount : Montant du dépôt de garantie (en euros)
-  - Souvent exprimé en mois de loyer (ex: "3 mois de loyer HT HC")
-  - Extraire le montant numérique si possible
+- securityDepositDescription : Description COMPLÈTE du dépôt de garantie
+  - Format attendu : "[Nombre] mois de loyer hors taxes hors charges soit [montant] €"
+  - Ex: "3 mois de loyer hors taxes hors charges soit 28 117,5 €"
+  - Ex: "3 mois de loyer hors taxe hors charge soit 4200 €"
+  - TOUJOURS inclure la formule (nombre de mois) ET le montant si disponible
+  
+- securityDepositAmount : Montant numérique du dépôt de garantie (en euros, sans symbole)
+  - Extraire uniquement le nombre
+  - Si non calculable : null
 
-2. AUTRES SÛRETÉS :
+ATTENTION - NE PAS CONFONDRE :
+- Les clauses de reconstitution du dépôt de garantie NE SONT PAS des "autres sûretés"
+- Les conditions de restitution du dépôt NE SONT PAS des "autres sûretés"
+- Seules les garanties ADDITIONNELLES au dépôt vont dans otherSecurities
+
+2. AUTRES SÛRETÉS (garanties additionnelles au dépôt) :
 - otherSecurities : Liste des autres garanties (tableau de chaînes)
-  - Garantie bancaire à première demande
+  TYPES À RECHERCHER :
+  - Cautionnement solidaire (avec nom du garant)
+    Ex: "Cautionnement solidaire émanant de [Société] (Annexe X)"
+  - Garantie bancaire à première demande (GAPD)
   - Caution personnelle du dirigeant
   - Garantie maison-mère (société du groupe)
   - Nantissement de fonds de commerce
   - Garantie autonome
+  
+  Si AUCUNE autre sûreté mentionnée : "Non" ou tableau vide
+  
+  NE PAS INCLURE :
+  - Reconstitution du dépôt de garantie
+  - Conditions de restitution du dépôt
+  - Garantie souscrite par le preneur pour son propre compte (assurances)
 
 INDICES À RECHERCHER :
-- "dépôt de garantie", "garantie", "caution"
+- Article ou sous-article "garantie", "dépôt de garantie", "sûretés"
+- "caution solidaire", "cautionnement"
 - "garantie à première demande", "GAPD"
-- "caution solidaire", "caution personnelle"
 - "nantissement", "gage"
-- Montant équivalent : "équivalent à X mois/trimestres de loyer"
+- Annexes listant les garanties
 
 EXEMPLES :
-- "Dépôt de garantie : 30.000 € correspondant à 3 mois de loyer HT HC"
-  → securityDepositAmount: 30000
-- "Garantie bancaire à première demande de 50.000 € + caution solidaire du gérant"
-  → otherSecurities: ["Garantie bancaire à première demande de 50.000 €", "Caution solidaire du gérant"]
+- "Dépôt de garantie égal à 3 mois de loyer HT HC, soit 4.200 €"
+  → securityDepositDescription: "3 mois de loyer hors taxes hors charges soit 4 200 €"
+  → securityDepositAmount: 4200
+  → otherSecurities: "Non"
+
+- "Dépôt de 28.117,50 € (3 mois) + Cautionnement solidaire de Kouros SA (Annexe 6)"
+  → securityDepositDescription: "3 mois de loyer hors taxes hors charges soit 28 117,5 €"
+  → securityDepositAmount: 28117.5
+  → otherSecurities: ["Cautionnement solidaire émanant de Kouros SA (Annexe 6)"]
+
+- "Le dépôt devra être reconstitué en cas d'utilisation partielle"
+  → Ceci va dans securityDepositDescription, PAS dans otherSecurities
 
 Format de sortie JSON avec securityDepositAmount en nombre et otherSecurities en tableau.`
 
@@ -584,31 +767,40 @@ export const INVENTORY_PROMPT = `Extraire les informations sur les états des li
 CHAMPS À EXTRAIRE :
 
 1. ÉTAT DES LIEUX D'ENTRÉE :
-- entryInventoryConditions : Conditions et modalités
-  - Contradictoire ou par huissier
-  - À la charge de qui (frais)
-  - Annexé au bail ou à établir
+- entryInventoryConditions : Conditions et modalités (description complète)
+  - Mode d'établissement : contradictoire, par huissier/commissaire de justice
+  - Répartition des frais : partagés, à charge du preneur/bailleur
+  - Référence à un état des lieux antérieur si applicable
+  - Ex: "État des lieux établi contradictoirement entre les Parties ou à défaut par huissier; frais partagés"
 
 2. ÉTAT DES LIEUX DE PRÉ-SORTIE :
-- hasPreExitInventory : Existence d'un pré-état des lieux (true/false)
-- preExitInventoryConditions : Conditions (délai avant sortie, etc.)
+- hasPreExitInventory : Existence d'un pré-état des lieux
+  - Valeurs : "Oui, [délai]" / "Non" / "Non mentionné"
+  - Si oui, inclure le délai : "Oui, 3 mois au plus et 1 mois au moins avant le terme du bail"
+- preExitInventoryConditions : Conditions détaillées (si applicable)
 
 3. ÉTAT DES LIEUX DE SORTIE :
 - exitInventoryConditions : Conditions de l'état des lieux de sortie
-  - Comparaison avec l'entrée
-  - Frais de remise en état
+  - Inclure : mode d'établissement, frais, remise en état
+  - Ex: "État des lieux établi dans les mêmes conditions que l'entrée; remise des clefs; frais de remise en état à la charge du Preneur"
+
+OÙ CHERCHER :
+- Article "état des lieux" ou "délivrance des locaux"
+- Article "restitution des locaux"
+- Début de bail pour les conditions d'entrée
 
 INDICES À RECHERCHER :
 - "état des lieux", "constat", "procès-verbal"
-- "contradictoire", "amiable", "par huissier"
-- "à l'entrée", "à la sortie", "lors de la restitution"
+- "contradictoire", "amiable", "par huissier", "par commissaire de justice"
+- "pré-état des lieux", "état des lieux préalable"
 - "frais partagés", "à la charge du preneur/bailleur"
 
 EXEMPLES :
-- "Un état des lieux contradictoire sera établi lors de l'entrée et de la sortie, les frais étant partagés"
-  → entryInventoryConditions: "État des lieux contradictoire, frais partagés"
-- "Trois mois avant la fin du bail, un pré-état des lieux sera réalisé"
-  → hasPreExitInventory: true, preExitInventoryConditions: "3 mois avant fin du bail"
+- "État des lieux d'entrée établi contradictoirement ou à défaut par huissier, frais partagés"
+  → entryInventoryConditions: "État des lieux établi contradictoirement entre les Parties ou à défaut par huissier; frais partagés"
+  
+- "Un pré-état des lieux sera dressé entre 3 mois et 1 mois avant la fin du bail"
+  → hasPreExitInventory: "Oui, 3 mois au plus et 1 mois au moins avant le terme du bail"
 
 Format de sortie JSON conforme à InventoryData.`
 
@@ -617,36 +809,58 @@ export const MAINTENANCE_PROMPT = `Extraire les conditions d'entretien et travau
 CHAMPS À EXTRAIRE :
 
 1. ENTRETIEN COURANT :
-- tenantMaintenanceConditions : Obligations d'entretien du preneur
-  - Entretien courant, menues réparations
-  - Maintenance des équipements
+- tenantMaintenanceConditions : Obligations d'entretien du preneur (résumé)
+  - Résumer les principales obligations sans tout lister
+  - Chercher dans article "entretien", "réparations", "mise en conformité"
+  - Ex: "Maintenir en bon état d'entretien et de fonctionnement toutes les installations"
 
 2. RÉPARTITION DES TRAVAUX :
-- landlordWorksList : Travaux à la charge du bailleur (tableau)
-  - Gros œuvre, toiture, structure (article 606 Code civil)
-  - Mise aux normes imposée par la loi
-- tenantWorksList : Travaux à la charge du preneur (tableau)
-  - Aménagements intérieurs
-  - Réparations locatives
+- landlordWorksList : Travaux à la charge du bailleur (tableau concis)
+  - Résumer en catégories principales
+  - Ex: ["Travaux article 606 du Code civil", "Remplacement des Gros Équipements"]
+  - NE PAS lister tous les détails si article 606 mentionné
+  
+- tenantWorksList : Travaux à la charge du preneur (tableau concis)
+  - Résumer les grandes catégories
+  - Ex: ["Travaux d'aménagement intérieur", "Réparations locatives", "Entretien des équipements"]
+  - NE PAS copier tout l'article
 
-3. CONDITIONS SPÉCIFIQUES :
-- workConditionsImposedOnTenant : Contraintes pour travaux du preneur
-  - Autorisation préalable du bailleur
-  - Entreprises agréées
-  - Assurances spécifiques
-- hasAccessionClause : Clause d'accession / sort des travaux (true/false)
-  - Travaux acquis au bailleur en fin de bail
+3. CLAUSE D'ACCESSION (IMPORTANT) :
+- hasAccessionClause : Présence d'une clause d'accession
+  - Valeurs : "Oui, [description]" / "Non" / "Non mentionné"
+  
+  DÉFINITION : La clause d'accession signifie que les travaux et aménagements 
+  réalisés par le preneur deviennent la propriété du bailleur en fin de bail,
+  généralement sans indemnité.
+  
+  CE QU'IL FAUT EXTRAIRE :
+  - "Oui, tous les travaux réalisés par le preneur deviendront la propriété du bailleur sans indemnité"
+  - "Oui, pour les équipements et aménagements effectués par le preneur, à la décision du bailleur"
+  
+  CE QUI N'EST PAS UNE CLAUSE D'ACCESSION :
+  - L'obligation de demander une autorisation pour faire des travaux
+  - Les conditions d'exécution des travaux
+  
+  INDICES À RECHERCHER :
+  - "deviendront la propriété du bailleur"
+  - "acquerront au bailleur"
+  - "resteront acquis au bailleur"
+  - "sans indemnité"
+  - Dans article "travaux" du preneur ou "restitution"
 
-ARTICLE 606 DU CODE CIVIL (travaux bailleur typiques) :
+ARTICLE 606 DU CODE CIVIL (référence pour travaux bailleur) :
 - Gros murs, voûtes, planchers
 - Poutres, toiture entière
-- Digues, murs de soutènement
 
 EXEMPLES :
-- "Le preneur prend les locaux en l'état et aura à sa charge l'ensemble des travaux d'aménagement"
-  → tenantWorksList: ["Travaux d'aménagement"]
-- "Les travaux relevant de l'article 606 restent à la charge du bailleur"
+- "Les travaux article 606 du Code civil restent à la charge du bailleur"
   → landlordWorksList: ["Travaux article 606 du Code civil"]
+  
+- "Les aménagements réalisés par le preneur resteront acquis au bailleur sans indemnité"
+  → hasAccessionClause: "Oui, tous les travaux réalisés par le preneur deviendront la propriété du bailleur sans indemnité"
+  
+- "Le bailleur pourra exiger le maintien ou la dépose des aménagements"
+  → hasAccessionClause: "Oui, pour les équipements et aménagements effectués par le preneur, à la décision du bailleur"
 
 Format de sortie JSON conforme à MaintenanceData.`
 
@@ -656,27 +870,34 @@ CHAMPS À EXTRAIRE :
 
 1. RESTITUTION :
 - restitutionConditions : Conditions générales de restitution
-  - État de restitution attendu
-  - Délais, formalités
-  - Sort des aménagements
+  FORMAT ATTENDU - résumé concis des obligations :
+  - État attendu : "bon état", "très bon état", "configuration initiale"
+  - Ex: "Restituer les Locaux Loués dans leur configuration initiale et en très bon état"
+  - Ex: "Le preneur devra rendre les locaux loués en bon état d'entretien"
 
 2. REMISE EN ÉTAT :
-- restorationConditions : Conditions de remise en état
-  - Remise en état d'origine
-  - Dépose des aménagements
-  - Nettoyage, réparations
+- restorationConditions : Processus de remise en état
+  FORMAT ATTENDU - décrire le processus :
+  - Qui établit les devis
+  - À la suite de quel événement (pré-état des lieux, état des lieux de sortie)
+  - Qui supporte les frais
+  
+  EXEMPLES :
+  - "À la suite du pré-état des lieux contradictoire, le Bailleur fera établir des devis de travaux de remise en état qu'il notifiera au Preneur"
+  - "Faculté pour le bailleur d'exiger la remise en état des locaux dans leur état initial à la date de prise d'effet"
+  - "Non mentionné" si aucune procédure détaillée
+
+OÙ CHERCHER :
+- Article "restitution des locaux"
+- Article "fin de bail"
+- Article "remise en état"
 
 INDICES À RECHERCHER :
 - "restitution des locaux", "remise des clés"
-- "remise en état", "état d'origine", "pristin état"
-- "démontage des aménagements", "dépose des cloisons"
+- "remise en état", "état d'origine", "configuration initiale"
+- "devis de travaux", "bureau d'études"
+- "très bon état", "bon état d'entretien"
 - "libre de tout occupant et de tout mobilier"
-
-EXEMPLES :
-- "Le preneur restituera les locaux en bon état d'entretien, libres de toute occupation"
-  → restitutionConditions: "Restitution en bon état d'entretien, locaux libres"
-- "Sauf accord contraire, le preneur devra remettre les locaux dans leur état d'origine"
-  → restorationConditions: "Remise en état d'origine obligatoire sauf accord"
 
 Format de sortie JSON conforme à RestitutionData.`
 
@@ -685,39 +906,53 @@ export const TRANSFER_PROMPT = `Extraire les conditions de cession et sous-locat
 CHAMPS À EXTRAIRE :
 
 1. SOUS-LOCATION :
-- sublettingConditions : Conditions de sous-location
-  - Interdiction totale
-  - Autorisation sous conditions
-  - Accord préalable du bailleur
+- sublettingConditions : Conditions de sous-location (description détaillée)
+  FORMAT ATTENDU - Inclure :
+  - Si autorisée ou interdite
+  - Limites (% de la surface)
+  - Bénéficiaires autorisés (sociétés affiliées, tiers)
+  - Nécessité d'autorisation du bailleur
+  
+  EXEMPLES DE RÉPONSES :
+  - "La sous-location partielle est autorisée avec accord du bailleur"
+  - "Sous-location : 
+    - au profit des Sociétés Affiliées du Preneur, dans la limite de 75% de la surface, sans autorisation du bailleur
+    - au profit de tiers, dans la limite de 75% de la surface, soumise à autorisation du bailleur"
+  - "Sous-location interdite"
 
-2. SOUS-LOCATION EN COURS :
-- currentSubleaseInfo : Informations sur sous-location existante (si applicable)
-  - subtenantName : Nom du sous-locataire
-  - effectiveDate : Date d'effet
-  - nextTerminationDate : Prochaine échéance
-  - endDate : Date de fin
-
-3. CESSION :
+2. CESSION :
 - assignmentConditions : Conditions de cession du bail
-  - Cession libre à un successeur dans le fonds
-  - Agrément du bailleur requis
-  - Clause de garantie solidaire
+  FORMAT ATTENDU - Inclure :
+  - Étendue (totalité / partie)
+  - Agrément du bailleur (oui/non)
+  - Clause de solidarité (durée si applicable)
+  
+  EXEMPLES DE RÉPONSES :
+  - "Sur la totalité et soumise à autorisation du bailleur avec une clause de solidarité pendant 3 ans"
+  - "Cession autorisée à l'acquéreur du fonds de commerce"
+  - "Cession interdite sauf à un successeur dans le fonds"
 
-4. DIVISION :
-- divisionPossible : Possibilité de diviser les locaux (true/false)
+3. DIVISION DES LOCAUX :
+- divisionPossible : Possibilité de diviser les locaux
+  FORMAT ATTENDU :
+  - "Oui" / "Non" / "Non mentionné"
+  - OU description détaillée si clause spécifique
+  - Ex: "Les locaux sont déclarés indivisibles au seul bénéfice du Bailleur"
+  
+  INDICES : "indivisible", "divisible", "division", "indivisibilité"
+
+OÙ CHERCHER :
+- Article "cession" ou "sous-location"
+- Article sur les droits du preneur
+- Clauses diverses en fin de bail
 
 INDICES À RECHERCHER :
 - "sous-location", "sous-louer", "sous-locataire"
+- "sociétés affiliées", "filiales"
 - "cession", "céder le bail", "transmission"
-- "agrément", "accord préalable", "autorisation écrite"
-- "garantie solidaire", "clause de substitution"
-- "division des locaux", "fractionnement"
-
-EXEMPLES :
-- "La sous-location est strictement interdite"
-  → sublettingConditions: "Sous-location interdite"
-- "Le preneur pourra céder son bail à l'acquéreur de son fonds de commerce"
-  → assignmentConditions: "Cession autorisée à l'acquéreur du fonds de commerce"
+- "agrément", "accord préalable", "autorisation"
+- "garantie solidaire", "solidarité pendant X ans"
+- "indivisibilité", "locaux indivisibles"
 
 Format de sortie JSON conforme à TransferData.`
 
@@ -790,37 +1025,69 @@ export const OTHER_PROMPT = `Extraire les autres informations importantes.
 
 CHAMPS À EXTRAIRE :
 
-1. SIGNATURE :
-- isSignedAndInitialed : Bail signé et paraphé par les parties (true/false)
-  - Vérifier les mentions de signature en fin de document
-
-2. DÉROGATIONS :
+1. DÉROGATIONS AU CODE CIVIL (RECHERCHE ACTIVE REQUISE) :
 - civilCodeDerogations : Dérogations au Code civil (tableau de chaînes)
-  - Articles du Code civil auxquels il est dérogé
+  
+  RECHERCHE ACTIVE - Parcourir le document pour trouver :
+  - Toute mention de "dérogation", "dérogeant", "par dérogation à"
+  - Références aux articles 1719 à 1762 du Code civil
+  - Les clauses qui écartent des règles du Code civil
+  
+  ARTICLES FRÉQUEMMENT DÉROGÉS :
+  - Article 1719 : Obligations du bailleur (délivrance, entretien, jouissance paisible)
+  - Article 1720 : Délivrance en bon état
+  - Article 1721 : Garantie des vices cachés
+  - Article 1722 : Destruction de la chose louée
+  - Article 1723 : Changement de forme pendant le bail
+  - Article 1724 : Réduction de loyer pour travaux
+  - Article 1755 : Présomption de responsabilité du preneur
+  - Articles 1342-10 et 1343-1 : Imputation des paiements
+  
+  FORMAT DE SORTIE :
+  - "Dérogation à l'article [X] du Code civil : [contexte/article du bail]"
+  - Si aucune dérogation : "Aucune dérogation"
+
+2. DÉROGATIONS AU CODE DE COMMERCE (RECHERCHE ACTIVE REQUISE) :
 - commercialCodeDerogations : Dérogations au Code de commerce (tableau de chaînes)
-  - Clauses dérogatoires au statut des baux commerciaux
+  
+  RECHERCHE ACTIVE - Parcourir le document pour trouver :
+  - Références aux articles L.145-XX du Code de commerce
+  - Clauses relatives au plafonnement du loyer, renouvellement, éviction
+  
+  ARTICLES FRÉQUEMMENT DÉROGÉS :
+  - L.145-6 : Durée minimale et renouvellement
+  - L.145-34 : Plafonnement du loyer au renouvellement
+  - L.145-33 : Fixation du loyer
+  
+  FORMAT DE SORTIE :
+  - "Dérogation à l'article L. [X] du Code de commerce : [contexte/article du bail]"
+  - Si aucune dérogation : "Aucune dérogation"
 
-INDICES À RECHERCHER :
-- "Fait à..., le...", "Signature des parties"
-- "Lu et approuvé", "Bon pour accord"
-- "Par dérogation à l'article...", "Nonobstant les dispositions de..."
-- "Les parties conviennent expressément de déroger à..."
+IMPORTANT - OÙ CHERCHER LES DÉROGATIONS :
+Les dérogations peuvent être dispersées dans TOUT le document :
+- Articles sur l'entretien et réparations
+- Articles sur les travaux
+- Articles sur le renouvellement
+- Articles sur les charges
+- Articles sur la résiliation
+- Chercher les mots : "dérogation", "dérogeant", "nonobstant", "par exception"
 
-DÉROGATIONS COURANTES :
-- Code civil : articles 1719 à 1762 (obligations bailleur/preneur)
-- Code de commerce : L.145-1 et suivants (statut des baux commerciaux)
-  - Ex: droit de préemption, indemnité d'éviction, renouvellement
+EXEMPLES DE DÉROGATIONS TROUVÉES :
+- "Par dérogation aux articles 1719 et 1755 du Code civil, le preneur prend les locaux en l'état"
+  → civilCodeDerogations: ["Dérogation aux articles 1719 et 1755 du Code civil : le preneur prend les locaux en l'état"]
 
-EXEMPLES :
-- "Par dérogation à l'article 1724 du Code civil, le preneur ne pourra prétendre à aucune réduction de loyer en cas de travaux"
-  → civilCodeDerogations: ["Article 1724 - pas de réduction de loyer pour travaux"]
-- "Fait en deux exemplaires originaux à Paris, le 15 mars 2024"
-  → isSignedAndInitialed: true (présomption de signature si mention "Fait à")
+- "Il est dérogé à l'article 1721, 1723 et 1724 du code civil"
+  → civilCodeDerogations: ["Dérogation aux articles 1721, 1723 et 1724 du Code civil"]
+
+- "Par dérogation à l'article L. 145-34, le loyer de renouvellement sera la valeur locative de marché"
+  → commercialCodeDerogations: ["Dérogation à l'article L. 145-34 du Code de commerce : loyer de renouvellement à la valeur locative de marché"]
+
+ATTENTION : Ne pas retourner "Aucune" par défaut ! Chercher activement dans tout le document.
 
 Format de sortie JSON conforme à OtherData.`
 
 export interface ExtractionPrompt {
-  section: string
+  section: ExtractionSection
   prompt: string
   retryable: boolean
 }

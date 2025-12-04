@@ -1,15 +1,6 @@
-export type ToolDefinition = {
-  type: "function"
-  name: string
-  description: string
-  parameters: {
-    type: "object"
-    properties: Record<string, unknown>
-    required?: string[]
-    additionalProperties?: boolean
-  }
-  strict?: boolean
-}
+import type { FunctionTool, Tool } from "openai/resources/responses/responses"
+
+export type ToolDefinition = FunctionTool
 
 export const retrieveChunksTool: ToolDefinition = {
   type: "function",
@@ -156,7 +147,7 @@ export const TOOL_DEFINITIONS = {
 
 export type ToolName = keyof typeof TOOL_DEFINITIONS
 
-export function getTools(names?: (keyof typeof TOOL_DEFINITIONS)[]) {
+export function getTools(names?: (keyof typeof TOOL_DEFINITIONS)[]): Tool[] {
   if (!names) {
     return Object.values(TOOL_DEFINITIONS)
   }
