@@ -1,4 +1,4 @@
-import { PromptForm } from "@/app/components/admin/prompt-form/prompt-form"
+import { PromptFormWithTest } from "@/app/components/admin/prompt-form/prompt-form-with-test"
 import { PageHero } from "@/app/components/ui/page-hero"
 
 export default function LeasePage() {
@@ -8,10 +8,10 @@ export default function LeasePage() {
         breadcrumbs={[
           { label: "Accueil", href: "/" },
           { label: "Admin", href: "/admin" },
-          { label: "Baux" },
+          { label: "Prompts d'extraction" },
         ]}
-        title="Gestion des baux"
-        description="Gérez et consultez les baux de location"
+        title="Gestion des prompts"
+        description="Modifiez et testez les prompts d'extraction des baux commerciaux"
         badge={{
           icon: (
             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -21,10 +21,8 @@ export default function LeasePage() {
           text: "Administration",
         }}
       />
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16 lg:py-20">
-        <div className="w-full">
-          <PromptForm />
-        </div>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <PromptFormWithTest />
       </div>
     </div>
   )

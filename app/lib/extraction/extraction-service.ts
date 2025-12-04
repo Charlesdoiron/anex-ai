@@ -5,6 +5,7 @@
 
 import type { Response } from "openai/resources/responses/responses"
 import { extractPdfText } from "./pdf-extractor"
+import type { PdfExtractionResult } from "./pdf-extractor"
 import {
   SYSTEM_INSTRUCTIONS,
   EXTRACTION_PROMPTS,
@@ -66,16 +67,29 @@ export type PartialResultCallback = (
   partialResult: Partial<LeaseExtractionResult>
 ) => void
 
+export interface ExtractionServiceOptions {
+  systemInstructions?: string
+  prompts?: ExtractionPrompt[]
+  enableRagIngestion?: boolean
+}
+
 export class ExtractionService {
   private progressCallback?: ProgressCallback
   private partialResultCallback?: PartialResultCallback
+  private readonly systemInstructions: string
+  private readonly extractionPrompts: ExtractionPrompt[]
+  private readonly ragIngestionEnabled: boolean
 
   constructor(
     progressCallback?: ProgressCallback,
-    partialResultCallback?: PartialResultCallback
+    partialResultCallback?: PartialResultCallback,
+    options?: ExtractionServiceOptions
   ) {
     this.progressCallback = progressCallback
     this.partialResultCallback = partialResultCallback
+    this.systemInstructions = options?.systemInstructions ?? SYSTEM_INSTRUCTIONS
+    this.extractionPrompts = options?.prompts ?? EXTRACTION_PROMPTS
+    this.ragIngestionEnabled = options?.enableRagIngestion !== false
   }
 
   private emitProgress(
@@ -105,29 +119,63 @@ export class ExtractionService {
     fileName: string
   ): Promise<LeaseExtractionResult> {
     const startTime = Date.now()
-    let totalRetries = 0
     const stageTimings: ExtractionStageDurations = {
       pdfProcessingMs: 0,
       extractionMs: 0,
       ingestionMs: 0,
     }
 
+    this.emitProgress("uploading", "Réception du document...", 0)
+
+    const pdfStart = Date.now()
+    this.emitProgress("parsing_pdf", "Analyse du document PDF...", 5)
+    const pdfData = await extractPdfText(buffer, {
+      onStatus: (message) => this.emitProgress("parsing_pdf", message, 8),
+    })
+    stageTimings.pdfProcessingMs = Date.now() - pdfStart
+
+    this.emitProgress(
+      "parsing_pdf",
+      `Document analysé: ${pdfData.pageCount} pages`,
+      10
+    )
+
+    return this.processParsedDocument(
+      pdfData,
+      fileName,
+      startTime,
+      stageTimings
+    )
+  }
+
+  async extractFromParsedDocument(
+    parsedDocument: PdfExtractionResult,
+    fileName: string
+  ): Promise<LeaseExtractionResult> {
+    const startTime = Date.now()
+    const stageTimings: ExtractionStageDurations = {
+      pdfProcessingMs: 0,
+      extractionMs: 0,
+      ingestionMs: 0,
+    }
+
+    return this.processParsedDocument(
+      parsedDocument,
+      fileName,
+      startTime,
+      stageTimings
+    )
+  }
+
+  private async processParsedDocument(
+    pdfData: PdfExtractionResult,
+    fileName: string,
+    startTime: number,
+    stageTimings: ExtractionStageDurations
+  ): Promise<LeaseExtractionResult> {
+    let totalRetries = 0
+
     try {
-      this.emitProgress("uploading", "Réception du document...", 0)
-
-      const pdfStart = Date.now()
-      this.emitProgress("parsing_pdf", "Analyse du document PDF...", 5)
-      const pdfData = await extractPdfText(buffer, {
-        onStatus: (message) => this.emitProgress("parsing_pdf", message, 8),
-      })
-      stageTimings.pdfProcessingMs = Date.now() - pdfStart
-
-      this.emitProgress(
-        "parsing_pdf",
-        `Document analysé: ${pdfData.pageCount} pages`,
-        10
-      )
-
       const documentId = this.generateDocumentId()
       const extractionDate = new Date().toISOString()
 
@@ -137,7 +185,7 @@ export class ExtractionService {
         extractionDate,
         rawText: pdfData.text,
         pageCount: pdfData.pageCount,
-        usedOcrEngine: pdfData.usedOcrEngine,
+        usedOcrEngine: pdfData.usedOcrEngine ?? null,
       }
       const sectionStore = result as Partial<ExtractionSectionsMap>
       const getSectionValue = <K extends LeaseSectionKey>(key: K) =>
@@ -149,8 +197,11 @@ export class ExtractionService {
         sectionStore[key] = value
       }
 
-      const totalSections = EXTRACTION_PROMPTS.length
-      const groupedPrompts = chunkItems(EXTRACTION_PROMPTS, SECTIONS_PER_CALL)
+      const totalSections = this.extractionPrompts.length
+      const groupedPrompts = chunkItems(
+        this.extractionPrompts,
+        SECTIONS_PER_CALL
+      )
       let completedSections = 0
 
       const extractionStart = Date.now()
@@ -282,7 +333,6 @@ export class ExtractionService {
 
       const baseResult = result as LeaseExtractionResult
 
-      // Post-process to compute derived fields (endDate, rentPerSqm, etc.)
       const processedResult = postProcessExtraction(baseResult)
 
       const metadata = this.calculateMetadata(
@@ -311,8 +361,7 @@ export class ExtractionService {
 
       this.emitProgress("completed", "Extraction terminée avec succès", 100)
 
-      // Fire-and-forget: RAG ingestion runs in background
-      this.ingestForRag(finalResult, pdfData.pages).catch((err) =>
+      this.ingestForRag(finalResult, pdfData.pages ?? []).catch((err) =>
         console.error("Background RAG ingestion failed:", err)
       )
 
@@ -805,6 +854,10 @@ export class ExtractionService {
     result: LeaseExtractionResult,
     pages: string[]
   ): Promise<void> {
+    if (!this.ragIngestionEnabled) {
+      return
+    }
+
     try {
       const metadataPayload = result.extractionMetadata
         ? {

@@ -11,24 +11,47 @@ export interface InseeRentalIndexPoint {
   value: number
 }
 
+/**
+ * Get INSEE rental index series for a specific index type
+ * Falls back to default index type if requested type has no data
+ */
 export async function getInseeRentalIndexSeries(
   indexType: LeaseIndexType = DEFAULT_LEASE_INDEX_TYPE
 ): Promise<InseeRentalIndexPoint[]> {
-  if (indexType !== DEFAULT_LEASE_INDEX_TYPE) {
-    console.warn(
-      `[INSEE] Série ${indexType} demandée mais indisponible. Utilisation du fallback ${DEFAULT_LEASE_INDEX_TYPE}.`
-    )
-  }
-
+  // Try to get data for the requested index type
   const rows = await prisma.insee_rental_reference_index.findMany({
+    where: { indexType: indexType },
     orderBy: [{ year: "asc" }, { quarter: "asc" }],
   })
+
+  // If no data for requested type, fallback to default
+  if (rows.length === 0 && indexType !== DEFAULT_LEASE_INDEX_TYPE) {
+    console.warn(
+      `[INSEE] Série ${indexType} demandée mais indisponible (0 enregistrements). ` +
+        `Utilisation du fallback ${DEFAULT_LEASE_INDEX_TYPE}.`
+    )
+    return getInseeRentalIndexSeries(DEFAULT_LEASE_INDEX_TYPE)
+  }
 
   return rows.map((row) => ({
     year: row.year,
     quarter: row.quarter,
     value: row.value,
   }))
+}
+
+/**
+ * Check which index types have data available in the database
+ */
+export async function getAvailableIndexTypes(): Promise<LeaseIndexType[]> {
+  const result = await prisma.insee_rental_reference_index.groupBy({
+    by: ["indexType"],
+    _count: true,
+  })
+
+  return result
+    .filter((r) => (r._count ?? 0) > 0)
+    .map((r) => r.indexType as LeaseIndexType)
 }
 
 export function buildIndexInputsForLease(

@@ -130,11 +130,14 @@ model Export {
 
 model insee_rental_reference_index {
   id        String   @id @default(cuid())
+  indexType String   @default("ILAT") // ILAT, ILC, ICC
   year      Int
   quarter   Int
   value     Float
   createdAt DateTime @default(now())
 
+  @@unique([indexType, year, quarter])
+  @@index([indexType])
   @@index([year])
   @@index([quarter])
   @@index([value])

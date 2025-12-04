@@ -17,6 +17,7 @@
     "test:ci": "jest --maxWorkers=50% --ci --coverage",
     "test:watch": "jest --watch --maxWorkers=50%",
     "test:changed": "jest --onlyChanged",
+    "test:extraction": "tsx scripts/run-extraction-tests.ts",
     "format": "prettier --write . --ignore-unknown",
     "migrate:extractions": "tsx scripts/migrate-extractions-to-separated-storage.ts",
     "seed:insee": "tsx scripts/seed-insee.ts",

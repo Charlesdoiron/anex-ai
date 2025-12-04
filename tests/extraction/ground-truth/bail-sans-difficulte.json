@@ -1,0 +1,465 @@
+{
+  "documentId": "bail-sans-difficulte",
+  "documentPath": "tests/extraction/documents/bail-sans-difficulte.json",
+  "description": "Ground truth for 'Bail sans difficulté particulière.pdf' based on expert labeling from 251203_Bail sans difficulté particuliere_Test.xlsx",
+
+  "expectations": {
+    "regime": {
+      "regime": {
+        "expected": "Bail commercial",
+        "tolerance": "contains",
+        "comment": "Page 2 - 'donne à bail commercial'. Valeur exacte selon le prompt."
+      }
+    },
+
+    "parties": {
+      "landlord.name": {
+        "expected": "SCI RG7",
+        "tolerance": "contains",
+        "comment": "Page 1"
+      },
+      "landlord.siren": {
+        "expected": "482607462",
+        "tolerance": "contains",
+        "comment": "SIRET 48260746200017 - extract SIREN (9 premiers chiffres)"
+      },
+      "landlord.address": {
+        "expected": "10, Rue Guy de Maupassant 13170 LES PENNES MIRABEAU",
+        "tolerance": "contains",
+        "comment": "Page 1"
+      },
+      "tenant.name": {
+        "expected": "SAS SOL ENVIRONMENT",
+        "tolerance": "contains",
+        "comment": "Page 1"
+      },
+      "tenant.siren": {
+        "expected": "440794857",
+        "tolerance": "contains",
+        "comment": "RCS n° 440 794 857"
+      },
+      "tenant.address": {
+        "expected": "22/24, Rue Lavoisier 92000 NANTERRE",
+        "tolerance": "contains",
+        "comment": "Page 1"
+      }
+    },
+
+    "premises": {
+      "designation": {
+        "expected": "Local mixte activités/bureaux et 4 places de parking",
+        "tolerance": "contains",
+        "comment": "Page 2, article 1 - description complète"
+      },
+      "purpose": {
+        "expected": "Usage exclusif d’activités / bureaux",
+        "tolerance": "contains",
+        "comment": "Page 2, article 3 - aucune exclusivité conférée"
+      },
+      "address": {
+        "expected": "10, Rue Guy de Maupassant 13170 LES PENNES MIRABEAU",
+        "tolerance": "contains",
+        "comment": "Page 2"
+      },
+      "buildingYear": {
+        "expected": null,
+        "tolerance": "exact",
+        "comment": "Non mentionné"
+      },
+      "floors": {
+        "expected": null,
+        "tolerance": "exact",
+        "comment": "Non mentionné"
+      },
+      "lotNumbers": {
+        "expected": null,
+        "tolerance": "exact",
+        "comment": "Non mentionné"
+      },
+      "surfaceArea": {
+        "expected": 218,
+        "tolerance": "exact",
+        "comment": "Page 2, article 1 - 218 m². Doit être un nombre sans unité."
+      },
+      "isPartitioned": {
+        "expected": null,
+        "tolerance": "exact",
+        "comment": "Non mentionné explicitement"
+      },
+      "hasFurniture": {
+        "expected": "Oui",
+        "tolerance": "exact",
+        "comment": "Mobilier mentionné dans les obligations du preneur"
+      },
+      "furnishingConditions": {
+        "expected": "garnir et tenir constamment garnis les lieux loués de meubles, objets mobiliers, et matériels de bureau",
+        "tolerance": "contains",
+        "comment": "Page 6, article 9 - clause de garnissement"
+      },
+      "signageConditions": {
+        "expected": "autorisation préalable et écrite du bailleur",
+        "tolerance": "contains",
+        "comment": "Article 9 - toute plaque/store nécessite l'autorisation écrite du bailleur (et copro le cas échéant)"
+      },
+      "hasOutdoorSpace": {
+        "expected": "Oui",
+        "tolerance": "exact",
+        "comment": "Présence d'un jardinet mentionné dans les travaux"
+      },
+      "hasArchiveSpace": {
+        "expected": null,
+        "tolerance": "exact",
+        "comment": "Non mentionné"
+      },
+      "parkingSpaces": {
+        "expected": 4,
+        "tolerance": "exact",
+        "comment": "Page 2, article 1 - 4 places de parking (n°1,2,3,4)"
+      }
+    },
+
+    "calendar": {
+      "signatureDate": {
+        "expected": "2016-12-12",
+        "tolerance": "exact",
+        "comment": "Dernière page - 12 décembre 2016. Format ISO YYYY-MM-DD."
+      },
+      "duration": {
+        "expected": "9 ans",
+        "tolerance": "contains",
+        "comment": "Page 2, article 2 - 3/6/9 années = 9 ans"
+      },
+      "effectiveDate": {
+        "expected": "2016-12-19",
+        "tolerance": "exact",
+        "comment": "Page 2, article 2 - 19 décembre 2016. Format ISO YYYY-MM-DD."
+      },
+      "earlyAccessDate": {
+        "expected": null,
+        "tolerance": "exact",
+        "comment": "Non mentionné - pas de mise à disposition anticipée"
+      },
+      "endDate": {
+        "expected": "2025-12-18",
+        "tolerance": "exact",
+        "comment": "Page 2, article 2 - 18 décembre 2025 (J-1 du 9ème anniversaire)"
+      },
+      "nextTriennialDate": {
+        "expected": "2025-12-18",
+        "tolerance": "exact",
+        "comment": "Calculé : prochaine faculté de résiliation = fin de bail"
+      },
+      "noticePeriod": {
+        "expected": "6 mois",
+        "tolerance": "contains",
+        "comment": "Page 2, article 2 - au moins six mois à l'avance"
+      },
+      "terminationConditions": {
+        "expected": "Par lettre recommandée avec demande d’avis de réception ou par acte extrajudiciaire",
+        "tolerance": "contains",
+        "comment": "Page 2, article 2 - modalités détaillées pour preneur et bailleur"
+      },
+      "renewalConditions": {
+        "expected": null,
+        "tolerance": "exact",
+        "comment": "Non mentionné dans le bail"
+      }
+    },
+
+    "rent": {
+      "annualRentExclTaxExclCharges": {
+        "expected": 16800,
+        "tolerance": "exact",
+        "comment": "Page 3, article 4 - 16 800 € HT HC annuel. Nombre sans symbole €."
+      },
+      "quarterlyRentExclTaxExclCharges": {
+        "expected": 4200,
+        "tolerance": "exact",
+        "comment": "Calculé : 16800 / 4 = 4200 €"
+      },
+      "annualRentPerSqmExclTaxExclCharges": {
+        "expected": 77.06,
+        "tolerance": "numeric_5pct",
+        "comment": "Calculé automatiquement depuis le loyer annuel / surface (218 m²)"
+      },
+      "annualParkingRentExclCharges": {
+        "expected": "Inclus dans le loyer initial des locaux",
+        "tolerance": "contains",
+        "comment": "Page 3, article 4 - pas de loyer parking séparé, utiliser la formulation imposée par le prompt."
+      },
+      "isSubjectToVAT": {
+        "expected": true,
+        "tolerance": "exact",
+        "comment": "Page 3, article 4 - assujettie à la TVA"
+      },
+      "paymentFrequency": {
+        "expected": "Trimestriel d'avance, premier jour ouvrable de chaque trimestre civil",
+        "tolerance": "exact",
+        "comment": "Page 3, article 4 - formulation exacte du bail"
+      },
+      "latePaymentPenaltyConditions": {
+        "expected": "taux de base bancaire majoré de trois points",
+        "tolerance": "contains",
+        "comment": "Page 12, article 16"
+      }
+    },
+
+    "indexation": {
+      "hasIndexationClause": {
+        "expected": "Oui",
+        "tolerance": "exact",
+        "comment": "Page 3, article 5"
+      },
+      "indexationType": {
+        "expected": "ILC",
+        "tolerance": "exact",
+        "comment": "Page 3, article 5 - indice des loyers commerciaux. Acronyme uniquement."
+      },
+      "referenceQuarter": {
+        "expected": "ILC 2ème trimestre 2016",
+        "tolerance": "contains",
+        "comment": "Page 3, article 5 - indice de base"
+      },
+      "firstIndexationDate": {
+        "expected": "Le 19 décembre de chaque année",
+        "tolerance": "contains",
+        "comment": "Page 3, article 5 - formulation exacte"
+      },
+      "indexationFrequency": {
+        "expected": "Annuellement",
+        "tolerance": "exact",
+        "comment": "Page 3, article 5 - tous les ans"
+      }
+    },
+
+    "charges": {
+      "annualChargesProvisionExclTax": {
+        "expected": 480,
+        "tolerance": "exact",
+        "comment": "Page 4, article 6 - provision pour charges annuelles : 480 € HT"
+      },
+      "quarterlyChargesProvisionExclTax": {
+        "expected": 120,
+        "tolerance": "exact",
+        "comment": "Calculé : 480 / 4 = 120 €"
+      },
+      "annualChargesProvisionPerSqmExclTax": {
+        "expected": 2.2,
+        "tolerance": "numeric_10pct",
+        "comment": "Calculé : 480 / 218 = environ 2.2 €/m²"
+      }
+    },
+
+    "insurance": {
+      "insurancePremiumRebilled": {
+        "expected": null,
+        "tolerance": "exact",
+        "comment": "Prime non refacturée explicitement (article 12)"
+      },
+      "insuranceCertificateAnnexed": {
+        "expected": null,
+        "tolerance": "exact",
+        "comment": "Non annexée"
+      },
+      "hasWaiverOfRecourse": {
+        "expected": true,
+        "tolerance": "exact",
+        "comment": "Page 10, article 12 - renonciation à recours réciproque"
+      }
+    },
+
+    "securities": {
+      "securityDepositAmount": {
+        "expected": 4200,
+        "tolerance": "exact",
+        "comment": "Page 5, article 7 - 3 mois de loyers HT HC = 16800/4 = 4200 €"
+      },
+      "securityDepositDescription": {
+        "expected": "3 mois de loyers",
+        "tolerance": "contains",
+        "comment": "Page 5, article 7"
+      },
+      "otherSecurities": {
+        "expected": [],
+        "tolerance": "exact",
+        "comment": "Pas d'autres sûretés mentionnées"
+      }
+    },
+
+    "inventory": {
+      "entryInventoryConditions": {
+        "expected": "PV d’entrée dans les lieux sera établi lors de la remise des clés",
+        "tolerance": "contains",
+        "comment": "Page 1, article 1 - l'état des lieux devient une annexe"
+      },
+      "hasPreExitInventory": {
+        "expected": "Non mentionné",
+        "tolerance": "exact",
+        "comment": "Aucune clause spécifique"
+      },
+      "exitInventoryConditions": {
+        "expected": "Un état des lieux sera dressé par le bailleur au plus tard le jour de l'expiration de la location",
+        "tolerance": "contains",
+        "comment": "Page 12, article 18 - précise la procédure et les 15 jours"
+      }
+    },
+
+    "maintenance": {
+      "tenantMaintenanceConditions": {
+        "expected": "Maintenir les lieux en bon état d'entretien et effectuer toutes les réparations locatives (y compris celles résultant de la vétusté ou imposant un remplacement)",
+        "tolerance": "contains",
+        "comment": "Page 7, article 10"
+      },
+      "landlordWorksList": {
+        "expected": ["article 606 du Code civil"],
+        "tolerance": "contains",
+        "comment": "Grosses réparations article 606 + ravalement façade"
+      },
+      "tenantWorksList": {
+        "expected": [
+          "Réparations locatives et entretien courant (vitrages, menues réparations, remplacements nécessaires)",
+          "Travaux de mise en conformité imposés par les autorités (sécurité, hygiène, installations électriques, accessibilité, performance énergétique, etc.)",
+          "Travaux d'aménagements et modifications intérieures soumis à autorisation (avec clause d'accession)"
+        ],
+        "tolerance": "contains",
+        "comment": "Page 7-8, articles 10-11"
+      },
+      "hasAccessionClause": {
+        "expected": "Oui, tous les travaux réalisés par le preneur deviendront la propriété du bailleur sans indemnité",
+        "tolerance": "exact",
+        "comment": "Page 8, article 11 - travaux deviennent propriété du bailleur"
+      }
+    },
+
+    "restitution": {
+      "restitutionConditions": {
+        "expected": "Le preneur doit rendre les locaux en bon état d'entretien, être à jour de ses paiements et justifier des abonnements/consommations avant déménagement",
+        "tolerance": "contains",
+        "comment": "Page 12, article 18"
+      },
+      "restorationConditions": {
+        "expected": "Si le preneur n'exécute pas spontanément les réparations dans les quinze jours suivant la notification de l'état des lieux de sortie, le bailleur les fera réaliser (sous la surveillance de son architecte) et en imputera les coûts, honoraires compris, sur le dépôt de garantie",
+        "tolerance": "contains",
+        "comment": "Page 12, article 18 - faculté pour le bailleur d'exiger"
+      }
+    },
+
+    "transfer": {
+      "sublettingConditions": {
+        "expected": "La sous-location est interdite sauf autorisation expresse du bailleur ; dans l'hypothèse où une sous-location partielle serait autorisée, le preneur devra se conformer aux prescriptions légales et l'ensemble des locaux reste indivisible",
+        "tolerance": "contains",
+        "comment": "Page 10, article 13"
+      },
+      "assignmentConditions": {
+        "expected": "acquéreur de la totalité du fonds de commerce",
+        "tolerance": "contains",
+        "comment": "Page 10, article 13 - avec agrément exprès et écrit du bailleur"
+      },
+      "divisionPossible": {
+        "expected": "Non",
+        "tolerance": "exact",
+        "comment": "Page 10, article 13 - caractère indivisible"
+      }
+    },
+
+    "environmentalAnnexes": {
+      "hasDPE": {
+        "expected": true,
+        "tolerance": "exact",
+        "comment": "Page 13, article 14"
+      },
+      "hasAsbestosDiagnostic": {
+        "expected": false,
+        "tolerance": "exact",
+        "comment": "Non annexé explicitement"
+      },
+      "hasEnvironmentalAnnex": {
+        "expected": false,
+        "tolerance": "exact",
+        "comment": "Non concerné - locaux < 2000 m²"
+      },
+      "hasRiskAndPollutionStatement": {
+        "expected": true,
+        "tolerance": "exact",
+        "comment": "Page 13, article 14 - état des risques"
+      }
+    },
+
+    "otherAnnexes": {
+      "hasInternalRegulations": {
+        "expected": false,
+        "tolerance": "exact",
+        "comment": "Non annexé"
+      },
+      "hasPremisesPlan": {
+        "expected": false,
+        "tolerance": "exact",
+        "comment": "Non mentionné"
+      },
+      "hasChargesInventory": {
+        "expected": true,
+        "tolerance": "exact",
+        "comment": "Page 4, article 6 - inventaire annexé"
+      },
+      "hasAnnualChargesSummary": {
+        "expected": false,
+        "tolerance": "exact",
+        "comment": "Sera adressé ultérieurement - pas annexé"
+      }
+    },
+
+    "other": {
+      "civilCodeDerogations": {
+        "expected": [
+          "dérogation à l’article 1721 du Code civil : renonciation à tous recours pour les vices et défauts",
+          "dérogation à l’article 1724 du Code civil : le preneur supporte sans indemnité la gêne des travaux",
+          "dérogation à l’article 1723 du Code civil : le preneur supporte sans indemnité toute modification de l’immeuble"
+        ],
+        "tolerance": "contains",
+        "comment": "Pages 7-9, articles 10-11"
+      },
+      "commercialCodeDerogations": {
+        "expected": ["Aucune dérogation"],
+        "tolerance": "exact",
+        "comment": "Aucune dérogation recensée"
+      }
+    }
+  },
+
+  "fieldDependencies": {
+    "rent.quarterlyRentExclTaxExclCharges": {
+      "dependsOn": ["rent.annualRentExclTaxExclCharges"],
+      "computation": "annualRent / 4"
+    },
+    "rent.annualRentPerSqmExclTaxExclCharges": {
+      "dependsOn": [
+        "rent.annualRentExclTaxExclCharges",
+        "premises.surfaceArea"
+      ],
+      "computation": "annualRent / surfaceArea"
+    },
+    "charges.quarterlyChargesProvisionExclTax": {
+      "dependsOn": ["charges.annualChargesProvisionExclTax"],
+      "computation": "annualCharges / 4"
+    },
+    "charges.annualChargesProvisionPerSqmExclTax": {
+      "dependsOn": [
+        "charges.annualChargesProvisionExclTax",
+        "premises.surfaceArea"
+      ],
+      "computation": "annualCharges / surfaceArea"
+    },
+    "calendar.nextTriennialDate": {
+      "dependsOn": ["calendar.effectiveDate", "calendar.duration"],
+      "computation": "effectiveDate + 3 years - 1 day (or endDate if sooner)"
+    }
+  },
+
+  "notes": [
+    "Ground truth extracted from expert-labeled Excel: 251203_Bail sans difficulté particuliere_Test.xlsx",
+    "Field names aligned with types.ts (LeaseExtractionResult)",
+    "Values aligned with prompts.ts expected formats",
+    "LLM semantic validation handles format variations (e.g., '9 ans' vs 9)",
+    "Tolerance types: exact, contains, numeric_5pct, numeric_10pct"
+  ]
+}

@@ -1,12 +1,11 @@
 export type PaymentFrequency = "monthly" | "quarterly"
 
-export type LeaseIndexType = "ILAT" | "ILC" | "ICC" | "IRL"
+export type LeaseIndexType = "ILAT" | "ILC" | "ICC"
 
 export const SUPPORTED_LEASE_INDEX_TYPES: LeaseIndexType[] = [
   "ILAT",
   "ILC",
   "ICC",
-  "IRL",
 ]
 
 export const DEFAULT_LEASE_INDEX_TYPE: LeaseIndexType = "ILAT"

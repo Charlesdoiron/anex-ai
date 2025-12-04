@@ -726,7 +726,7 @@
 //   //     query: `Extraire toutes les clauses de révision, d'indexation et d'évolution du loyer :
 
 //   //     INDEXATION ANNUELLE :
-//   //     - Indice de référence utilisé (ILC, ILAT, ICC, IRL, indice du coût de la construction, etc.)
+//   //     - Indice de référence utilisé (ILC, ILAT, ICC, indice du coût de la construction, etc.)
 //   //     - Organisme publiant l'indice (INSEE généralement)
 //   //     - Périodicité de la révision (annuelle, trimestrielle, etc.)
 //   //     - Date de révision (date anniversaire du bail, 1er janvier, etc.)

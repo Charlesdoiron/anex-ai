@@ -81,10 +81,10 @@ ATTENTION :
 - annualParkingRentExclCharges : Loyer annuel parkings HTHC
 
 6. INDICE D'INDEXATION :
-- indexation.indexationType : Acronyme EXACT de l'indice utilisé (ILC, ILAT, ICC, IRL)
+- indexation.indexationType : Acronyme EXACT de l'indice utilisé (ILC, ILAT, ICC)
 - Si l'indice n'est pas mentionné, retourner null avec rawText \"Non mentionné\"
 
-Indices : \"indexé sur l'ILC\", \"révision selon l'ILAT\", \"indice ICC\", \"indice IRL\"
+Indices : \"indexé sur l'ILC\", \"révision selon l'ILAT\", \"indice ICC\"
 
 EXEMPLES :
 - "Bail de 9 ans à compter du 1er avril 2023, loyer de 120.000 € HT/an, payable trimestriellement"
@@ -107,7 +107,7 @@ FORMAT DE SORTIE JSON :
     "paymentFrequency": { "value": "monthly" | "quarterly" | null, "confidence": "...", "source": "...", "rawText": "..." }
   },
   "indexation": {
-    "indexationType": { "value": "ILC" | "ILAT" | "ICC" | "IRL" | null, "confidence": "...", "source": "...", "rawText": "..." }
+    "indexationType": { "value": "ILC" | "ILAT" | "ICC" | null, "confidence": "...", "source": "...", "rawText": "..." }
   }
 }`
 

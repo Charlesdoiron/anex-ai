@@ -1,34 +1,34 @@
-"use client";
+"use client"
 
-import { useSession, signOut } from "@/app/lib/auth-client";
-import Link from "next/link";
-import { useState, useRef, useEffect } from "react";
+import { useSession, signOut } from "@/app/lib/auth-client"
+import Link from "next/link"
+import { useState, useRef, useEffect } from "react"
 
 export function UserMenu() {
-  const { data: session, isPending } = useSession();
-  const [isOpen, setIsOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const { data: session, isPending } = useSession()
+  const [isOpen, setIsOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
+        setIsOpen(false)
       }
     }
 
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
 
   async function handleSignOut() {
-    await signOut();
-    window.location.href = "/";
+    await signOut()
+    window.location.href = "/"
   }
 
   if (isPending) {
     return (
       <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 animate-pulse" />
-    );
+    )
   }
 
   if (!session) {
@@ -47,7 +47,7 @@ export function UserMenu() {
           Inscription
         </Link>
       </div>
-    );
+    )
   }
 
   return (
@@ -74,6 +74,13 @@ export function UserMenu() {
               {session.user.email}
             </p>
           </div>
+          <Link
+            href="/admin/lease"
+            onClick={() => setIsOpen(false)}
+            className="block w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#343541] transition-colors"
+          >
+            Gestion des prompts
+          </Link>
           <button
             onClick={handleSignOut}
             className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#343541] transition-colors rounded-b-lg"
@@ -83,5 +90,5 @@ export function UserMenu() {
         </div>
       )}
     </div>
-  );
+  )
 }

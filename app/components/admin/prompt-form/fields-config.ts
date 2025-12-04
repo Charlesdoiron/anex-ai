@@ -1,25 +1,7 @@
 import {
-  SYSTEM_INSTRUCTIONS,
-  EXTRACTION_PROMPTS,
-  REGIME_PROMPT,
-  PARTIES_PROMPT,
-  PREMISES_PROMPT,
-  CALENDAR_PROMPT,
-  SUPPORT_MEASURES_PROMPT,
-  RENT_PROMPT,
-  INDEXATION_PROMPT,
-  TAXES_PROMPT,
-  CHARGES_PROMPT,
-  INSURANCE_PROMPT,
-  SECURITIES_PROMPT,
-  INVENTORY_PROMPT,
-  MAINTENANCE_PROMPT,
-  RESTITUTION_PROMPT,
-  TRANSFER_PROMPT,
-  ENVIRONMENTAL_ANNEXES_PROMPT,
-  OTHER_ANNEXES_PROMPT,
-  OTHER_PROMPT,
-} from "@/app/lib/extraction/prompts"
+  PROMPT_METADATA,
+  SYSTEM_PROMPT_METADATA,
+} from "@/app/lib/extraction/prompt-metadata"
 
 export interface FieldConfig {
   label: string
@@ -53,27 +35,6 @@ function getSectionLabel(section: string): string {
     other: "Autres",
   }
   return labels[section] || section
-}
-
-const PROMPT_MAP: Record<string, string> = {
-  regime: REGIME_PROMPT,
-  parties: PARTIES_PROMPT,
-  premises: PREMISES_PROMPT,
-  calendar: CALENDAR_PROMPT,
-  supportMeasures: SUPPORT_MEASURES_PROMPT,
-  rent: RENT_PROMPT,
-  indexation: INDEXATION_PROMPT,
-  taxes: TAXES_PROMPT,
-  charges: CHARGES_PROMPT,
-  insurance: INSURANCE_PROMPT,
-  securities: SECURITIES_PROMPT,
-  inventory: INVENTORY_PROMPT,
-  maintenance: MAINTENANCE_PROMPT,
-  restitution: RESTITUTION_PROMPT,
-  transfer: TRANSFER_PROMPT,
-  environmentalAnnexes: ENVIRONMENTAL_ANNEXES_PROMPT,
-  otherAnnexes: OTHER_ANNEXES_PROMPT,
-  other: OTHER_PROMPT,
 }
 
 interface Subsection {
@@ -157,6 +118,7 @@ function parsePromptSubsections(prompt: string): Subsection[] {
 }
 
 function createFieldConfigs(
+  metadataLabel: string,
   section: string,
   prompt: string,
   startId: number
@@ -167,7 +129,7 @@ function createFieldConfigs(
   if (subsections.length === 0) {
     return [
       {
-        label: getSectionLabel(section),
+        label: metadataLabel || getSectionLabel(section),
         id: `prompt${startId}`,
         fieldId: section,
         section,
@@ -178,7 +140,7 @@ function createFieldConfigs(
 
   // Return multiple fields, one per subsection
   return subsections.map((subsection, index) => ({
-    label: `${getSectionLabel(section)} - ${subsection.title}`,
+    label: `${metadataLabel || getSectionLabel(section)} - ${subsection.title}`,
     id: `prompt${startId + index}`,
     fieldId: `${section}_${subsection.number}`,
     section,
@@ -190,21 +152,20 @@ function createFieldConfigs(
 function buildFieldsConfig(): FieldConfig[] {
   const fields: FieldConfig[] = [
     {
-      label: getSectionLabel("system"),
+      label: SYSTEM_PROMPT_METADATA.label || getSectionLabel("system"),
       id: "prompt1",
-      fieldId: "system",
-      section: "system",
-      content: SYSTEM_INSTRUCTIONS,
+      fieldId: SYSTEM_PROMPT_METADATA.section,
+      section: SYSTEM_PROMPT_METADATA.section,
+      content: SYSTEM_PROMPT_METADATA.prompt,
     },
   ]
 
   let nextId = 2
-  for (const extractionPrompt of EXTRACTION_PROMPTS) {
-    const prompt =
-      PROMPT_MAP[extractionPrompt.section] || extractionPrompt.prompt
+  for (const metadata of PROMPT_METADATA) {
     const newFields = createFieldConfigs(
-      extractionPrompt.section,
-      prompt,
+      metadata.label,
+      metadata.section,
+      metadata.prompt,
       nextId
     )
     fields.push(...newFields)

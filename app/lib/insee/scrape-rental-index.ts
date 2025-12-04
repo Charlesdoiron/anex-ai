@@ -1,10 +1,41 @@
 import { load } from "cheerio"
+import {
+  SUPPORTED_LEASE_INDEX_TYPES,
+  type LeaseIndexType,
+} from "../lease/types"
 
 export interface RentIndexPayload {
+  indexType: LeaseIndexType
   year: number
   quarter: number
   value: number
   createdAt: string | null
+}
+
+/**
+ * Environment variable names for each index type URL
+ */
+const INDEX_URL_ENV_KEYS: Record<LeaseIndexType, string> = {
+  ILAT: "INSEE_ILAT_URL",
+  ILC: "INSEE_ILC_URL",
+  ICC: "INSEE_ICC_URL",
+}
+
+/**
+ * Get configured URL for a specific index type
+ */
+function getIndexUrl(indexType: LeaseIndexType): string | null {
+  const envKey = INDEX_URL_ENV_KEYS[indexType]
+  return process.env[envKey] || null
+}
+
+/**
+ * Get all configured index types (those with URLs set)
+ */
+export function getConfiguredIndexTypes(): LeaseIndexType[] {
+  return SUPPORTED_LEASE_INDEX_TYPES.filter(
+    (type) => getIndexUrl(type) !== null
+  )
 }
 
 async function getBrowser() {
@@ -46,7 +77,10 @@ function parseFrenchNumber(value: string | undefined): number | null {
   return isNaN(num) ? null : num
 }
 
-function transformRow(row: Record<string, string>): RentIndexPayload | null {
+function transformRow(
+  row: Record<string, string>,
+  indexType: LeaseIndexType
+): RentIndexPayload | null {
   const year = parseInt(row["Année"], 10)
   if (isNaN(year)) return null
 
@@ -58,15 +92,21 @@ function transformRow(row: Record<string, string>): RentIndexPayload | null {
 
   const createdAt = parseFrenchDate(row["Parution au J.O."])
 
-  return { year, quarter, value, createdAt }
+  return { indexType, year, quarter, value, createdAt }
 }
 
-export async function scrapeInseeRentalIndex(): Promise<RentIndexPayload[]> {
-  const INSEE_RENTAL_REFERENCE_INDEX_URL =
-    process.env.INSEE_RENTAL_REFERENCE_INDEX_URL
+/**
+ * Scrape a single index type from INSEE
+ */
+export async function scrapeInseeRentalIndex(
+  indexType: LeaseIndexType
+): Promise<RentIndexPayload[]> {
+  const url = getIndexUrl(indexType)
 
-  if (!INSEE_RENTAL_REFERENCE_INDEX_URL) {
-    throw new Error("INSEE_RENTAL_REFERENCE_INDEX_URL is not set")
+  if (!url) {
+    throw new Error(
+      `INSEE URL for ${indexType} is not configured. Set ${INDEX_URL_ENV_KEYS[indexType]} environment variable.`
+    )
   }
 
   const isVercel = process.env.VERCEL === "1"
@@ -76,7 +116,7 @@ export async function scrapeInseeRentalIndex(): Promise<RentIndexPayload[]> {
     browser = await getBrowser()
     const page = await browser.newPage()
 
-    await page.goto(INSEE_RENTAL_REFERENCE_INDEX_URL, {
+    await page.goto(url, {
       waitUntil: "domcontentloaded",
       timeout: isVercel ? 15000 : 30000,
     })
@@ -93,7 +133,9 @@ export async function scrapeInseeRentalIndex(): Promise<RentIndexPayload[]> {
     const headers = $("#tableau-series thead tr th")
 
     if (headers.length === 0) {
-      throw new Error("No table headers found in #tableau-series")
+      throw new Error(
+        `No table headers found in #tableau-series for ${indexType}`
+      )
     }
 
     const headerTexts = headers
@@ -116,7 +158,7 @@ export async function scrapeInseeRentalIndex(): Promise<RentIndexPayload[]> {
     })
 
     const payload = tableData
-      .map(transformRow)
+      .map((row) => transformRow(row, indexType))
       .filter((item): item is RentIndexPayload => item !== null)
 
     return payload
@@ -126,4 +168,64 @@ export async function scrapeInseeRentalIndex(): Promise<RentIndexPayload[]> {
     }
     throw error
   }
+}
+
+export interface ScrapeAllResult {
+  results: Record<LeaseIndexType, RentIndexPayload[]>
+  errors: Record<LeaseIndexType, string>
+}
+
+/**
+ * Scrape all configured index types from INSEE
+ * Only scrapes indices that have their URL configured
+ */
+export async function scrapeAllInseeRentalIndices(): Promise<ScrapeAllResult> {
+  const configuredTypes = getConfiguredIndexTypes()
+
+  if (configuredTypes.length === 0) {
+    console.warn(
+      "[INSEE] No index URLs configured. Set INSEE_ILAT_URL, INSEE_ILC_URL, or INSEE_ICC_URL."
+    )
+    const emptyResults: Record<LeaseIndexType, RentIndexPayload[]> = {
+      ILAT: [],
+      ILC: [],
+      ICC: [],
+    }
+    const emptyErrors: Record<LeaseIndexType, string> = {
+      ILAT: "",
+      ILC: "",
+      ICC: "",
+    }
+    return {
+      results: emptyResults,
+      errors: emptyErrors,
+    }
+  }
+
+  const results: Record<LeaseIndexType, RentIndexPayload[]> = {
+    ILAT: [],
+    ILC: [],
+    ICC: [],
+  }
+  const errors: Record<LeaseIndexType, string> = {
+    ILAT: "",
+    ILC: "",
+    ICC: "",
+  }
+
+  for (const indexType of configuredTypes) {
+    try {
+      console.log(`[INSEE] Scraping ${indexType}...`)
+      const data = await scrapeInseeRentalIndex(indexType)
+      results[indexType] = data
+      console.log(`[INSEE] ${indexType}: ${data.length} records`)
+      errors[indexType] = ""
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      errors[indexType] = errorMsg
+      console.error(`[INSEE] Failed to scrape ${indexType}:`, errorMsg)
+    }
+  }
+
+  return { results, errors }
 }
