@@ -251,14 +251,23 @@ export const PREMISES_PROMPT = `Extraire la description détaillée des locaux l
 CHAMPS À EXTRAIRE :
 
 1. DÉSIGNATION ET DESTINATION :
-- designation : Description générale des locaux loués (ex: "Local mixte activités/bureaux et 4 places de parking")
+- designation : Description générale des locaux loués
+  - Format : "[Type de local] et [éléments annexes]"
+  - Ex: "Local mixte activités/bureaux et 4 places de parking (n°1,2,3,4)"
   - Inclure les éléments loués : bâtiments, parkings, caves, etc.
-  - Chercher dans l'article "Désignation" ou "Définition des locaux"
-- purpose (destination) : Usage autorisé des locaux avec exclusions éventuelles
-  - Format : "Usage de [activité]. Exclusion : [activités interdites]"
-  - Chercher les termes : "à usage de", "destiné à", "exclusivement", "à l'exclusion de"
-  - Ex: "Usage d'activités et de bureaux. Exclusion : réception du public, vente au public"
-- address : Adresse complète des locaux
+  - Chercher dans l'article "DÉSIGNATION" ou "DÉFINITION DES LOCAUX"
+  
+- purpose (destination) : Usage autorisé des locaux
+  - ⚠️ TOUJOURS commencer par "Usage exclusif de" ou "Usage de" si mentionné comme tel
+  - Format attendu : "Usage exclusif d'[activité]" ou "Usage de [activité]. Exclusion : [activités interdites]"
+  - Chercher dans article "DESTINATION"
+  - Termes : "à usage exclusif de", "qu'à usage de", "destiné à"
+  - Ex: "Usage exclusif d'activités/bureaux"
+  - Ex: "Usage de bureaux. Exclusion : réception du public"
+  
+- address : Adresse des locaux (ville et code postal)
+  - Format préféré : "[Ville] [Code postal]" ou adresse complète
+  - Ex: "Les Pennes Mirabeau 13170" ou "10, Rue Guy de Maupassant 13170 LES PENNES MIRABEAU"
 
 2. CARACTÉRISTIQUES DU BÂTIMENT :
 - buildingYear : Année de construction (important pour diagnostics amiante si avant 1997)
@@ -290,16 +299,26 @@ CHAMPS À EXTRAIRE :
 - isPartitioned : Locaux cloisonnés ?
   - Valeurs : "Oui, [détails]" / "Non" / "Non mentionné"
   - Ex: "Oui, plusieurs salles de réunion notamment"
-- hasFurniture : Présence de mobilier ?
+  - Chercher dans article "DESIGNATION" ou "CLAUSE SUSPENSIVE" (travaux préalables)
+  
+- hasFurniture : Présence de mobilier FOURNI par le bailleur ?
   - Valeurs : "Oui" / "Non" / "Non mentionné"
-- furnishingConditions (clause de garnissement) : Obligation de garnir les locaux
-  - Chercher : "garnir", "tenir garnis", "meubles et objets mobiliers"
-  - Si présent, extraire le texte de la clause
-  - Sinon : "Non mentionné"
+  - ATTENTION : Ne pas confondre avec la clause de garnissement (obligation du preneur)
+  - Si pas de mobilier fourni explicitement mentionné → "Non"
+  
+- furnishingConditions (CLAUSE DE GARNISSEMENT - RECHERCHE ACTIVE) :
+  ⚠️ Cette clause est TRÈS COURANTE, chercher dans article "MODALITÉS D'OCCUPATION"
+  - Mots-clés : "garnir", "tenir garnis", "meubles, objets mobiliers"
+  - Formulation type : "Garnir et tenir constamment garnis les lieux loués de meubles, objets mobiliers, et matériels de bureau en quantité et de valeur suffisantes"
+  - Si présent : extraire la clause complète
+  - Format attendu : "Oui, garnir et tenir constamment garnis les lieux loués de meubles, objets mobiliers, et matériels de bureau en quantité et de valeur suffisantes"
+  - Si vraiment absent : "Non mentionné"
+  
 - signageConditions : Conditions d'enseigne/signalétique
-  - Chercher article "enseigne" ou sous-article dans travaux/aménagements
-  - Ex: "Pose d'enseigne soumise à autorisation du bailleur"
-  - Sinon : "Non mentionné"
+  - Chercher article "MODALITÉS D'OCCUPATION" ou "TRAVAUX"
+  - Mots-clés : "plaque", "store", "enseigne", "aspect extérieur", "autorisation préalable"
+  - Ex: "Autorisation préalable et écrite du bailleur requise pour toute plaque ou installation affectant l'aspect extérieur"
+  - Si absent : "Non mentionné"
 
 5. ESPACES ANNEXES :
 - hasOutdoorSpace : Espace extérieur (terrasse, cour) - "Oui" / "Non" (non mentionné = Non)
@@ -358,18 +377,20 @@ CHAMPS À EXTRAIRE :
   - Ne PAS calculer toi-même si non explicitement mentionnée
 
 4. PRÉAVIS ET RÉSILIATION :
-- noticePeriod : Durée du préavis UNIQUEMENT
-  - Format simple : "6 mois" (pas "6 mois avant l'échéance triennale")
-  - Chercher dans article "durée" ou "congé"
+- noticePeriod : Durée du préavis avec contexte
+  - Format préféré : "[X] mois avant l'échéance triennale" ou "[X] mois à l'avance"
+  - Ex: "6 mois avant l'échéance triennale" ✅ (plus précis que juste "6 mois")
+  - Chercher dans article "DURÉE" ou "CONGÉ"
+  
 - terminationConditions : Modalités pour donner congé
-  - Chercher : forme de l'envoi (RAR, acte de commissaire de justice, acte extrajudiciaire)
-  - Format attendu : "Par [moyen] pour le preneur / pour le bailleur"
-  - Ex: "Par lettre recommandée AR ou acte extrajudiciaire"
-- renewalConditions : Conditions de renouvellement à l'échéance du bail
+  - Format attendu : "Pour le preneur : [moyen]. Pour le bailleur : [moyen]"
+  - Ex: "Pour le preneur : par lettre recommandée AR ou acte extrajudiciaire. Pour le bailleur : par acte extrajudiciaire"
+  - Chercher : RAR, acte de commissaire de justice, acte extrajudiciaire
+  
+- renewalConditions : Conditions de renouvellement à l'échéance
   - Chercher dans article "renouvellement" ou "fin de bail"
-  - Inclure : durée du renouvellement, conditions sur le loyer
-  - Ex: "Durée : 9 ans. Loyer : plus haute valeur entre valeur locative et loyer indexé"
-  - Si non mentionné : "Non mentionné dans le bail"
+  - Si aucune clause explicite : "Non mentionné dans le bail"
+  - Ne pas inventer de conditions
 
 IMPORTANT - CALCUL DES DATES (J-1) :
 - La date de fin de bail et les échéances triennales sont calculées comme la VEILLE de l'anniversaire
@@ -401,23 +422,32 @@ CHAMPS À EXTRAIRE :
 
 1. FRANCHISE DE LOYER :
 - hasRentFreeperiod : Présence d'une franchise de loyer (true/false)
-- rentFreePeriodDescription : Description DÉTAILLÉE de la franchise
-  - Format attendu : "[Durée] applicable [période] pour un montant de [X] €HT"
-  - Inclure : durée en mois, période d'application, montant si mentionné
-  - Si plusieurs périodes de franchise, les lister toutes
-  - Ex: "6 mois applicable à la date d'effet pour un montant de 56 235 €HT"
+- rentFreePeriodDescription : Description de la franchise
+  ⚠️ FORMAT PRÉFÉRÉ : Décrire la PÉRIODE plutôt que le calcul
+  - PRIVILÉGIER : "Franchise de loyer consentie jusqu'au [date]"
+  - OU : "[X] mois de franchise à compter de [date]"
   - Ex: "Franchise de loyer consentie jusqu'au 8 janvier 2017"
-- rentFreePeriodMonths : Nombre total de mois de franchise (tous périodes confondues)
-- rentFreePeriodAmount : Montant total de la franchise en euros HT (SEULEMENT si explicite)
+  - Ex: "6 mois de franchise à compter de la date d'effet"
+  - ❌ ÉVITER : "0.6 mois soit 840 €" (trop calculé, pas lisible)
+  
+- rentFreePeriodMonths : Nombre de mois de franchise
+  - Si franchise exprimée en jours/date : calculer en mois (arrondi 1 décimale)
+  - Ex: du 19/12/2016 au 08/01/2017 ≈ 0.6 mois
+  
+- rentFreePeriodAmount : Montant total de la franchise en euros HT
+  - SEULEMENT si explicitement mentionné dans le bail
+  - Sinon laisser null (sera calculé automatiquement)
 
 2. AUTRES MESURES D'ACCOMPAGNEMENT :
 - hasOtherMeasures : Présence d'autres mesures d'accompagnement (true/false)
-- otherMeasuresDescription : Description détaillée des autres mesures
+- otherMeasuresDescription : Description des autres mesures
+  ⚠️ FORMAT PRÉFÉRÉ : Résumer puis renvoyer à l'article du bail
+  - Ex: "Divers aménagements à la charge du bailleur (installation de stores, création d'un second espace vitré, création d'une salle de réunion, câblage électrique et informatique, etc.). Pour plus de précision, cf. article 8 du bail."
+  - ❌ ÉVITER : Liste exhaustive de tous les travaux
+  
   Types de mesures à rechercher :
-  - Contribution aux travaux d'aménagement du preneur (avec montant)
-    Ex: "Contribution aux travaux d'aménagement du preneur pour un montant de 50 000 €HT"
-  - Aménagements réalisés par le bailleur
-    Ex: "Divers aménagements à la charge du bailleur (installation de stores, création d'espace vitré)"
+  - Contribution aux travaux d'aménagement du preneur (avec montant si indiqué)
+  - Aménagements réalisés par le bailleur (résumer les principaux + renvoyer à l'article)
   - Prise en charge de frais de déménagement
   - Réduction temporaire de loyer (paliers progressifs)
   
@@ -524,57 +554,40 @@ export const INDEXATION_PROMPT = `Extraire les clauses d'indexation du loyer.
 CHAMPS À EXTRAIRE :
 
 1. CLAUSE ET TYPE :
-- hasIndexationClause : Présence d'une clause d'indexation (true/false) - répondre "Oui" ou "Non"
+- hasIndexationClause : Présence d'une clause d'indexation
+  - Valeurs EXACTES : "Oui" ou "Non" (pas true/false)
+  
 - indexationType : Type d'indice utilisé
+  - RETOURNER UNIQUEMENT L'ACRONYME : "ILC" / "ILAT" / "ICC"
   - "ILC" : Indice des Loyers Commerciaux (le plus courant)
   - "ILAT" : Indice des Loyers des Activités Tertiaires
-  - "ICC" : Indice du Coût de la Construction (ancien, moins utilisé)
-  - Retourner UNIQUEMENT l'acronyme (ILC / ILAT / ICC)
-  - Autre indice spécifique
+  - "ICC" : Indice du Coût de la Construction (ancien)
 
 2. RÉFÉRENCES ET FRÉQUENCE :
-- referenceQuarter : Trimestre et valeur de l'indice de référence
-  - Format attendu : "Dernier indice publié à la date d'effet soit [TYPE] [TRIMESTRE] à [VALEUR]"
-  - Ex: "Dernier indice publié à la date d'effet soit ILC 2T2016 à 108,40"
-  - Ex: "Dernier indice publié à la date d'effet soit ILAT 2T2025 à 137,15"
-  - Chercher la valeur de l'indice mentionnée dans le bail
-  - Si valeur non mentionnée mais trimestre oui : "[TYPE] [TRIMESTRE]"
-  - Si non explicite : "Non mentionné"
+- referenceQuarter : Trimestre de référence avec indice type et valeur si disponible
+  - Format AVEC valeur : "Dernier indice publié à la date d'effet soit ILC 2T2016 à 108,40"
+  - Format SANS valeur : "ILC 2ème trimestre 2016" ou "ILC 2T2016"
+  - Chercher : "indice de base", "indice de référence", valeur numérique (ex: 108,40)
   
-- firstIndexationDate : Date de la première indexation - format RÉCURRENT
-  - Format attendu : "Le [jour] [mois] de chaque année" (pas une date spécifique)
+- firstIndexationDate : Date RÉCURRENTE de l'indexation (pas une date unique)
+  ⚠️ FORMAT OBLIGATOIRE : "Le [jour] [mois] de chaque année"
   - Ex: "Le 19 décembre de chaque année"
-  - Ex: "Le 10 octobre de chaque année"
-  - OU "À chaque date anniversaire du bail"
-  - NE PAS donner une date spécifique comme "2017-12-19"
+  - Ex: "À chaque date anniversaire du bail"
+  - ❌ NE PAS donner une date unique comme "19 décembre 2017" ou "2017-12-19"
   
 - indexationFrequency : Fréquence de l'indexation
-  - Valeurs : "Annuellement" / "Trimestriellement" / "Autre"
-  - NE PAS utiliser "annual" ou "quarterly"
-
-INDICES À RECHERCHER :
-- "révision du loyer", "indexation", "clause d'échelle mobile"
-- "ILC publié par l'INSEE", "ILAT", "ICC"
-- "indice de référence", "indice de base", "indice de départ"
-- "révision annuelle", "chaque année à la date anniversaire"
-- Valeur numérique de l'indice (ex: "108,40", "137,15")
-
-FORMULE TYPE :
-Nouveau loyer = Loyer actuel × (Indice nouveau / Indice de base)
+  ⚠️ VALEURS EXACTES EN FRANÇAIS :
+  - "Annuellement" (pas "Annuel", pas "annual")
+  - "Trimestriellement" (pas "Trimestriel")
+  - Chercher : "tous les ans", "chaque année", "à la date anniversaire"
 
 EXEMPLES :
-- "Indexation annuelle sur l'ILC, indice de base 2T2016 à 108,40, première révision le 19 décembre 2017"
-  → hasIndexationClause: "Oui"
-  → indexationType: "ILC"
-  → referenceQuarter: "Dernier indice publié à la date d'effet soit ILC 2T2016 à 108,40"
-  → firstIndexationDate: "Le 19 décembre de chaque année"
+- "Le loyer sera indexé... tous les ans, à la date anniversaire de la prise d'effet du bail"
+  → firstIndexationDate: "Le 19 décembre de chaque année" (si prise d'effet le 19/12)
   → indexationFrequency: "Annuellement"
-
-- "Révision selon l'ILAT du 2ème trimestre 2025"
-  → hasIndexationClause: "Oui"
-  → indexationType: "ILAT"
-  → referenceQuarter: "ILAT 2T2025"
-  → indexationFrequency: "Annuellement"
+  
+- "indice du 2ème trimestre 2016 (indice de base)"
+  → referenceQuarter: "ILC 2ème trimestre 2016" ou avec valeur si mentionnée
 
 Format de sortie JSON conforme à IndexationData.`
 
@@ -708,37 +721,41 @@ CHAMPS À EXTRAIRE :
 
 1. DÉPÔT DE GARANTIE :
 - securityDepositDescription : Description COMPLÈTE du dépôt de garantie
-  - Format attendu : "[Nombre] mois de loyer hors taxes hors charges soit [montant] €"
-  - Ex: "3 mois de loyer hors taxes hors charges soit 28 117,5 €"
-  - Ex: "3 mois de loyer hors taxe hors charge soit 4200 €"
-  - TOUJOURS inclure la formule (nombre de mois) ET le montant si disponible
+  ⚠️ FORMAT OBLIGATOIRE : "[Nombre] mois de loyer hors taxes hors charges soit [montant] €"
+  - TOUJOURS inclure :
+    1. Le nombre de mois (ex: "3 mois")
+    2. La précision "hors taxes hors charges" ou "HT HC"
+    3. Le montant en euros (ex: "soit 4200 €")
+  - Ex: "3 mois de loyer hors taxes hors charges soit 4200 €"
+  - Ex: "3 mois de loyer HT HC soit 28 117,5 €"
+  - ❌ NE PAS retourner seulement le montant : "4200 €"
   
 - securityDepositAmount : Montant numérique du dépôt de garantie (en euros, sans symbole)
-  - Extraire uniquement le nombre
+  - Extraire uniquement le nombre : 4200 (pas "4200 €", pas "4 200")
   - Si non calculable : null
 
-ATTENTION - NE PAS CONFONDRE :
-- Les clauses de reconstitution du dépôt de garantie NE SONT PAS des "autres sûretés"
-- Les conditions de restitution du dépôt NE SONT PAS des "autres sûretés"
-- Seules les garanties ADDITIONNELLES au dépôt vont dans otherSecurities
+⚠️ ATTENTION - NE PAS CONFONDRE AVEC LE DÉPÔT DE GARANTIE :
+- Les clauses de RECONSTITUTION du dépôt de garantie → À INCLURE dans securityDepositDescription
+- Les conditions de RESTITUTION du dépôt → À INCLURE dans securityDepositDescription
+- La garantie solidaire en cas de CESSION du bail → Ce n'est PAS une sûreté du bail initial
+- Seules les garanties VRAIMENT ADDITIONNELLES au dépôt vont dans otherSecurities
 
 2. AUTRES SÛRETÉS (garanties additionnelles au dépôt) :
 - otherSecurities : Liste des autres garanties (tableau de chaînes)
-  TYPES À RECHERCHER :
-  - Cautionnement solidaire (avec nom du garant)
-    Ex: "Cautionnement solidaire émanant de [Société] (Annexe X)"
+  
+  ⚠️ TYPES DE VRAIES SÛRETÉS ADDITIONNELLES :
+  - Cautionnement solidaire d'un TIERS (société mère, personne physique)
+    Ex: "Cautionnement solidaire émanant de [Société Mère] (Annexe X)"
   - Garantie bancaire à première demande (GAPD)
   - Caution personnelle du dirigeant
-  - Garantie maison-mère (société du groupe)
   - Nantissement de fonds de commerce
-  - Garantie autonome
   
-  Si AUCUNE autre sûreté mentionnée : "Non" ou tableau vide
+  ⚠️ CE QUI N'EST PAS UNE "AUTRE SÛRETÉ" :
+  - "Reconstitution du dépôt de garantie" → NON, c'est une modalité du DG
+  - "Garantie solidaire du cédant" en cas de cession → NON, c'est une clause de cession
+  - "Assurances du preneur" → NON, c'est une obligation d'assurance
   
-  NE PAS INCLURE :
-  - Reconstitution du dépôt de garantie
-  - Conditions de restitution du dépôt
-  - Garantie souscrite par le preneur pour son propre compte (assurances)
+  Si AUCUNE vraie sûreté additionnelle : "Non"
 
 INDICES À RECHERCHER :
 - Article ou sous-article "garantie", "dépôt de garantie", "sûretés"
@@ -782,8 +799,11 @@ CHAMPS À EXTRAIRE :
 
 3. ÉTAT DES LIEUX DE SORTIE :
 - exitInventoryConditions : Conditions de l'état des lieux de sortie
-  - Inclure : mode d'établissement, frais, remise en état
-  - Ex: "État des lieux établi dans les mêmes conditions que l'entrée; remise des clefs; frais de remise en état à la charge du Preneur"
+  ⚠️ FORMAT ATTENDU : Inclure les DÉLAIS si mentionnés
+  - Quand : "au plus tard le jour de l'expiration du bail"
+  - Délai de remise en état : "dans un délai de 15 jours" si mentionné
+  - Qui paie les réparations
+  - Ex: "État des lieux dressé au plus tard le jour de l'expiration du bail. En cas de désordres, si le preneur n'effectue pas spontanément les réparations dans un délai de 15 jours, le bailleur les fera exécuter aux frais du preneur"
 
 OÙ CHERCHER :
 - Article "état des lieux" ou "délivrance des locaux"
@@ -810,44 +830,49 @@ export const MAINTENANCE_PROMPT = `Extraire les conditions d'entretien et travau
 CHAMPS À EXTRAIRE :
 
 1. ENTRETIEN COURANT :
-- tenantMaintenanceConditions : Obligations d'entretien du preneur (résumé)
-  - Résumer les principales obligations sans tout lister
-  - Chercher dans article "entretien", "réparations", "mise en conformité"
-  - Ex: "Maintenir en bon état d'entretien et de fonctionnement toutes les installations"
+- tenantMaintenanceConditions : Obligations d'entretien du preneur (RÉSUMÉ COURT)
+  ⚠️ FORMAT ATTENDU : Une phrase résumant l'obligation principale
+  - Ex: "Tenir les lieux loués pendant toute la durée du bail et de ses renouvellements en bon état d'entretien"
+  - ❌ NE PAS lister tous les travaux (voir tenantWorksList pour ça)
+  - ❌ NE PAS répéter les mêmes infos que tenantWorksList
+  - Chercher dans article "ENTRETIEN", "RÉPARATIONS", "MISE EN CONFORMITÉ"
 
 2. RÉPARTITION DES TRAVAUX :
-- landlordWorksList : Travaux à la charge du bailleur (tableau concis)
-  - Résumer en catégories principales
-  - Ex: ["Travaux article 606 du Code civil", "Remplacement des Gros Équipements"]
-  - NE PAS lister tous les détails si article 606 mentionné
+- landlordWorksList : Travaux à la charge du bailleur (tableau CONCIS)
+  ⚠️ FORMAT ATTENDU : ["Travaux et grosses réparations définis à l'article 606 du Code civil"]
+  - Si article 606 mentionné, c'est souvent la seule ligne nécessaire
+  - Ajouter ravalement de façade si explicitement mentionné
   
-- tenantWorksList : Travaux à la charge du preneur (tableau concis)
-  - Résumer les grandes catégories
-  - Ex: ["Travaux d'aménagement intérieur", "Réparations locatives", "Entretien des équipements"]
-  - NE PAS copier tout l'article
+- tenantWorksList : Travaux à la charge du preneur (tableau structuré)
+  ⚠️ FORMAT ATTENDU : 2-3 grandes catégories extraites du bail, pas une liste exhaustive
+  - Ex:
+    - "Effectuer toutes les réparations qui pourraient être nécessaires, y compris celle découlant de la vétusté et/ou de la force majeure"
+    - "Effectuer à ses frais tous travaux prescrits par les autorités administratives"
+    - "Travaux soumis à autorisation expresse et écrite du bailleur"
+  - ❌ NE PAS copier tout l'article ni mélanger plusieurs articles
 
-3. CLAUSE D'ACCESSION (IMPORTANT) :
+3. CLAUSE D'ACCESSION (CRITIQUE - BIEN DISTINGUER) :
 - hasAccessionClause : Présence d'une clause d'accession
-  - Valeurs : "Oui, [description]" / "Non" / "Non mentionné"
+  - Valeurs : "Oui, [description courte]" / "Non" / "Non mentionné"
   
-  DÉFINITION : La clause d'accession signifie que les travaux et aménagements 
-  réalisés par le preneur deviennent la propriété du bailleur en fin de bail,
-  généralement sans indemnité.
+  ⚠️ DÉFINITION STRICTE : La clause d'accession concerne UNIQUEMENT le TRANSFERT DE PROPRIÉTÉ
+  des travaux réalisés par le preneur au bailleur en fin de bail.
   
-  CE QU'IL FAUT EXTRAIRE :
-  - "Oui, tous les travaux réalisés par le preneur deviendront la propriété du bailleur sans indemnité"
-  - "Oui, pour les équipements et aménagements effectués par le preneur, à la décision du bailleur"
+  CE QU'IL FAUT EXTRAIRE (formulation EXACTE attendue) :
+  - "Oui, tous les travaux réalisés par le preneur deviendront la propriété du bailleur sans indemnité à la fin du bail"
   
-  CE QUI N'EST PAS UNE CLAUSE D'ACCESSION :
-  - L'obligation de demander une autorisation pour faire des travaux
-  - Les conditions d'exécution des travaux
+  ⚠️ CE QUI N'EST PAS UNE CLAUSE D'ACCESSION (NE PAS CONFONDRE) :
+  - L'obligation de demander une autorisation pour faire des travaux → NON
+  - Les conditions d'exécution des travaux (architecte, assurances) → NON
+  - La possibilité pour le bailleur d'exiger la remise en état → NON (c'est l'inverse)
   
-  INDICES À RECHERCHER :
-  - "deviendront la propriété du bailleur"
-  - "acquerront au bailleur"
-  - "resteront acquis au bailleur"
-  - "sans indemnité"
-  - Dans article "travaux" du preneur ou "restitution"
+  INDICES À RECHERCHER (mots-clés EXACTS) :
+  - "deviendront la propriété du bailleur" ← C'EST ÇA
+  - "acquerront au bailleur" ← C'EST ÇA
+  - "resteront acquis au bailleur" ← C'EST ÇA
+  - "sans indemnité à la fin du bail" ← C'EST ÇA
+  
+  OÙ CHERCHER : Article "TRAVAUX" section "Travaux du preneur", souvent alinéa d)
 
 ARTICLE 606 DU CODE CIVIL (référence pour travaux bailleur) :
 - Gros murs, voûtes, planchers
@@ -855,13 +880,13 @@ ARTICLE 606 DU CODE CIVIL (référence pour travaux bailleur) :
 
 EXEMPLES :
 - "Les travaux article 606 du Code civil restent à la charge du bailleur"
-  → landlordWorksList: ["Travaux article 606 du Code civil"]
+  → landlordWorksList: ["Travaux et grosses réparations définis à l'article 606 du Code civil"]
   
-- "Les aménagements réalisés par le preneur resteront acquis au bailleur sans indemnité"
-  → hasAccessionClause: "Oui, tous les travaux réalisés par le preneur deviendront la propriété du bailleur sans indemnité"
+- "Tous les travaux réalisés par le preneur deviendront la propriété du bailleur sans indemnité à la fin du présent bail"
+  → hasAccessionClause: "Oui, tous les travaux réalisés par le preneur deviendront la propriété du bailleur sans indemnité à la fin du bail"
   
-- "Le bailleur pourra exiger le maintien ou la dépose des aménagements"
-  → hasAccessionClause: "Oui, pour les équipements et aménagements effectués par le preneur, à la décision du bailleur"
+- Clause mentionnant seulement l'autorisation préalable du bailleur pour travaux
+  → hasAccessionClause: "Non mentionné" (ce n'est PAS une clause d'accession)
 
 Format de sortie JSON conforme à MaintenanceData.`
 
@@ -923,15 +948,20 @@ CHAMPS À EXTRAIRE :
 
 2. CESSION :
 - assignmentConditions : Conditions de cession du bail
-  FORMAT ATTENDU - Inclure :
-  - Étendue (totalité / partie)
-  - Agrément du bailleur (oui/non)
-  - Clause de solidarité (durée si applicable)
+  ⚠️ FORMAT ATTENDU : Phrase structurée et lisible
+  - Structure : "[Étendue] et [autorisation] avec [clause de solidarité si applicable]"
   
-  EXEMPLES DE RÉPONSES :
+  EXEMPLES DE BONNES RÉPONSES :
   - "Sur la totalité et soumise à autorisation du bailleur avec une clause de solidarité pendant 3 ans"
-  - "Cession autorisée à l'acquéreur du fonds de commerce"
-  - "Cession interdite sauf à un successeur dans le fonds"
+  - "Cession autorisée uniquement à l'acquéreur de la totalité du fonds de commerce"
+  
+  ❌ MAUVAISE RÉPONSE (trop détaillée, mal rédigée) :
+  - "Le preneur ne pourra céder le bail que pour l'acquéreur..." (copie du texte)
+  
+  ÉLÉMENTS À EXTRAIRE ET SYNTHÉTISER :
+  - Étendue : "totalité" ou "partielle" ?
+  - Autorisation : "soumise à autorisation du bailleur" ?
+  - Solidarité : "clause de solidarité pendant X ans" ?
 
 3. DIVISION DES LOCAUX :
 - divisionPossible : Possibilité de diviser les locaux
@@ -957,68 +987,92 @@ INDICES À RECHERCHER :
 
 Format de sortie JSON conforme à TransferData.`
 
-export const ENVIRONMENTAL_ANNEXES_PROMPT = `Extraire les annexes environnementales obligatoires.
+export const ENVIRONMENTAL_ANNEXES_PROMPT = `Extraire les annexes environnementales RÉELLEMENT ANNEXÉES au bail.
+
+⚠️ RÈGLE FONDAMENTALE : Répondre "true" UNIQUEMENT si le document est EFFECTIVEMENT ANNEXÉ.
+Ne pas confondre "le bailleur devra faire effectuer" (obligation future) avec "est annexé" (présent).
 
 CHAMPS À EXTRAIRE :
 
 1. DPE (Diagnostic de Performance Énergétique) :
-- hasDPE : Présence du DPE (true/false)
-  - Obligatoire pour toute location
-- dpeNote : Classe énergétique (A à G)
+- hasDPE : Le DPE est-il ANNEXÉ au bail ? (true/false)
+  - TRUE si : "le DPE est annexé", "le bailleur annexe le DPE"
+  - TRUE si : mentionné dans liste des annexes
+  - FALSE si : non mentionné comme annexé
+- dpeNote : Classe énergétique (A à G) si mentionnée
   - Attention OCR : A/4, B/8, G/6 peuvent être confondus
 
 2. DIAGNOSTIC AMIANTE :
-- hasAsbestosDiagnostic : Présence du diagnostic amiante (true/false)
-  - Obligatoire pour immeubles construits avant juillet 1997
+- hasAsbestosDiagnostic : Le diagnostic amiante est-il ANNEXÉ ? (true/false)
+  ⚠️ ATTENTION À LA DISTINCTION :
+  - TRUE si : "le diagnostic amiante est annexé", présent dans liste des annexes
+  - FALSE si : "le bailleur DEVRA faire effectuer" ← C'est une OBLIGATION, pas une annexe !
+  - FALSE si : "le bailleur devra tenir ces éléments à disposition" ← pas annexé
+  - La phrase "Pour tout bâtiment... le bailleur devra faire effectuer..." signifie FALSE
 
-3. ANNEXE ENVIRONNEMENTALE :
-- hasEnvironmentalAnnex : Présence de l'annexe environnementale (true/false)
-  - Obligatoire pour surfaces > 2000 m² (décret "baux verts")
-  - Échange d'informations sur consommations énergétiques
+3. ANNEXE ENVIRONNEMENTALE (bail vert) :
+- hasEnvironmentalAnnex : L'annexe environnementale est-elle ANNEXÉE ? (true/false)
+  - Obligatoire UNIQUEMENT pour surfaces > 2000 m²
+  - Si locaux < 2000 m² : répondre "false" (pas concerné)
+  - Si > 2000 m² et annexée : "true"
 
 4. ÉTAT DES RISQUES ET POLLUTIONS :
-- hasRiskAndPollutionStatement : Présence de l'ERP (true/false)
-  - Ex-ERNMT, obligatoire selon zonage
-
-INDICES À RECHERCHER :
-- "DPE", "diagnostic de performance énergétique", "classe énergétique"
-- "amiante", "dossier technique amiante", "DTA"
-- "annexe environnementale", "annexe verte", "bail vert"
-- "état des risques", "ERP", "ERNMT", "risques naturels"
+- hasRiskAndPollutionStatement : L'ERP est-il ANNEXÉ ? (true/false)
+  - TRUE si : "état des risques... est annexé aux présentes"
+  - TRUE si : "Le preneur reconnaît en avoir pris connaissance"
 
 EXEMPLES :
-- "DPE classe D établi le 15/03/2024, annexé au présent bail"
-  → hasDPE: true, dpeNote: "D"
-- "L'annexe environnementale prévue par le décret du 30 décembre 2011 est jointe"
-  → hasEnvironmentalAnnex: true
+- "le bailleur annexe le diagnostic de performance énergétique" → hasDPE: true
+- "Le preneur reconnaît en avoir pris connaissance" (après mention ERP) → hasRiskAndPollutionStatement: true
+- "le bailleur DEVRA faire effectuer des diagnostics relatifs à la présence d'amiante" → hasAsbestosDiagnostic: false
+- Surface des locaux = 218 m² → hasEnvironmentalAnnex: false (pas concerné car < 2000 m²)
 
 Format de sortie JSON conforme à EnvironmentalAnnexesData.`
 
-export const OTHER_ANNEXES_PROMPT = `Extraire les autres annexes au bail.
+export const OTHER_ANNEXES_PROMPT = `Extraire les autres annexes RÉELLEMENT ANNEXÉES au bail.
+
+⚠️ RÈGLE FONDAMENTALE : Répondre "true" UNIQUEMENT si le document est EFFECTIVEMENT ANNEXÉ au moment de la signature.
+Ne pas confondre :
+- "est annexé aux présentes" → TRUE (annexe présente)
+- "sera adressé par le bailleur" → FALSE (document futur, pas annexé)
+- "dont copie lui a été remise" → peut être TRUE si c'est une annexe
 
 CHAMPS À EXTRAIRE :
 
-- hasInternalRegulations : Règlement intérieur de l'immeuble (true/false)
-- hasPremisesPlan : Plan des locaux (true/false)
-- hasChargesInventory : Inventaire des charges récupérables (true/false)
-  - Liste des charges imputables au preneur
-- hasAnnualChargesSummary : Récapitulatif annuel des charges (true/false)
-  - Historique des 3 dernières années
-- hasThreeYearWorksBudget : Budget prévisionnel travaux sur 3 ans (true/false)
-- hasPastWorksSummary : Récapitulatif des travaux passés (true/false)
+- hasInternalRegulations : Règlement intérieur/copropriété ANNEXÉ ? (true/false)
+  - TRUE si : "règlement annexé", "dont copie EST annexée"
+  - FALSE si : "dont copie lui A ÉTÉ remise" avec (s'il en existe) ← conditionnel, pas annexé
+  - FALSE si : simplement mentionné sans être annexé
 
-INDICES À RECHERCHER :
-- "règlement intérieur", "règlement de copropriété"
-- "plan des locaux", "plan annexé"
-- "liste des charges", "inventaire des charges récupérables"
-- "récapitulatif des charges", "décompte annuel"
-- "budget prévisionnel", "travaux programmés"
+- hasPremisesPlan : Plan des locaux ANNEXÉ ? (true/false)
+  - TRUE si : listé dans les annexes, "plan annexé"
+  - FALSE si : non mentionné comme annexé
+
+- hasChargesInventory : Inventaire des charges ANNEXÉ ? (true/false)
+  - TRUE si : "inventaire des catégories de charges... est annexé aux présentes"
+  - Chercher dans article "CHARGES ET TAXES"
+
+- hasAnnualChargesSummary : Récapitulatif annuel des charges ANNEXÉ ? (true/false)
+  ⚠️ ATTENTION À LA DISTINCTION :
+  - TRUE si : le récapitulatif EST annexé (rare)
+  - FALSE si : "Un état récapitulatif SERA adressé" ← futur, donc pas annexé
+  - FALSE si : "dans le délai de trois mois à compter de..." ← obligation future
+
+- hasThreeYearWorksBudget : Budget prévisionnel travaux 3 ans ANNEXÉ ? (true/false)
+  - TRUE si : explicitement annexé
+  - FALSE si : non mentionné ou obligation future
+
+- hasPastWorksSummary : Récapitulatif travaux passés ANNEXÉ ? (true/false)
+  - TRUE si : explicitement annexé
+  - FALSE si : non mentionné
 
 EXEMPLES :
-- "Le règlement intérieur de l'immeuble est annexé aux présentes"
-  → hasInternalRegulations: true
-- "Annexe 3 : Plan des locaux loués"
-  → hasPremisesPlan: true
+- "Un inventaire des catégories de charges... est annexé aux présentes"
+  → hasChargesInventory: true
+- "Un état récapitulatif annuel SERA adressé par le bailleur"
+  → hasAnnualChargesSummary: false (futur, pas annexé)
+- "règlement de copropriété, dont copie lui a été remise, (s'il en existe)"
+  → hasInternalRegulations: false (conditionnel)
 
 Format de sortie JSON conforme à OtherAnnexesData.`
 
@@ -1026,29 +1080,35 @@ export const OTHER_PROMPT = `Extraire les autres informations importantes.
 
 CHAMPS À EXTRAIRE :
 
-1. DÉROGATIONS AU CODE CIVIL (RECHERCHE ACTIVE REQUISE) :
+1. DÉROGATIONS AU CODE CIVIL (RECHERCHE ACTIVE OBLIGATOIRE) :
 - civilCodeDerogations : Dérogations au Code civil (tableau de chaînes)
   
-  RECHERCHE ACTIVE - Parcourir le document pour trouver :
+  ⚠️ RECHERCHE EXHAUSTIVE REQUISE - Tu DOIS parcourir TOUT le document pour trouver :
   - Toute mention de "dérogation", "dérogeant", "par dérogation à"
-  - Références aux articles 1719 à 1762 du Code civil
-  - Les clauses qui écartent des règles du Code civil
+  - Les mots "article" suivis d'un numéro entre 1719 et 1762
+  - Les formulations "renonce à tout recours", "sans indemnité ni recours"
   
-  ARTICLES FRÉQUEMMENT DÉROGÉS :
-  - Article 1719 : Obligations du bailleur (délivrance, entretien, jouissance paisible)
+  ARTICLES LES PLUS FRÉQUEMMENT DÉROGÉS (chercher ces numéros) :
+  - Article 1721 : Garantie des vices et défauts → chercher "1721", "vices", "défauts de la chose louée"
+  - Article 1723 : Changement de forme → chercher "1723", "modification", "transformation de l'immeuble"
+  - Article 1724 : Réduction de loyer pour travaux → chercher "1724", "gêne des travaux", "sans indemnité"
+  - Article 1719 : Obligations du bailleur
   - Article 1720 : Délivrance en bon état
-  - Article 1721 : Garantie des vices cachés
   - Article 1722 : Destruction de la chose louée
-  - Article 1723 : Changement de forme pendant le bail
-  - Article 1724 : Réduction de loyer pour travaux
   - Article 1755 : Présomption de responsabilité du preneur
-  - Articles 1342-10 et 1343-1 : Imputation des paiements
+  
+  OÙ CHERCHER (TOUS CES ARTICLES) :
+  - Article "ENTRETIEN", "RÉPARATIONS", "MISE EN CONFORMITÉ"
+  - Article "TRAVAUX" (travaux du bailleur que le preneur doit souffrir)
+  - Article "ASSURANCES" (responsabilité)
+  - Tout paragraphe mentionnant "supporter sans indemnité"
   
   FORMAT DE SORTIE :
-  - "Dérogation à l'article [X] du Code civil : [contexte/article du bail]"
-  - Si aucune dérogation : "Aucune dérogation"
+  - "Il est dérogé aux articles [X], [Y] et [Z] du Code civil"
+  - OU liste détaillée : ["Dérogation article 1721 : ...", "Dérogation article 1723 : ..."]
+  - Si VRAIMENT aucune dérogation après recherche exhaustive : "Aucune dérogation"
 
-2. DÉROGATIONS AU CODE DE COMMERCE (RECHERCHE ACTIVE REQUISE) :
+2. DÉROGATIONS AU CODE DE COMMERCE (RECHERCHE ACTIVE OBLIGATOIRE) :
 - commercialCodeDerogations : Dérogations au Code de commerce (tableau de chaînes)
   
   RECHERCHE ACTIVE - Parcourir le document pour trouver :
@@ -1061,29 +1121,28 @@ CHAMPS À EXTRAIRE :
   - L.145-33 : Fixation du loyer
   
   FORMAT DE SORTIE :
-  - "Dérogation à l'article L. [X] du Code de commerce : [contexte/article du bail]"
-  - Si aucune dérogation : "Aucune dérogation"
+  - "Dérogation à l'article L. [X] du Code de commerce : [contexte]"
+  - Si aucune dérogation explicite au Code de commerce : "Aucune dérogation"
 
-IMPORTANT - OÙ CHERCHER LES DÉROGATIONS :
-Les dérogations peuvent être dispersées dans TOUT le document :
-- Articles sur l'entretien et réparations
-- Articles sur les travaux
-- Articles sur le renouvellement
-- Articles sur les charges
-- Articles sur la résiliation
-- Chercher les mots : "dérogation", "dérogeant", "nonobstant", "par exception"
+EXEMPLES CONCRETS DE DÉROGATIONS À TROUVER :
 
-EXEMPLES DE DÉROGATIONS TROUVÉES :
-- "Par dérogation aux articles 1719 et 1755 du Code civil, le preneur prend les locaux en l'état"
-  → civilCodeDerogations: ["Dérogation aux articles 1719 et 1755 du Code civil : le preneur prend les locaux en l'état"]
+Exemple 1 - Article 1721 (dans article ENTRETIEN) :
+"le preneur renonçant par ailleurs expressément à tous recours à l'encontre du bailleur pour les vices et défauts de la chose louée, par dérogation à l'article 1721 du Code Civil"
+→ civilCodeDerogations: ["Il est dérogé à l'article 1721 du Code civil"]
 
-- "Il est dérogé à l'article 1721, 1723 et 1724 du code civil"
-  → civilCodeDerogations: ["Dérogation aux articles 1721, 1723 et 1724 du Code civil"]
+Exemple 2 - Article 1724 (dans article TRAVAUX) :
+"Supporter sans indemnité ni recours contre le bailleur, par dérogation aux dispositions de l'article 1724 du Code Civil, la gêne et les conséquences..."
+→ AJOUTER à civilCodeDerogations
 
-- "Par dérogation à l'article L. 145-34, le loyer de renouvellement sera la valeur locative de marché"
-  → commercialCodeDerogations: ["Dérogation à l'article L. 145-34 du Code de commerce : loyer de renouvellement à la valeur locative de marché"]
+Exemple 3 - Article 1723 (dans article TRAVAUX) :
+"Supporter en outre, sans indemnité ni recours contre le bailleur par dérogation à l'article 1723 du code civil, toute modification qui pourrait être apportée à l'immeuble"
+→ AJOUTER à civilCodeDerogations
 
-ATTENTION : Ne pas retourner "Aucune" par défaut ! Chercher activement dans tout le document.
+RÉSULTAT ATTENDU POUR UN BAIL CLASSIQUE :
+civilCodeDerogations: ["Il est dérogé aux articles 1721, 1723 et 1724 du Code civil"]
+
+⚠️ ATTENTION : La plupart des baux commerciaux contiennent des dérogations au Code civil.
+Ne retourne "Aucune dérogation" QUE si tu as cherché dans TOUT le document et n'as trouvé AUCUNE mention de ces articles.
 
 Format de sortie JSON conforme à OtherData.`
 
