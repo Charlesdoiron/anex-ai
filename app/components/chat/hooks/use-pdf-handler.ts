@@ -93,7 +93,8 @@ export function usePdfHandler({
     progress,
     message,
     startExtraction,
-    cancelPolling,
+    cancelExtraction,
+    isCancelling,
   } = useExtractionJob(handleProgress, handleComplete, handleError)
 
   const processingStatus = isProcessingPdf
@@ -139,8 +140,8 @@ export function usePdfHandler({
     }
   }
 
-  function removePdf() {
-    cancelPolling()
+  async function removePdf() {
+    await cancelExtraction()
     setUploadedPdf(null)
     setProcessingMessageId(null)
     if (fileInputRef.current) {
@@ -175,6 +176,7 @@ export function usePdfHandler({
     fileInputRef,
     handleFileSelect,
     removePdf,
+    isCancelling,
     handleDevModeExtraction,
   }
 }

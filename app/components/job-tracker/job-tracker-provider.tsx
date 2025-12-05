@@ -18,7 +18,13 @@ import {
 } from "@/app/lib/jobs/job-persistence"
 import { useSession } from "@/app/lib/auth-client"
 
-type JobStatus = "pending" | "processing" | "completed" | "failed" | null
+type JobStatus =
+  | "pending"
+  | "processing"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | null
 
 interface JobTrackerContextType {
   activeJob: PersistedJob | null
@@ -29,6 +35,7 @@ interface JobTrackerContextType {
   error: string | null
   startJob: (jobId: string, fileName: string) => void
   clearJob: () => void
+  cancelJob: () => Promise<void>
 }
 
 const JobTrackerContext = createContext<JobTrackerContextType | null>(null)
@@ -68,6 +75,30 @@ export function JobTrackerProvider({ children }: { children: ReactNode }) {
     setError(null)
   }, [stopPolling])
 
+  const cancelJob = useCallback(async () => {
+    if (!activeJob) {
+      return
+    }
+
+    try {
+      await fetch(`/api/extraction-jobs/${activeJob.jobId}/cancel`, {
+        method: "POST",
+      })
+      setJobStatus("cancelled")
+      setMessage("Extraction annulée")
+      setError("Extraction annulée")
+    } catch (err) {
+      console.error("Job cancellation error:", err)
+      setError("Impossible d'annuler le job")
+    } finally {
+      stopPolling()
+      clearActiveJob()
+      setActiveJob(null)
+      setProgress(0)
+      setResult(null)
+    }
+  }, [activeJob, stopPolling])
+
   const pollJob = useCallback(
     async (jobId: string) => {
       try {
@@ -95,6 +126,15 @@ export function JobTrackerProvider({ children }: { children: ReactNode }) {
 
         if (data.status === "failed") {
           setError(data.errorMessage || "Extraction échouée")
+          clearActiveJob()
+          stopPolling()
+          return
+        }
+
+        if (data.status === "cancelled") {
+          setJobStatus("cancelled")
+          setMessage(data.message || "Extraction annulée")
+          setError(data.message || "Extraction annulée")
           clearActiveJob()
           stopPolling()
           return
@@ -175,6 +215,7 @@ export function JobTrackerProvider({ children }: { children: ReactNode }) {
         error,
         startJob,
         clearJob,
+        cancelJob,
       }}
     >
       {children}

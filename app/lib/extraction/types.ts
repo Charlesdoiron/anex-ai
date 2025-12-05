@@ -28,6 +28,7 @@ export type ExtractionStatus =
   | "validating"
   | "completed"
   | "failed"
+  | "cancelled"
 
 export interface ExtractionProgress {
   status: ExtractionStatus

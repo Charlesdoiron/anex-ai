@@ -106,6 +106,10 @@ const STATUS_LABELS: Record<string, StatusLabel> = {
     label: "Erreur",
     description: "Une erreur est survenue.",
   },
+  cancelled: {
+    label: "Annulé",
+    description: "Extraction annulée.",
+  },
 
   // RAG chat statuses
   rag_searching: {

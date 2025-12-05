@@ -150,6 +150,7 @@ enum ExtractionJobStatus {
   processing
   completed
   failed
+  cancelled
 }
 
 model ExtractionJob {

@@ -1,14 +1,24 @@
 "use client"
 
 import { useJobTracker } from "./job-tracker-provider"
-import { X, FileText } from "lucide-react"
+import { X, FileText, XCircle } from "lucide-react"
 import { useEffect, useState, useCallback } from "react"
 
 export function JobStatusBanner() {
-  const { activeJob, jobStatus, progress, message, error, result, clearJob } =
-    useJobTracker()
+  const {
+    activeJob,
+    jobStatus,
+    progress,
+    message,
+    error,
+    result,
+    clearJob,
+    cancelJob,
+  } = useJobTracker()
   const [isVisible, setIsVisible] = useState(false)
   const [isExiting, setIsExiting] = useState(false)
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false)
+  const [isCancelling, setIsCancelling] = useState(false)
 
   const hasContent = activeJob || result || error
 
@@ -17,8 +27,28 @@ export function JobStatusBanner() {
     setTimeout(() => {
       clearJob()
       setIsExiting(false)
+      setShowCancelConfirm(false)
     }, 200)
   }, [clearJob])
+
+  const handleCancelClick = useCallback(async () => {
+    if (!showCancelConfirm) {
+      setShowCancelConfirm(true)
+      return
+    }
+
+    setIsCancelling(true)
+    try {
+      await cancelJob()
+    } finally {
+      setIsCancelling(false)
+      setShowCancelConfirm(false)
+    }
+  }, [showCancelConfirm, cancelJob])
+
+  const handleCancelAbort = useCallback(() => {
+    setShowCancelConfirm(false)
+  }, [])
 
   useEffect(() => {
     if (hasContent) {
@@ -33,7 +63,9 @@ export function JobStatusBanner() {
   // Auto-dismiss after completion/failure
   useEffect(() => {
     const shouldAutoDismiss =
-      jobStatus === "completed" || jobStatus === "failed"
+      jobStatus === "completed" ||
+      jobStatus === "failed" ||
+      jobStatus === "cancelled"
     if (shouldAutoDismiss) {
       const timer = setTimeout(() => {
         handleClose()
@@ -46,7 +78,8 @@ export function JobStatusBanner() {
 
   const isProcessing = jobStatus === "pending" || jobStatus === "processing"
   const isCompleted = jobStatus === "completed" || result
-  const isFailed = jobStatus === "failed" || error
+  const isCancelled = jobStatus === "cancelled"
+  const isFailed = jobStatus === "failed"
 
   return (
     <div
@@ -77,7 +110,9 @@ export function JobStatusBanner() {
                     ? "bg-brand-green/5"
                     : isCompleted
                       ? "bg-emerald-50"
-                      : "bg-red-50"
+                      : isCancelled
+                        ? "bg-gray-100"
+                        : "bg-red-50"
                 }`}
               >
                 <FileText
@@ -86,7 +121,9 @@ export function JobStatusBanner() {
                       ? "text-brand-green"
                       : isCompleted
                         ? "text-emerald-600"
-                        : "text-red-500"
+                        : isCancelled
+                          ? "text-gray-500"
+                          : "text-red-500"
                   }`}
                   strokeWidth={1.5}
                 />
@@ -106,6 +143,7 @@ export function JobStatusBanner() {
                   {isProcessing && "Extraction"}
                   {isCompleted && "Terminé"}
                   {isFailed && "Échec"}
+                  {isCancelled && "Annulé"}
                 </span>
                 <button
                   onClick={handleClose}
@@ -121,7 +159,7 @@ export function JobStatusBanner() {
                 </p>
               )}
 
-              {isProcessing && message && (
+              {(isProcessing || isCancelled || isFailed) && message && (
                 <p className="text-xs text-gray-400 mt-2">{message}</p>
               )}
 
@@ -141,10 +179,47 @@ export function JobStatusBanner() {
                 </p>
               )}
 
-              {isFailed && error && (
+              {(isFailed || isCancelled) && (error || message) && (
                 <p className="text-xs text-red-500 mt-1 line-clamp-2">
-                  {error}
+                  {error || message}
                 </p>
+              )}
+
+              {isProcessing && !showCancelConfirm && (
+                <button
+                  type="button"
+                  onClick={handleCancelClick}
+                  disabled={isCancelling}
+                  className="mt-3 w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 hover:border-gray-300 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <XCircle className="w-3.5 h-3.5" />
+                  Annuler
+                </button>
+              )}
+
+              {isProcessing && showCancelConfirm && (
+                <div className="mt-3 w-full space-y-2">
+                  <p className="text-xs text-gray-600 text-center">
+                    Annuler l&apos;extraction ?
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={handleCancelAbort}
+                      className="flex-1 px-2.5 py-1.5 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
+                    >
+                      Non
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCancelClick}
+                      disabled={isCancelling}
+                      className="flex-1 px-2.5 py-1.5 text-xs font-medium text-white bg-red-600 rounded-md hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isCancelling ? "..." : "Oui"}
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           </div>

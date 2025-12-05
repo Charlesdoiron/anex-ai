@@ -10,6 +10,7 @@ import {
   EXTRACTION_PROMPTS,
   type ExtractionPrompt,
 } from "./prompts"
+import { JobCancelledError } from "../errors/job-cancelled-error"
 import type {
   LeaseExtractionResult,
   ExtractionProgress,
@@ -75,6 +76,7 @@ export interface ExtractionServiceOptions {
   systemInstructions?: string
   prompts?: ExtractionPrompt[]
   enableRagIngestion?: boolean
+  cancellationRequested?: () => Promise<boolean> | boolean
 }
 
 export class ExtractionService {
@@ -83,6 +85,7 @@ export class ExtractionService {
   private systemInstructions: string
   private extractionPrompts: ExtractionPrompt[]
   private readonly ragIngestionEnabled: boolean
+  private readonly cancellationRequested?: () => Promise<boolean> | boolean
   private promptsLoaded = false
   private promptsLoadingPromise: Promise<void> | null = null
 
@@ -96,6 +99,7 @@ export class ExtractionService {
     this.systemInstructions = options?.systemInstructions ?? SYSTEM_INSTRUCTIONS
     this.extractionPrompts = options?.prompts ?? EXTRACTION_PROMPTS
     this.ragIngestionEnabled = options?.enableRagIngestion !== false
+    this.cancellationRequested = options?.cancellationRequested
     this.promptsLoaded = Boolean(
       options?.systemInstructions && options?.prompts
     )
@@ -123,10 +127,21 @@ export class ExtractionService {
     return new Promise((resolve) => setTimeout(resolve, ms))
   }
 
+  private async ensureNotCancelled(): Promise<void> {
+    if (!this.cancellationRequested) {
+      return
+    }
+    const isCancelled = await this.cancellationRequested()
+    if (isCancelled) {
+      throw new JobCancelledError()
+    }
+  }
+
   async extractFromPdf(
     buffer: Buffer,
     fileName: string
   ): Promise<LeaseExtractionResult> {
+    await this.ensureNotCancelled()
     const startTime = Date.now()
     const stageTimings: ExtractionStageDurations = {
       pdfProcessingMs: 0,
@@ -182,6 +197,7 @@ export class ExtractionService {
     startTime: number,
     stageTimings: ExtractionStageDurations
   ): Promise<LeaseExtractionResult> {
+    await this.ensureNotCancelled()
     await this.ensurePromptsLoaded()
     let totalRetries = 0
 
@@ -219,6 +235,7 @@ export class ExtractionService {
         groupedPrompts,
         EXTRACTION_CONCURRENCY,
         async (promptGroup) => {
+          await this.ensureNotCancelled()
           if (!promptGroup.length) {
             return
           }
@@ -244,6 +261,7 @@ export class ExtractionService {
             pdfData.text,
             promptGroup
           )
+          await this.ensureNotCancelled()
           totalRetries += batchResult.retries
 
           const missingPrompts: ExtractionPrompt[] = []
@@ -272,6 +290,7 @@ export class ExtractionService {
               pdfData.text,
               prompt
             )
+            await this.ensureNotCancelled()
             totalRetries += singleResult.retries
             if (singleResult.data !== undefined) {
               sectionResults[prompt.section] = singleResult.data
@@ -339,6 +358,8 @@ export class ExtractionService {
       )
       stageTimings.extractionMs = Date.now() - extractionStart
 
+      await this.ensureNotCancelled()
+
       this.emitProgress("validating", "Validation des données...", 90)
 
       const baseResult = result as LeaseExtractionResult
@@ -355,6 +376,7 @@ export class ExtractionService {
       let rentSchedule: LeaseExtractionResult["rentSchedule"] = undefined
 
       try {
+        await this.ensureNotCancelled()
         const schedule =
           await computeRentScheduleFromExtraction(processedResult)
         rentSchedule = schedule ?? undefined
@@ -377,14 +399,24 @@ export class ExtractionService {
 
       return finalResult
     } catch (error) {
-      console.error("Extraction failed:", error)
-      this.emitProgress(
-        "failed",
-        "Échec de l'extraction",
-        0,
-        undefined,
-        error instanceof Error ? error.message : "Unknown error"
-      )
+      if (error instanceof JobCancelledError) {
+        this.emitProgress(
+          "cancelled",
+          "Extraction annulée",
+          0,
+          undefined,
+          error.message
+        )
+      } else {
+        console.error("Extraction failed:", error)
+        this.emitProgress(
+          "failed",
+          "Échec de l'extraction",
+          0,
+          undefined,
+          error instanceof Error ? error.message : "Unknown error"
+        )
+      }
       throw error
     }
   }
@@ -409,6 +441,7 @@ export class ExtractionService {
     const isRetryable = prompts.some((prompt) => prompt.retryable)
 
     while (attempts < MAX_RETRIES) {
+      await this.ensureNotCancelled()
       try {
         const data = await this.extractSectionsBatch(documentText, prompts)
         return { data, retries }
@@ -428,6 +461,7 @@ export class ExtractionService {
           break
         }
 
+        await this.ensureNotCancelled()
         await this.delay(1000 * attempts)
       }
     }
@@ -444,6 +478,7 @@ export class ExtractionService {
     let lastError: Error | undefined
 
     while (attempts < MAX_RETRIES) {
+      await this.ensureNotCancelled()
       try {
         const data = await this.extractSection(
           documentText,
@@ -465,6 +500,7 @@ export class ExtractionService {
           break
         }
 
+        await this.ensureNotCancelled()
         await this.delay(1000 * attempts)
       }
     }
@@ -476,6 +512,7 @@ export class ExtractionService {
     documentText: string,
     prompts: ExtractionPrompt[]
   ): Promise<SectionExtractionMap> {
+    await this.ensureNotCancelled()
     const sectionNames = prompts.map((prompt) => prompt.section)
     const sectionsPrompt = prompts
       .map(
@@ -508,6 +545,8 @@ export class ExtractionService {
       },
     })
 
+    await this.ensureNotCancelled()
+
     const outputText = collectResponseText(response)
 
     if (!outputText) {
@@ -529,6 +568,7 @@ export class ExtractionService {
     section: string,
     prompt: string
   ): Promise<SectionExtractionValue> {
+    await this.ensureNotCancelled()
     const response = await openai.responses.create({
       model: EXTRACTION_MODEL,
       instructions: this.systemInstructions,
@@ -550,6 +590,8 @@ export class ExtractionService {
         effort: "low",
       },
     })
+
+    await this.ensureNotCancelled()
 
     const outputText = collectResponseText(response)
 

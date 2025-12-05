@@ -30,6 +30,8 @@ export default function UploadFileWrapper({
     progress,
     handleExtraction,
     reset,
+    cancel,
+    isCancelling,
   } = useExtraction({ toolType })
 
   const hasNotifiedRef = useRef(false)
@@ -93,7 +95,14 @@ export default function UploadFileWrapper({
 
   // Show only loader during processing
   if (isProcessing) {
-    return <ProcessingLoader status={processingStatus} progress={progress} />
+    return (
+      <ProcessingLoader
+        status={processingStatus}
+        progress={progress}
+        onCancel={cancel}
+        isCancelling={isCancelling}
+      />
+    )
   }
 
   // Show error if any

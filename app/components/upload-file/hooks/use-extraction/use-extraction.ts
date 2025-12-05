@@ -14,6 +14,8 @@ interface UseExtractionReturn {
   progress: number
   handleExtraction: (file: File) => Promise<void>
   reset: () => void
+  cancel: () => Promise<void>
+  isCancelling: boolean
 }
 
 interface UseExtractionOptions {
@@ -33,6 +35,7 @@ export function useExtraction(
     error: trackerError,
     startJob,
     clearJob,
+    cancelJob,
   } = useJobTracker()
 
   const [localResult, setLocalResult] = useState<LeaseExtractionResult | null>(
@@ -40,6 +43,7 @@ export function useExtraction(
   )
   const [localError, setLocalError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isCancelling, setIsCancelling] = useState(false)
 
   // Sync tracker result to local state
   useEffect(() => {
@@ -113,6 +117,19 @@ export function useExtraction(
     setIsSubmitting(false)
   }, [clearJob])
 
+  const cancel = useCallback(async () => {
+    if (!activeJob || isCancelling) {
+      return
+    }
+    setIsCancelling(true)
+    setLocalError(null)
+    try {
+      await cancelJob()
+    } finally {
+      setIsCancelling(false)
+    }
+  }, [activeJob, cancelJob, isCancelling])
+
   return {
     isProcessing,
     isSubmitting,
@@ -122,5 +139,7 @@ export function useExtraction(
     progress: trackerProgress,
     handleExtraction,
     reset,
+    cancel,
+    isCancelling,
   }
 }

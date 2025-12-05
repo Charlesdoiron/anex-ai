@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from "react"
 import type { LeaseExtractionResult } from "@/app/lib/extraction/types"
 
-type JobStatus = "pending" | "processing" | "completed" | "failed"
+type JobStatus = "pending" | "processing" | "completed" | "failed" | "cancelled"
 
 interface JobProgress {
   jobId: string
@@ -25,6 +25,8 @@ interface UseExtractionJobReturn {
   error: string | null
   startExtraction: (file: File) => Promise<void>
   cancelPolling: () => void
+  cancelExtraction: () => Promise<void>
+  isCancelling: boolean
 }
 
 // Adaptive polling: starts at 1s, increases up to 3s
@@ -44,6 +46,7 @@ export function useExtractionJob(
   const [message, setMessage] = useState<string | null>(null)
   const [result, setResult] = useState<LeaseExtractionResult | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [isCancelling, setIsCancelling] = useState(false)
 
   const pollingRef = useRef<NodeJS.Timeout | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -132,6 +135,16 @@ export function useExtractionJob(
           return
         }
 
+        if (data.status === "cancelled") {
+          setIsProcessing(false)
+          const cancelledMsg = data.message || "Extraction annulée"
+          setMessage(cancelledMsg)
+          setError(cancelledMsg)
+          onError?.(cancelledMsg)
+          cancelPolling()
+          return
+        }
+
         // Continue polling with adaptive interval
         pollCountRef.current++
         const interval = getPollingInterval()
@@ -159,10 +172,13 @@ export function useExtractionJob(
       cancelPolling()
 
       setIsProcessing(true)
+      setIsCancelling(false)
       setJobId(null)
       setProgress(0)
       setStatus("pending")
       setMessage("Envoi du fichier...")
+      setResult(null)
+      setError(null)
       setResult(null)
       setError(null)
 
@@ -201,6 +217,27 @@ export function useExtractionJob(
     [cancelPolling, pollJobStatus, onError]
   )
 
+  const cancelExtraction = useCallback(async () => {
+    if (!jobId || isCancelling || !isProcessing) {
+      return
+    }
+    setIsCancelling(true)
+    try {
+      await fetch(`/api/extraction-jobs/${jobId}/cancel`, { method: "POST" })
+      setStatus("cancelled")
+      setMessage("Extraction annulée")
+      setError("Extraction annulée")
+    } catch (err) {
+      console.error("Cancellation error:", err)
+      setError("Impossible d'annuler l'extraction")
+    } finally {
+      setIsProcessing(false)
+      cancelPolling()
+      setIsCancelling(false)
+      setJobId(null)
+    }
+  }, [cancelPolling, isCancelling, isProcessing, jobId])
+
   return {
     isProcessing,
     jobId,
@@ -211,5 +248,7 @@ export function useExtractionJob(
     error,
     startExtraction,
     cancelPolling,
+    cancelExtraction,
+    isCancelling,
   }
 }

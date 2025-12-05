@@ -1,6 +1,7 @@
 import { prisma } from "@/app/lib/prisma"
 import { ExtractionService } from "@/app/lib/extraction/extraction-service"
 import { RentCalculationExtractionService } from "@/app/lib/extraction/rent-calculation-service"
+import { JobCancelledError } from "@/app/lib/errors/job-cancelled-error"
 import type { ExtractionJobStatus } from "@prisma/client"
 import type { LeaseExtractionResult } from "@/app/lib/extraction/types"
 import type { RentCalculationResult } from "@/app/lib/extraction/rent-calculation-service"
@@ -33,7 +34,13 @@ export interface DuplicateCheckResult {
   message?: string
 }
 
+interface CancellationToken {
+  cancelled: boolean
+}
+
 class ExtractionJobService {
+  private readonly cancellationTokens = new Map<string, CancellationToken>()
+
   /**
    * Check if a similar job is already in progress for this user.
    * Prevents accidental duplicate submissions (same file within 2 minutes).
@@ -215,6 +222,7 @@ class ExtractionJobService {
     const jobToolType = job.toolType as toolType
 
     try {
+      this.initializeCancellation(jobId)
       await this.updateJob(jobId, {
         status: "processing",
         startedAt: new Date(),
@@ -227,7 +235,17 @@ class ExtractionJobService {
         await this.processFullExtractionJob(jobId, job)
       }
     } catch (error) {
+      if (error instanceof JobCancelledError) {
+        await this.updateJob(jobId, {
+          status: "cancelled",
+          message: error.message || "Extraction annulée",
+          completedAt: new Date(),
+        })
+        return
+      }
       await this.handleJobError(jobId, error)
+    } finally {
+      this.cancellationTokens.delete(jobId)
     }
   }
 
@@ -246,6 +264,9 @@ class ExtractionJobService {
       progress: number
       stage?: string
     }) => {
+      if (this.isJobCancelled(jobId)) {
+        return
+      }
       await this.updateJob(jobId, {
         progress: progress.progress,
         stage: progress.stage ?? null,
@@ -258,6 +279,9 @@ class ExtractionJobService {
     const partialResultCallback = async (
       partial: Partial<LeaseExtractionResult>
     ) => {
+      if (this.isJobCancelled(jobId)) {
+        return
+      }
       await this.updateJob(jobId, {
         partialResult: partial as object,
         documentId: partial.documentId ?? null,
@@ -268,13 +292,18 @@ class ExtractionJobService {
 
     const extractionService = new ExtractionService(
       progressCallback,
-      partialResultCallback
+      partialResultCallback,
+      {
+        cancellationRequested: async () => this.isJobCancelled(jobId),
+      }
     )
 
     const result = await extractionService.extractFromPdf(
       Buffer.from(job.fileData),
       job.fileName
     )
+
+    await this.throwIfCancelled(jobId)
 
     await this.saveExtractionToDb(result, job.userId, job.toolType as toolType)
 
@@ -301,6 +330,9 @@ class ExtractionJobService {
       message: string
       progress: number
     }) => {
+      if (this.isJobCancelled(jobId)) {
+        return
+      }
       await this.updateJob(jobId, {
         progress: progress.progress,
         message: progress.message,
@@ -315,6 +347,8 @@ class ExtractionJobService {
       Buffer.from(job.fileData),
       job.fileName
     )
+
+    await this.throwIfCancelled(jobId)
 
     await this.saveRentCalculationToDb(result, job.userId)
 
@@ -504,6 +538,55 @@ class ExtractionJobService {
     if (rent.paymentFrequency?.value !== null) count++
 
     return count
+  }
+
+  private initializeCancellation(jobId: string): void {
+    if (!this.cancellationTokens.has(jobId)) {
+      this.cancellationTokens.set(jobId, { cancelled: false })
+    }
+  }
+
+  private markCancelled(jobId: string): void {
+    const token = this.cancellationTokens.get(jobId) ?? { cancelled: false }
+    token.cancelled = true
+    this.cancellationTokens.set(jobId, token)
+  }
+
+  private isJobCancelled(jobId: string): boolean {
+    return this.cancellationTokens.get(jobId)?.cancelled ?? false
+  }
+
+  private async throwIfCancelled(jobId: string): Promise<void> {
+    if (this.isJobCancelled(jobId)) {
+      throw new JobCancelledError("Extraction annulée par l'utilisateur")
+    }
+  }
+
+  async requestCancellation(jobId: string, userId?: string): Promise<void> {
+    const job = await prisma.extractionJob.findUnique({
+      where: { id: jobId },
+      select: { status: true, userId: true },
+    })
+
+    if (!job) {
+      throw new Error("Job non trouvé")
+    }
+
+    if (userId && job.userId && job.userId !== userId) {
+      throw new Error("Accès non autorisé")
+    }
+
+    if (!["pending", "processing"].includes(job.status)) {
+      return
+    }
+
+    this.markCancelled(jobId)
+
+    await this.updateJob(jobId, {
+      status: "cancelled" as ExtractionJobStatus,
+      message: "Extraction annulée par l'utilisateur",
+      completedAt: new Date(),
+    })
   }
 }
 
