@@ -72,7 +72,9 @@ function parseQuarter(trimestre: string | undefined): number | null {
 }
 
 function parseFrenchNumber(value: string | undefined): number | null {
-  const numStr = value?.replace(",", ".") || ""
+  // Remove spaces (including non-breaking spaces \u00A0) used as thousand separators
+  // Then replace comma with dot for decimal separator
+  const numStr = value?.replace(/[\s\u00A0]/g, "").replace(",", ".") || ""
   const num = parseFloat(numStr)
   return isNaN(num) ? null : num
 }

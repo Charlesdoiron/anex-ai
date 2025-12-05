@@ -13,14 +13,20 @@ import type { LeaseIndexType } from "../app/lib/lease/types"
 
 async function seedInsee() {
   try {
-    // Check if data already exists
-    const existingCount = await prisma.insee_rental_reference_index.count()
-    if (existingCount > 0) {
-      console.log(
-        `INSEE data already exists (${existingCount} records). Skipping seed.`
-      )
-      console.log("To re-seed, delete existing records first.")
-      return
+    // Check existing data per index type
+    const existingCounts = await prisma.insee_rental_reference_index.groupBy({
+      by: ["indexType"],
+      _count: { id: true },
+    })
+    const existingByType = Object.fromEntries(
+      existingCounts.map((e) => [e.indexType, e._count.id])
+    )
+    if (existingCounts.length > 0) {
+      console.log("Existing INSEE data:")
+      for (const entry of existingCounts) {
+        console.log(`  ${entry.indexType}: ${entry._count.id} records`)
+      }
+      console.log("")
     }
 
     const isLocalDev =
@@ -58,7 +64,7 @@ async function seedInsee() {
       RentIndexPayload[],
     ][]) {
       if (payload.length > 0) {
-        await prisma.insee_rental_reference_index.createMany({
+        const result = await prisma.insee_rental_reference_index.createMany({
           data: payload.map((item) => ({
             indexType: item.indexType,
             year: item.year,
@@ -68,8 +74,12 @@ async function seedInsee() {
           })),
           skipDuplicates: true,
         })
-        console.log(`  ✓ ${indexType}: ${payload.length} records`)
-        totalSeeded += payload.length
+        const existing = existingByType[indexType] || 0
+        const added = result.count
+        console.log(
+          `  ✓ ${indexType}: ${added} new records (${existing} existing, ${payload.length} scraped)`
+        )
+        totalSeeded += added
       } else if (!errors[indexType]) {
         console.log(`  ○ ${indexType}: No data found`)
       }
@@ -77,16 +87,17 @@ async function seedInsee() {
 
     // Report errors
     for (const [indexType, errorMsg] of Object.entries(errors)) {
-      console.error(`  ✗ ${indexType}: ${errorMsg}`)
+      if (errorMsg) {
+        console.error(`  ✗ ${indexType}: ${errorMsg}`)
+      }
     }
 
     console.log("")
     console.log(`✅ Successfully seeded ${totalSeeded} INSEE records`)
 
-    if (Object.keys(errors).length > 0) {
-      console.warn(
-        `⚠️  ${Object.keys(errors).length} index type(s) failed to scrape`
-      )
+    const failedCount = Object.values(errors).filter(Boolean).length
+    if (failedCount > 0) {
+      console.warn(`⚠️  ${failedCount} index type(s) failed to scrape`)
     }
   } catch (error) {
     console.error("Failed to seed INSEE data:", error)
