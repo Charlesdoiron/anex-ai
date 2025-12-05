@@ -1,7 +1,12 @@
 "use client"
 
-import { useState, useCallback, useRef, useEffect } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import type { LeaseExtractionResult } from "@/app/lib/extraction/types"
+import {
+  clearActiveJob,
+  getActiveJob,
+  saveActiveJob,
+} from "@/app/lib/jobs/job-persistence"
 
 type JobStatus = "pending" | "processing" | "completed" | "failed" | "cancelled"
 
@@ -111,6 +116,7 @@ export function useExtractionJob(
         onProgress?.(jobProgress)
 
         if (data.status === "completed") {
+          clearActiveJob()
           // Fetch result only when completed
           const resultResponse = await fetch(
             `/api/extraction-jobs/${id}?includeResult=true`
@@ -127,6 +133,7 @@ export function useExtractionJob(
         }
 
         if (data.status === "failed") {
+          clearActiveJob()
           setIsProcessing(false)
           const errorMsg = data.errorMessage || "Extraction échouée"
           setError(errorMsg)
@@ -136,6 +143,7 @@ export function useExtractionJob(
         }
 
         if (data.status === "cancelled") {
+          clearActiveJob()
           setIsProcessing(false)
           const cancelledMsg = data.message || "Extraction annulée"
           setMessage(cancelledMsg)
@@ -166,6 +174,19 @@ export function useExtractionJob(
     },
     [onProgress, onComplete, onError, cancelPolling, getPollingInterval]
   )
+
+  useEffect(() => {
+    const activeJob = getActiveJob()
+    if (!activeJob || jobId || isProcessing) {
+      return
+    }
+
+    setIsProcessing(true)
+    setJobId(activeJob.jobId)
+    setStatus("processing")
+    setMessage("Reprise du suivi de l'extraction...")
+    pollJobStatus(activeJob.jobId)
+  }, [isProcessing, jobId, pollJobStatus])
 
   const startExtraction = useCallback(
     async (file: File) => {
@@ -201,6 +222,11 @@ export function useExtractionJob(
         }
 
         setJobId(data.jobId)
+        saveActiveJob({
+          jobId: data.jobId,
+          fileName: file.name,
+          startedAt: new Date().toISOString(),
+        })
         setMessage("Job créé, extraction en cours...")
 
         pollJobStatus(data.jobId)
@@ -221,20 +247,26 @@ export function useExtractionJob(
     }
     setIsCancelling(true)
     try {
-      await fetch(`/api/extraction-jobs/${jobId}/cancel`, { method: "POST" })
-      setStatus("cancelled")
-      setMessage("Extraction annulée")
-      setError("Extraction annulée")
+      const response = await fetch(`/api/extraction-jobs/${jobId}/cancel`, {
+        method: "POST",
+      })
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        throw new Error(
+          data.message || `Impossible d'annuler (HTTP ${response.status})`
+        )
+      }
+
+      setMessage("Demande d'annulation envoyée...")
+      pollJobStatus(jobId)
     } catch (err) {
       console.error("Cancellation error:", err)
       setError("Impossible d'annuler l'extraction")
     } finally {
-      setIsProcessing(false)
-      cancelPolling()
       setIsCancelling(false)
-      setJobId(null)
     }
-  }, [cancelPolling, isCancelling, isProcessing, jobId])
+  }, [isCancelling, isProcessing, jobId, pollJobStatus])
 
   return {
     isProcessing,

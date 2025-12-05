@@ -273,7 +273,18 @@ export class ExtractionService {
                 missingPrompts.push(prompt)
                 sectionErrors[prompt.section] = "Batch response missing data"
               } else {
-                sectionResults[prompt.section] = batchData
+                try {
+                  sectionResults[prompt.section] = this.validateSectionValue(
+                    batchData,
+                    prompt.section
+                  )
+                } catch (error) {
+                  missingPrompts.push(prompt)
+                  sectionErrors[prompt.section] =
+                    error instanceof Error
+                      ? error.message
+                      : "Invalid batch response"
+                }
               }
             }
           } else {
@@ -485,7 +496,8 @@ export class ExtractionService {
           prompt.section,
           prompt.prompt
         )
-        return { data, retries, error: lastError }
+        const validated = this.validateSectionValue(data, prompt.section)
+        return { data: validated, retries, error: lastError }
       } catch (error) {
         lastError = error as Error
         attempts++
@@ -785,6 +797,18 @@ export class ExtractionService {
       default:
         return {}
     }
+  }
+
+  private validateSectionValue(
+    value: SectionExtractionValue,
+    section: string
+  ): SectionExtractionValue {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new Error(
+        `Section ${section} response must be a JSON object with fields`
+      )
+    }
+    return value
   }
 
   private calculateMetadata(
