@@ -153,13 +153,11 @@ export async function GET(request: NextRequest) {
     }
 
     if (!userId) {
-      return NextResponse.json(
-        {
-          error: "User ID required",
-          message: "Impossible de lister les jobs sans utilisateur",
-        },
-        { status: 400 }
-      )
+      return NextResponse.json({
+        success: true,
+        jobs: [],
+        count: 0,
+      })
     }
 
     const { searchParams } = new URL(request.url)

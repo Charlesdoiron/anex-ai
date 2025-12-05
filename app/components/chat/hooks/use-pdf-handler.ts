@@ -140,14 +140,16 @@ export function usePdfHandler({
     }
   }
 
-  async function removePdf() {
-    await cancelExtraction()
-    setUploadedPdf(null)
-    setProcessingMessageId(null)
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ""
-    }
-  }
+  const removePdf = useCallback(() => {
+    void (async () => {
+      await cancelExtraction()
+      setUploadedPdf(null)
+      setProcessingMessageId(null)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ""
+      }
+    })()
+  }, [cancelExtraction])
 
   // DEV MODE: Kept for backward compatibility but uses job queue
   async function handleDevModeExtraction() {

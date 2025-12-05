@@ -182,7 +182,7 @@ export function Chat() {
         return
       }
 
-      setData([])
+      setData(undefined)
 
       await append(
         {

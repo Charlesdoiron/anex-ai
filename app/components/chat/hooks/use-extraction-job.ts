@@ -179,8 +179,6 @@ export function useExtractionJob(
       setMessage("Envoi du fichier...")
       setResult(null)
       setError(null)
-      setResult(null)
-      setError(null)
 
       try {
         const formData = new FormData()
