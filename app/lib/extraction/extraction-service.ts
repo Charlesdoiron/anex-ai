@@ -36,11 +36,11 @@ const EXTRACTION_MODEL =
   process.env.OPENAI_EXTRACTION_MODEL?.trim() || "gpt-5-mini"
 const EXTRACTION_CONCURRENCY = Math.max(
   1,
-  Number(process.env.EXTRACTION_CONCURRENCY || "6")
+  Number(process.env.EXTRACTION_CONCURRENCY || "8")
 )
 const SECTIONS_PER_CALL = Math.max(
   1,
-  Number(process.env.EXTRACTION_SECTIONS_PER_CALL || "4")
+  Number(process.env.EXTRACTION_SECTIONS_PER_CALL || "2")
 )
 
 const CONFIDENCE_VALUES: ConfidenceLevel[] = [
