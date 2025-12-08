@@ -219,9 +219,13 @@ function buildClientTemplateExport(
   )
 
   const indexTypeName = input?.indexType || "ILAT"
-  const indexRef = startDate
-    ? `${indexTypeName} T${getQuarter(startDate.getUTCMonth() + 1)} ${startDate.getUTCFullYear()}`
-    : "—"
+  // Use extracted reference quarter from lease if available, otherwise calculate from start date
+  const extractedRefQuarter = getValue(extracted.indexation?.referenceQuarter)
+  const indexRef = extractedRefQuarter
+    ? extractedRefQuarter
+    : startDate
+      ? `${indexTypeName} T${getQuarter(startDate.getUTCMonth() + 1)} ${startDate.getUTCFullYear()}`
+      : "—"
   data.push(
     padRow(
       ["Indice de référence", indexRef],

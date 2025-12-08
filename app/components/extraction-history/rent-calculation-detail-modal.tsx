@@ -327,6 +327,14 @@ function RentCalculationContent({ result }: { result: RentCalculationData }) {
                 value={extracted.rent.annualParkingRentExclCharges?.value}
                 type="currency"
               />
+              <FieldRow
+                label="Type d'indice"
+                value={extracted.indexation?.indexationType?.value}
+              />
+              <FieldRow
+                label="Indice de référence"
+                value={extracted.indexation?.referenceQuarter?.value}
+              />
             </div>
           </SectionCard>
 
@@ -349,7 +357,11 @@ function RentCalculationContent({ result }: { result: RentCalculationData }) {
                 />
                 <FieldRow
                   label="Indice INSEE de base"
-                  value={input.baseIndexValue}
+                  value={input.baseIndexValue?.toFixed(2)}
+                />
+                <FieldRow
+                  label="Type d'indice"
+                  value={input.indexType?.toUpperCase()}
                 />
                 <FieldRow
                   label="Fréquence"

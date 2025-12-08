@@ -57,7 +57,8 @@ export async function getAvailableIndexTypes(): Promise<LeaseIndexType[]> {
 export function buildIndexInputsForLease(
   effectiveDateISO: string | null | undefined,
   horizonYears: number,
-  series: InseeRentalIndexPoint[]
+  series: InseeRentalIndexPoint[],
+  explicitReferenceQuarter?: number | null
 ): { baseIndexValue: number | null; knownIndexPoints: KnownIndexPointInput[] } {
   if (!series.length) {
     return { baseIndexValue: null, knownIndexPoints: [] }
@@ -66,9 +67,11 @@ export function buildIndexInputsForLease(
   const effectiveDate = parseISODateSafe(effectiveDateISO)
   const baseDate = effectiveDate ?? new Date()
   const baseYear = baseDate.getUTCFullYear()
-  const baseQuarter = getQuarter(baseDate)
   const anniversaryDay = baseDate.getUTCDate()
   const anniversaryMonth = baseDate.getUTCMonth()
+
+  // Use explicit reference quarter from lease if provided, otherwise calculate from date
+  const baseQuarter = explicitReferenceQuarter ?? getQuarter(baseDate)
 
   const baseRow =
     series.find(
@@ -77,11 +80,11 @@ export function buildIndexInputsForLease(
 
   const horizonEndYear = baseYear + Math.max(1, horizonYears)
 
-  // Only get indices for anniversary dates (same quarter each year)
-  // NOT all quarters of all years
+  // Generate index points for anniversary dates ONLY (not base year)
+  // Start from year after base year
   const knownIndexPoints: KnownIndexPointInput[] = []
 
-  for (let year = baseYear; year <= horizonEndYear; year++) {
+  for (let year = baseYear + 1; year <= horizonEndYear; year++) {
     const indexRow = series.find(
       (row) => row.year === year && row.quarter === baseQuarter
     )

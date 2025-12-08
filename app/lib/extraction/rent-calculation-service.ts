@@ -46,6 +46,7 @@ export interface RentCalculationExtractedData {
   }
   indexation?: {
     indexationType: ExtractedValue<string | null>
+    referenceQuarter: ExtractedValue<string | null>
   }
 }
 
@@ -401,6 +402,7 @@ export class RentCalculationExtractionService {
       },
       indexation: {
         indexationType: parsed?.indexation?.indexationType ?? missing,
+        referenceQuarter: parsed?.indexation?.referenceQuarter ?? missing,
       },
     }
   }
@@ -426,6 +428,7 @@ export class RentCalculationExtractionService {
       },
       indexation: {
         indexationType: missing,
+        referenceQuarter: missing,
       },
     }
   }
