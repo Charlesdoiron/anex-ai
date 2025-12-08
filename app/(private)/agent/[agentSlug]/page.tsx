@@ -9,6 +9,7 @@ import {
   BreadcrumbSeparator,
 } from "@/app/components/ui/breadcrumb"
 import Link from "next/link"
+import { notFound } from "next/navigation"
 import RecentActivity from "@/app/components/recent-activity/recent-activity"
 
 export default async function AgentPage({
@@ -19,6 +20,9 @@ export default async function AgentPage({
   const { agentSlug } = await params
 
   const currentAgent = AGENTS.find((agent) => agent.slug === agentSlug)
+  if (!currentAgent) {
+    notFound()
+  }
 
   return (
     <div>
@@ -39,9 +43,7 @@ export default async function AgentPage({
               </BreadcrumbItem>
               <BreadcrumbSeparator />
               <BreadcrumbItem>
-                <BreadcrumbPage>
-                  {currentAgent?.name ?? agentSlug}
-                </BreadcrumbPage>
+                <BreadcrumbPage>{currentAgent.name}</BreadcrumbPage>
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
@@ -55,7 +57,7 @@ export default async function AgentPage({
               Agent AI spécialisé
             </div>
             <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-brand-green mb-4 sm:mb-6 tracking-tight px-2 text-balance">
-              {currentAgent?.name ?? `Agent ${agentSlug}`}
+              {currentAgent.name}
             </h1>
             <p className="text-base sm:text-lg text-gray-600 leading-relaxed max-w-xl mx-auto text-balance">
               Sélectionnez un outil pour commencer l&apos;analyse de vos
@@ -76,7 +78,7 @@ export default async function AgentPage({
                 Choisissez l&apos;outil adapté à votre besoin
               </p>
             </div>
-            {currentAgent?.tools.map((tool, index) => (
+            {currentAgent.tools.map((tool, index) => (
               <div
                 key={tool.slug}
                 className="animate-in fade-in slide-in-from-top-2"

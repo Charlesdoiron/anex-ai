@@ -1,30 +1,29 @@
 # Anex AI - Lease Document Extraction System
 
-An intelligent document extraction system for French commercial lease agreements (baux commerciaux) using OpenAI's GPT-5 Responses API.
+An extraction system for French commercial lease agreements (baux commerciaux) powered by the OpenAI Responses API and a modern OCR stack.
 
 ## Features
 
-- **Structured Data Extraction**: Extracts 100+ specific fields from lease documents
-- **Streaming Progress**: Real-time extraction progress updates to frontend
-- **Robust Error Handling**: Automatic retries and fallback values for missing data
-- **Confidence Scoring**: Each extracted field includes confidence level (high/medium/low/missing)
-- **Source Tracking**: Every extracted value references its source location in the document
-- **Pure JavaScript PDF Processing**: No native dependencies, works on all architectures
+- **Structured Data Extraction**: ~112 typed fields across 18 sections with confidence and source for every value
+- **Streaming Progress**: Real-time extraction progress updates to the UI
+- **Resilient OCR**: Mistral OCR (serverless-first), pdf-parse, Tesseract, and OpenAI Vision fallback for scanned PDFs
+- **Robust Error Handling**: Automatic retries, sensible defaults for missing data
+- **Confidence Scoring**: Field-level confidence (high/medium/low/missing)
+- **Source Tracking**: Each extracted value references where it was read in the document
 
 ## Architecture
 
 ### Extraction Pipeline
 
 1. **PDF Text Extraction**
-   - **Phase 1**: `pdf-parse` (Pure JS, fast)
-   - **Phase 2**: Tesseract OCR (if text density is low)
-   - **Phase 3**: GPT Vision Fallback (if OCR fails, uses `gpt-5-nano`)
+   - **Serverless (default)**: Mistral OCR on the whole PDF, no native dependencies
+   - **Local**: `pdf-parse` text extraction, with low-density detection
+   - **OCR fallback**: Mistral OCR when available, otherwise Tesseract (native or JS), then OpenAI Vision as a last resort
 
 2. **Structured Extraction** (OpenAI Responses API)
-   - Uses `gpt-5-mini` model
-   - Minimal reasoning effort for speed
-   - JSON structured outputs
-   - Section-by-section extraction with retries
+   - Uses `gpt-5-mini` with low reasoning effort for speed
+   - 18 section prompts (regime, parties, premises, calendar, support measures, rent, indexation, taxes, charges, insurance, securities, inventory, maintenance, restitution, transfer, environmental annexes, other annexes, other)
+   - JSON outputs with retries per section and sensible defaults when data is missing
 
 3. **Progress Streaming** (Server-Sent Events)
    - Real-time status updates

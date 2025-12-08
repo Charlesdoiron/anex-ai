@@ -207,7 +207,7 @@ export function Chat() {
     setMessages([])
     setActiveDocument(null)
     setData(undefined)
-  }, [setMessages, setData])
+  }, [setMessages, setActiveDocument, setData])
 
   const handleExportPDF = useCallback(async () => {
     await exportAllToPDF(messages as MessageWithSources[])
