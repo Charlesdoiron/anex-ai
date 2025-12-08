@@ -237,7 +237,7 @@ class ExtractionJobService {
     } catch (error) {
       if (error instanceof JobCancelledError) {
         await this.updateJob(jobId, {
-          status: "cancelled",
+          status: "cancelled" as ExtractionJobStatus,
           message: error.message || "Extraction annulée",
           completedAt: new Date(),
         })

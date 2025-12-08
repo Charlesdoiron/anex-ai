@@ -7,6 +7,14 @@ const nextConfig: NextConfig = {
   // Optimize package imports for faster builds
   optimizePackageImports: ["lucide-react"],
 
+  // Include test data files in serverless function bundles
+  outputFileTracingIncludes: {
+    "/api/admin/prompts/test": [
+      "./tests/extraction/ground-truth/**/*",
+      "./tests/extraction/documents/**/*",
+    ],
+  },
+
   webpack: (config, { isServer }) => {
     if (!config.resolve) {
       config.resolve = {}
