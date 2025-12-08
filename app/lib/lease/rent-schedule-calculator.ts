@@ -95,16 +95,83 @@ export function computeLeaseRentSchedule(
     paymentFrequency === "monthly" ? "month" : "quarter"
 
   for (const period of timeline) {
-    const proration = period.billableDays / period.totalDays
-    const indexValue = indexResolver(period.billableStart)
-    const indexFactor = indexValue / input.baseIndexValue
+    const isFullPeriod = period.billableDays === period.totalDays
 
-    const officeRent =
-      proration > 0 ? roundCurrency(officeRentHT * proration * indexFactor) : 0
-    const parkingRent =
-      proration > 0 ? roundCurrency(parkingRentHT * proration * indexFactor) : 0
-    const otherCosts =
-      proration > 0 ? roundCurrency(otherCostsHT * proration * indexFactor) : 0
+    const daysPerYear = DAYS_IN_YEAR
+    const periodsPerYear = paymentFrequency === "monthly" ? 12 : 4
+    const averageDaysPerPeriod = daysPerYear / periodsPerYear
+
+    const proration = isFullPeriod
+      ? 1
+      : period.billableDays / averageDaysPerPeriod
+
+    // Detect index changes within billing period
+    const anniversariesInPeriod = parsedPoints.filter(
+      (p) => p.date > period.billableStart && p.date <= period.billableEnd
+    )
+
+    let officeRent = 0
+    let parkingRent = 0
+    let otherCosts = 0
+    let indexValue = 0
+    let indexFactor = 0
+
+    if (anniversariesInPeriod.length > 0) {
+      // Split calculation when index changes mid-period
+      const anniversary = anniversariesInPeriod[0]
+
+      const daysBeforeAnniversary = differenceInDaysInclusive(
+        period.billableStart,
+        addDays(anniversary.date, -1)
+      )
+      const indexBeforeAnniversary = indexResolver(period.billableStart)
+      const factorBeforeAnniversary =
+        indexBeforeAnniversary / input.baseIndexValue
+      const prorationBeforeAnniversary =
+        daysBeforeAnniversary / averageDaysPerPeriod
+
+      const daysFromAnniversary = differenceInDaysInclusive(
+        anniversary.date,
+        period.billableEnd
+      )
+      const indexFromAnniversary = anniversary.indexValue
+      const factorFromAnniversary = indexFromAnniversary / input.baseIndexValue
+      const prorationFromAnniversary =
+        daysFromAnniversary / averageDaysPerPeriod
+
+      // Calculate rent for both periods
+      officeRent = roundCurrency(
+        officeRentHT * prorationBeforeAnniversary * factorBeforeAnniversary +
+          officeRentHT * prorationFromAnniversary * factorFromAnniversary
+      )
+      parkingRent = roundCurrency(
+        parkingRentHT * prorationBeforeAnniversary * factorBeforeAnniversary +
+          parkingRentHT * prorationFromAnniversary * factorFromAnniversary
+      )
+      otherCosts = roundCurrency(
+        otherCostsHT * prorationBeforeAnniversary * factorBeforeAnniversary +
+          otherCostsHT * prorationFromAnniversary * factorFromAnniversary
+      )
+
+      indexValue = indexFromAnniversary
+      indexFactor = factorFromAnniversary
+    } else {
+      indexValue = indexResolver(period.billableStart)
+      indexFactor = indexValue / input.baseIndexValue
+
+      officeRent =
+        proration > 0
+          ? roundCurrency(officeRentHT * proration * indexFactor)
+          : 0
+      parkingRent =
+        proration > 0
+          ? roundCurrency(parkingRentHT * proration * indexFactor)
+          : 0
+      otherCosts =
+        proration > 0
+          ? roundCurrency(otherCostsHT * proration * indexFactor)
+          : 0
+    }
 
     const yearIndex = fullYearsSince(startDate, period.billableStart)
     const chargesBaseForYear =
@@ -261,13 +328,15 @@ function buildIndexResolver(
       }
     }
 
-    if (!points.length) {
+    // Use last known index value for dates beyond known points
+    if (points.length > 0) {
+      const lastKnown = points[points.length - 1]
+      if (date > lastKnown.date) {
+        return lastKnown.indexValue
+      }
+    } else if (!points.length) {
+      // Extrapolate only when no known points are available
       return extrapolateIndex(baseIndexValue, baseDate, date, tcam)
-    }
-
-    const lastKnown = points[points.length - 1]
-    if (date > lastKnown.date) {
-      return extrapolateIndex(lastKnown.indexValue, lastKnown.date, date, tcam)
     }
 
     return latest.indexValue
@@ -385,6 +454,12 @@ function addYears(date: Date, years: number): Date {
       date.getUTCDate()
     )
   )
+}
+
+function addDays(date: Date, days: number): Date {
+  const result = new Date(date)
+  result.setUTCDate(result.getUTCDate() + days)
+  return result
 }
 
 function minDate(...dates: Date[]): Date {

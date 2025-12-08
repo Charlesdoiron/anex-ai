@@ -27,6 +27,10 @@ export function postProcessExtraction(
   // Normalize rent field structure (LLM sometimes returns nested format)
   processed.rent = normalizeRentField(processed.rent)
 
+  // Normalize payment frequency and calendar duration values
+  processed.rent = normalizeRentPaymentFrequency(processed.rent)
+  processed.calendar = normalizeCalendarDuration(processed.calendar)
+
   // Normalize indexation field structure
   processed.indexation = normalizeIndexationField(processed.indexation)
 
@@ -176,6 +180,66 @@ function normalizeRentField(
   }
 
   return rent
+}
+
+/**
+ * Normalize payment frequency to standardized values
+ */
+function normalizeRentPaymentFrequency(
+  rent: LeaseExtractionResult["rent"]
+): LeaseExtractionResult["rent"] {
+  if (!rent?.paymentFrequency?.value) return rent
+
+  const value = rent.paymentFrequency.value
+  const normalized = { ...rent.paymentFrequency }
+
+  if (typeof value === "string") {
+    const lowerValue = value.toLowerCase()
+
+    if (lowerValue.includes("trimest") || lowerValue.includes("quarter")) {
+      normalized.value = "quarterly"
+    } else if (
+      lowerValue.includes("mensuel") ||
+      lowerValue.includes("month") ||
+      lowerValue.includes("mois")
+    ) {
+      normalized.value = "monthly"
+    } else {
+      normalized.rawText = normalized.rawText || value
+    }
+  }
+
+  return { ...rent, paymentFrequency: normalized }
+}
+
+/**
+ * Extract numeric duration from text values
+ */
+function normalizeCalendarDuration(
+  calendar: LeaseExtractionResult["calendar"]
+): LeaseExtractionResult["calendar"] {
+  if (!calendar?.duration?.value) return calendar
+
+  const value = calendar.duration.value
+  const normalized = { ...calendar.duration }
+
+  // Handle case where LLM returns string instead of number
+  if (
+    typeof value === "string" ||
+    (value !== null && typeof value !== "number")
+  ) {
+    const stringValue = String(value)
+    const matches = stringValue.match(/\d+/g)
+    if (matches && matches.length > 0) {
+      const years = parseInt(matches[matches.length - 1], 10)
+      if (years > 0) {
+        normalized.value = years
+        normalized.rawText = normalized.rawText || stringValue
+      }
+    }
+  }
+
+  return { ...calendar, duration: normalized }
 }
 
 /**
