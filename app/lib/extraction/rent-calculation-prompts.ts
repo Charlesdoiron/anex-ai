@@ -82,9 +82,11 @@ ATTENTION :
 
 6. INDICE D'INDEXATION :
 - indexation.indexationType : Acronyme EXACT de l'indice utilisé (ILC, ILAT, ICC)
+- indexation.referenceQuarter : Trimestre de référence pour l'indexation (ex: "ILC 2ème trimestre 2016", "ILAT T1 2024")
 - Si l'indice n'est pas mentionné, retourner null avec rawText \"Non mentionné\"
 
-Indices : \"indexé sur l'ILC\", \"révision selon l'ILAT\", \"indice ICC\"
+Indices pour indexationType : \"indexé sur l'ILC\", \"révision selon l'ILAT\", \"indice ICC\"
+Indices pour referenceQuarter : \"indice de base\", \"indice du Xème trimestre\", \"indice de référence\", \"T1/T2/T3/T4 20XX\"
 
 EXEMPLES :
 - "Bail de 9 ans à compter du 1er avril 2023, loyer de 120.000 € HT/an, payable trimestriellement"
@@ -107,7 +109,8 @@ FORMAT DE SORTIE JSON :
     "paymentFrequency": { "value": "monthly" | "quarterly" | null, "confidence": "...", "source": "...", "rawText": "..." }
   },
   "indexation": {
-    "indexationType": { "value": "ILC" | "ILAT" | "ICC" | null, "confidence": "...", "source": "...", "rawText": "..." }
+    "indexationType": { "value": "ILC" | "ILAT" | "ICC" | null, "confidence": "...", "source": "...", "rawText": "..." },
+    "referenceQuarter": { "value": string | null, "confidence": "...", "source": "...", "rawText": "..." }
   }
 }`
 

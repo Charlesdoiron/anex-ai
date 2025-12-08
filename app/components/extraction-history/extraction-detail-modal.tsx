@@ -19,7 +19,7 @@ import type {
   ExtractedValue,
 } from "@/app/lib/extraction/types"
 import { exportExtractionToExcel } from "@/app/components/extraction/utils/excel-export"
-import { useEffect, useState, useRef } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 /**
  * Extract the value from an ExtractedValue object
@@ -57,6 +57,11 @@ export default function ExtractionDetailModal({
     }
   }, [extraction])
 
+  const handleClose = useCallback(() => {
+    setIsVisible(false)
+    setTimeout(onClose, 200)
+  }, [onClose])
+
   useEffect(() => {
     function handleEscape(e: KeyboardEvent) {
       if (e.key === "Escape") {
@@ -65,12 +70,7 @@ export default function ExtractionDetailModal({
     }
     window.addEventListener("keydown", handleEscape)
     return () => window.removeEventListener("keydown", handleEscape)
-  }, [])
-
-  function handleClose() {
-    setIsVisible(false)
-    setTimeout(onClose, 200)
-  }
+  }, [handleClose])
 
   if (!extraction) return null
 

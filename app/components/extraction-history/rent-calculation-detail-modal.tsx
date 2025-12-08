@@ -13,7 +13,7 @@ import {
   BarChart3,
   ChevronDown,
 } from "lucide-react"
-import { useEffect, useState, useRef } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { exportRentCalculationToExcel } from "@/app/components/extraction/utils/rent-calculation-excel-export"
 import RentCalculationCharts from "./rent-calculation-charts"
 import type {
@@ -72,18 +72,18 @@ export default function RentCalculationDetailModal({
     }
   }, [result])
 
+  const handleClose = useCallback(() => {
+    setIsVisible(false)
+    setTimeout(onClose, 200)
+  }, [onClose])
+
   useEffect(() => {
     function handleEscape(e: KeyboardEvent) {
       if (e.key === "Escape") handleClose()
     }
     window.addEventListener("keydown", handleEscape)
     return () => window.removeEventListener("keydown", handleEscape)
-  }, [])
-
-  function handleClose() {
-    setIsVisible(false)
-    setTimeout(onClose, 200)
-  }
+  }, [handleClose])
 
   if (!result) return null
 

@@ -226,6 +226,7 @@ function buildClientTemplateExport(
     : startDate
       ? `${indexTypeName} T${getQuarter(startDate.getUTCMonth() + 1)} ${startDate.getUTCFullYear()}`
       : "—"
+
   data.push(
     padRow(
       ["Indice de référence", indexRef],

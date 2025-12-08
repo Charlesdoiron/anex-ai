@@ -101,8 +101,10 @@ export function PromptFormWithTest() {
     fetchPrompts()
   }, [fetchPrompts])
 
-  const getPromptForSection = (section: string) =>
-    prompts.find((p) => p.section === section)
+  const getPromptForSection = useCallback(
+    (section: string) => prompts.find((p) => p.section === section),
+    [prompts]
+  )
 
   const filteredGroups = useMemo(() => {
     return Object.entries(sectionGroups).reduce(
@@ -125,7 +127,7 @@ export function PromptFormWithTest() {
       },
       {} as SectionGroups
     )
-  }, [sectionGroups, searchQuery, prompts])
+  }, [sectionGroups, searchQuery, getPromptForSection])
 
   const startEditing = (prompt: PromptWithMetadata) => {
     setEditingSection(prompt.section)

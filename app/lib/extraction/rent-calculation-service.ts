@@ -276,11 +276,17 @@ export class RentCalculationExtractionService {
         data.calendar.duration.value ?? DEFAULT_HORIZON_YEARS
       const horizonYears = durationYears
 
+      // Parse reference quarter from extraction (e.g., "ILC 2ème trimestre 2016" → 2)
+      const referenceQuarterText = data.indexation?.referenceQuarter?.value
+      const explicitReferenceQuarter =
+        this.parseReferenceQuarter(referenceQuarterText)
+
       const series = await getInseeRentalIndexSeries(indexType)
       const { baseIndexValue, knownIndexPoints } = buildIndexInputsForLease(
         startDate,
         horizonYears,
-        series
+        series,
+        explicitReferenceQuarter
       )
 
       if (!baseIndexValue) {
@@ -385,7 +391,7 @@ export class RentCalculationExtractionService {
       rawText: "Non mentionné",
     }
 
-    return {
+    const extractedData = {
       calendar: {
         effectiveDate: parsed?.calendar?.effectiveDate ?? missing,
         signatureDate: parsed?.calendar?.signatureDate ?? missing,
@@ -405,6 +411,8 @@ export class RentCalculationExtractionService {
         referenceQuarter: parsed?.indexation?.referenceQuarter ?? missing,
       },
     }
+
+    return extractedData
   }
 
   private getDefaultExtractedData(): RentCalculationExtractedData {
@@ -439,5 +447,41 @@ export class RentCalculationExtractionService {
 
   private delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms))
+  }
+
+  private parseReferenceQuarter(
+    referenceQuarterText: string | null | undefined
+  ): number | null {
+    if (!referenceQuarterText) return null
+
+    const text = referenceQuarterText.toLowerCase()
+
+    // Match patterns like "T1", "1T", "1er trimestre", "2ème trimestre", "Q1", etc.
+    if (
+      /\b(premier|1er)\s+(trimestre|quartier)/i.test(text) ||
+      /[tq]1\b/i.test(text)
+    ) {
+      return 1
+    }
+    if (
+      /\b(deuxi[èe]me|2[èe]me)\s+(trimestre|quartier)/i.test(text) ||
+      /[tq]2\b/i.test(text)
+    ) {
+      return 2
+    }
+    if (
+      /\b(troisi[èe]me|3[èe]me)\s+(trimestre|quartier)/i.test(text) ||
+      /[tq]3\b/i.test(text)
+    ) {
+      return 3
+    }
+    if (
+      /\b(quatri[èe]me|4[èe]me)\s+(trimestre|quartier)/i.test(text) ||
+      /[tq]4\b/i.test(text)
+    ) {
+      return 4
+    }
+
+    return null
   }
 }
