@@ -67,6 +67,8 @@ export function buildIndexInputsForLease(
   const baseDate = effectiveDate ?? new Date()
   const baseYear = baseDate.getUTCFullYear()
   const baseQuarter = getQuarter(baseDate)
+  const anniversaryDay = baseDate.getUTCDate()
+  const anniversaryMonth = baseDate.getUTCMonth()
 
   const baseRow =
     series.find(
@@ -74,12 +76,27 @@ export function buildIndexInputsForLease(
     ) ?? series[series.length - 1]
 
   const horizonEndYear = baseYear + Math.max(1, horizonYears)
-  const knownIndexPoints: KnownIndexPointInput[] = series
-    .filter((row) => row.year >= baseRow.year && row.year <= horizonEndYear)
-    .map((row) => ({
-      effectiveDate: toQuarterStartISO(row.year, row.quarter),
-      indexValue: row.value,
-    }))
+
+  // Only get indices for anniversary dates (same quarter each year)
+  // NOT all quarters of all years
+  const knownIndexPoints: KnownIndexPointInput[] = []
+
+  for (let year = baseYear; year <= horizonEndYear; year++) {
+    const indexRow = series.find(
+      (row) => row.year === year && row.quarter === baseQuarter
+    )
+
+    if (indexRow) {
+      // Set effective date to the actual anniversary date
+      const anniversaryDate = new Date(
+        Date.UTC(year, anniversaryMonth, anniversaryDay)
+      )
+      knownIndexPoints.push({
+        effectiveDate: anniversaryDate.toISOString().split("T")[0]!,
+        indexValue: indexRow.value,
+      })
+    }
+  }
 
   return {
     baseIndexValue: baseRow.value,
