@@ -3,6 +3,8 @@ import { computeLeaseRentSchedule } from "./rent-schedule-calculator"
 import {
   buildIndexInputsForLease,
   getInseeRentalIndexSeries,
+  parseISODateSafe,
+  getQuarter,
 } from "./insee-rental-index-service"
 import {
   DEFAULT_LEASE_INDEX_TYPE,
@@ -60,7 +62,10 @@ async function buildScheduleInputFromExtraction(
 
   // Extract reference quarter from lease if specified
   const referenceQuarterText = extraction.indexation?.referenceQuarter?.value
-  const referenceQuarter = parseReferenceQuarter(referenceQuarterText)
+  const referenceQuarter = parseReferenceQuarter(
+    referenceQuarterText,
+    indexStartDate
+  )
 
   const { baseIndexValue, knownIndexPoints } = buildIndexInputsForLease(
     indexStartDate,
@@ -224,11 +229,30 @@ function roundCurrency(value: number): number {
 }
 
 function parseReferenceQuarter(
-  referenceQuarterText: string | null | undefined
+  referenceQuarterText: string | null | undefined,
+  effectiveDate?: string | null
 ): number | null {
   if (!referenceQuarterText) return null
 
   const text = referenceQuarterText.toLowerCase()
+
+  // Check if it's a "last published index" pattern
+  // In this case, use the quarter BEFORE the effective date quarter
+  if (
+    (text.includes("dernier") && text.includes("publié")) ||
+    text.includes("last published")
+  ) {
+    if (effectiveDate) {
+      const date = parseISODateSafe(effectiveDate)
+      if (date) {
+        const currentQuarter = getQuarter(date)
+        // Last published index = previous quarter
+        return currentQuarter === 1 ? 4 : currentQuarter - 1
+      }
+    }
+    // Fallback: cannot determine, return null
+    return null
+  }
 
   // Match patterns like "T1", "1T", "1er trimestre", "2ème trimestre", "Q1", etc.
   // Order matters - check more specific patterns first
