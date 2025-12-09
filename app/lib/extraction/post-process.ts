@@ -34,6 +34,14 @@ export function postProcessExtraction(
   // Normalize indexation field structure
   processed.indexation = normalizeIndexationField(processed.indexation)
 
+  // Normalize support measures field structure (LLM sometimes returns nested format)
+  processed.supportMeasures = normalizeSupportMeasuresField(
+    processed.supportMeasures
+  )
+
+  // Normalize premises boolean fields (null → false for spaces not explicitly mentioned)
+  processed.premises = normalizePremisesBooleanFields(processed.premises)
+
   // Calendar computed fields
   processed.calendar = computeCalendarFields(processed)
 
@@ -240,6 +248,97 @@ function normalizeCalendarDuration(
   }
 
   return { ...calendar, duration: normalized }
+}
+
+/**
+ * Normalize support measures field - LLM sometimes returns nested structures like
+ * { "FRANCHISE_DE_LOYER": { hasRentFreeperiod: {...} }, "AUTRES_MESURES": {...} }
+ * instead of flat { hasRentFreeperiod: {...}, hasOtherMeasures: {...} }
+ */
+function normalizeSupportMeasuresField(
+  supportMeasures: LeaseExtractionResult["supportMeasures"]
+): LeaseExtractionResult["supportMeasures"] {
+  if (!supportMeasures) return supportMeasures
+
+  // Expected flat keys
+  const expectedKeys = [
+    "hasRentFreeperiod",
+    "rentFreePeriodDescription",
+    "rentFreePeriodMonths",
+    "rentFreePeriodAmount",
+    "hasOtherMeasures",
+    "otherMeasuresDescription",
+  ]
+
+  // Check if any expected key exists at top level
+  const hasExpectedKeys = expectedKeys.some((key) => key in supportMeasures)
+
+  if (hasExpectedKeys) {
+    return supportMeasures
+  }
+
+  // Try to flatten nested structure
+  const flattened: Record<string, unknown> = {}
+
+  for (const [, value] of Object.entries(supportMeasures)) {
+    if (value && typeof value === "object" && !("value" in value)) {
+      // This is a nested section, extract its fields
+      for (const [innerKey, innerValue] of Object.entries(
+        value as Record<string, unknown>
+      )) {
+        if (expectedKeys.includes(innerKey)) {
+          flattened[innerKey] = innerValue
+        }
+      }
+    }
+  }
+
+  // Return flattened if we found any expected keys, otherwise return original
+  if (Object.keys(flattened).length > 0) {
+    return flattened as unknown as LeaseExtractionResult["supportMeasures"]
+  }
+
+  return supportMeasures
+}
+
+/**
+ * Normalize premises boolean fields - convert null to false for space fields
+ * where "not mentioned" means "not present"
+ */
+function normalizePremisesBooleanFields(
+  premises: LeaseExtractionResult["premises"]
+): LeaseExtractionResult["premises"] {
+  if (!premises) return premises
+
+  const normalized = { ...premises }
+
+  // hasOutdoorSpace: null → false (no outdoor space if not mentioned)
+  if (
+    normalized.hasOutdoorSpace?.value === null ||
+    normalized.hasOutdoorSpace?.confidence === "missing"
+  ) {
+    normalized.hasOutdoorSpace = {
+      value: false,
+      confidence: "medium",
+      source: "Document entier",
+      rawText: "Non mentionné (considéré comme absent)",
+    }
+  }
+
+  // hasArchiveSpace: null → false (no archive space if not mentioned)
+  if (
+    normalized.hasArchiveSpace?.value === null ||
+    normalized.hasArchiveSpace?.confidence === "missing"
+  ) {
+    normalized.hasArchiveSpace = {
+      value: false,
+      confidence: "medium",
+      source: "Document entier",
+      rawText: "Non mentionné (considéré comme absent)",
+    }
+  }
+
+  return normalized
 }
 
 /**

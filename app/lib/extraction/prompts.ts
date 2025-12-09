@@ -296,10 +296,15 @@ CHAMPS À EXTRAIRE :
   - "0 m²" ou surface non trouvée → mentionner dans rawText les surfaces partielles trouvées
 
 4. AMÉNAGEMENTS :
-- isPartitioned : Locaux cloisonnés ?
-  - Valeurs : "Oui, [détails]" / "Non" / "Non mentionné"
-  - Ex: "Oui, plusieurs salles de réunion notamment"
-  - Chercher dans article "DESIGNATION" ou "CLAUSE SUSPENSIVE" (travaux préalables)
+- isPartitioned : Locaux cloisonnés (présence de cloisons/séparations internes) ?
+  - Valeur boolean : true si cloisonnés, false si open-space, null si non mentionné
+  - Indices de cloisonnement à chercher :
+    - "salles de réunion", "bureaux individuels", "plusieurs pièces"
+    - "cloisons", "séparations", "compartimenté"
+    - Descriptions dans CLAUSE SUSPENSIVE mentionnant "création de salles"
+    - Travaux préalables de cloisonnement
+  - Si des travaux de cloisonnement sont prévus → les locaux seront cloisonnés
+  - Ex: création d'une salle de réunion dans la clause suspensive → true
   
 - hasFurniture : Présence de mobilier FOURNI par le bailleur ?
   - Valeurs : "Oui" / "Non" / "Non mentionné"
@@ -321,8 +326,18 @@ CHAMPS À EXTRAIRE :
   - Si absent : "Non mentionné"
 
 5. ESPACES ANNEXES :
-- hasOutdoorSpace : Espace extérieur (terrasse, cour) - "Oui" / "Non" (non mentionné = Non)
-- hasArchiveSpace : Local d'archives - "Oui" / "Non" (non mentionné = Non)
+- hasOutdoorSpace : Espace extérieur (terrasse, cour, jardin) LOUÉ avec les locaux
+  - "Oui" : si un espace extérieur fait partie des locaux loués
+  - "Non" : si pas d'espace extérieur loué OU si non mentionné
+  ⚠️ ATTENTION : Ne pas confondre avec des mentions d'espaces dans :
+  - Les travaux préalables/clause suspensive (aménagements avant entrée)
+  - Les descriptions générales de l'immeuble
+  - Les parties communes non louées
+  
+- hasArchiveSpace : Local d'archives LOUÉ avec les locaux
+  - "Oui" : si un local d'archives fait explicitement partie des locaux loués
+  - "Non" : si pas de local d'archives loué OU si non mentionné
+  
 - parkingSpaces : Nombre de places de parking voitures (nombre entier, 0 si absent)
 - twoWheelerSpaces : Places deux-roues motorisés
 - bikeSpaces : Places vélos
