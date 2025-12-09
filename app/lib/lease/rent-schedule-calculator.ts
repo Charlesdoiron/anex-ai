@@ -328,14 +328,20 @@ function buildIndexResolver(
       }
     }
 
-    // Use last known index value for dates beyond known points
+    // For dates beyond known points, extrapolate using TCAM from last known point
     if (points.length > 0) {
       const lastKnown = points[points.length - 1]
       if (date > lastKnown.date) {
-        return lastKnown.indexValue
+        // Extrapolate from the last known point using TCAM
+        return extrapolateIndex(
+          lastKnown.indexValue,
+          lastKnown.date,
+          date,
+          tcam
+        )
       }
     } else if (!points.length) {
-      // Extrapolate only when no known points are available
+      // Extrapolate from base when no known points are available
       return extrapolateIndex(baseIndexValue, baseDate, date, tcam)
     }
 

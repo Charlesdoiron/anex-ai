@@ -59,7 +59,11 @@ export function buildIndexInputsForLease(
   horizonYears: number,
   series: InseeRentalIndexPoint[],
   explicitReferenceQuarter?: number | null
-): { baseIndexValue: number | null; knownIndexPoints: KnownIndexPointInput[] } {
+): {
+  baseIndexValue: number | null
+  knownIndexPoints: KnownIndexPointInput[]
+  tcam?: number
+} {
   if (!series.length) {
     return { baseIndexValue: null, knownIndexPoints: [] }
   }
@@ -80,41 +84,86 @@ export function buildIndexInputsForLease(
 
   const horizonEndYear = baseYear + Math.max(1, horizonYears)
 
-  // Generate index points for anniversary dates ONLY (not base year)
-  // Start from year after base year
+  // Calculate TCAM from historical data (last 3 years if available)
+  const tcam = computeTcamFromSeries(series, baseQuarter)
+
+  // Generate index points for anniversary dates (not base year)
   const knownIndexPoints: KnownIndexPointInput[] = []
+  let lastKnownIndex = baseRow.value
+  let lastKnownYear = baseYear
 
   for (let year = baseYear + 1; year <= horizonEndYear; year++) {
     const indexRow = series.find(
       (row) => row.year === year && row.quarter === baseQuarter
     )
 
+    const anniversaryDate = new Date(
+      Date.UTC(year, anniversaryMonth, anniversaryDay)
+    )
+
+    let indexValue: number
     if (indexRow) {
-      // Set effective date to the actual anniversary date
-      const anniversaryDate = new Date(
-        Date.UTC(year, anniversaryMonth, anniversaryDay)
-      )
-      knownIndexPoints.push({
-        effectiveDate: anniversaryDate.toISOString().split("T")[0]!,
-        indexValue: indexRow.value,
-      })
+      // Use actual INSEE data if available
+      indexValue = indexRow.value
+      lastKnownIndex = indexValue
+      lastKnownYear = year
+    } else if (tcam !== undefined) {
+      // Extrapolate using TCAM from last known index
+      const yearsFromLastKnown = year - lastKnownYear
+      indexValue = lastKnownIndex * Math.pow(1 + tcam, yearsFromLastKnown)
+    } else {
+      // No TCAM available, use last known value
+      indexValue = lastKnownIndex
     }
+
+    knownIndexPoints.push({
+      effectiveDate: anniversaryDate.toISOString().split("T")[0]!,
+      indexValue: Math.round(indexValue * 100) / 100,
+    })
   }
 
   return {
     baseIndexValue: baseRow.value,
     knownIndexPoints,
+    tcam,
   }
+}
+
+/**
+ * Compute TCAM (Taux de Croissance Annuel Moyen) from historical index data
+ * Uses 3 years of data if available for the specified quarter
+ */
+function computeTcamFromSeries(
+  series: InseeRentalIndexPoint[],
+  quarter: number
+): number | undefined {
+  // Filter to only the specified quarter
+  const quarterData = series
+    .filter((row) => row.quarter === quarter)
+    .sort((a, b) => a.year - b.year)
+
+  if (quarterData.length < 2) {
+    return undefined
+  }
+
+  // Use last 3 years of data if available, otherwise use all available data
+  const yearsToUse = Math.min(3, quarterData.length - 1)
+  const startIndex = quarterData.length - 1 - yearsToUse
+  const endIndex = quarterData.length - 1
+
+  const startValue = quarterData[startIndex].value
+  const endValue = quarterData[endIndex].value
+  const years = quarterData[endIndex].year - quarterData[startIndex].year
+
+  if (years <= 0 || startValue <= 0) {
+    return undefined
+  }
+
+  return Math.pow(endValue / startValue, 1 / years) - 1
 }
 
 function getQuarter(date: Date): number {
   return Math.floor(date.getUTCMonth() / 3) + 1
-}
-
-function toQuarterStartISO(year: number, quarter: number): string {
-  const monthIndex = (quarter - 1) * 3
-  const date = new Date(Date.UTC(year, monthIndex, 1))
-  return date.toISOString().split("T")[0]!
 }
 
 function parseISODateSafe(value: string | null | undefined): Date | null {

@@ -123,53 +123,47 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
 
   const rows: RowData[] = []
 
-  // Header row
-  rows.push(["Thèmes", "Bail", "", "", "", "Avenant"])
+  // Header row - 2 colonnes seulement
+  rows.push(["Thèmes", "Extraction"])
 
   // 1. Régime du Bail
-  rows.push(["1. Régime du Bail", "", "", "", "", ""])
-  rows.push([
-    "Régime juridique",
-    fmt(getValue(extraction.regime?.regime)),
-    "",
-    "",
-    "",
-    "",
-  ])
+  rows.push(["1. Régime du Bail", ""])
+  rows.push(["Régime juridique", fmt(getValue(extraction.regime?.regime))])
 
-  // 2. Parties
-  rows.push(["2. Parties", "", "", "", "", ""])
+  // 2. Parties - format avec sauts de ligne
+  rows.push(["2. Parties", ""])
   const landlordContact = formatContact(
     getValue(p?.landlord?.email),
     getValue(p?.landlord?.phone)
   )
   rows.push([
     "Bailleur",
-    `Nom : ${fmt(getValue(p?.landlord?.name))}`,
-    `SIREN : ${fmt(getValue(p?.landlord?.siren))}`,
-    `Courriel et téléphone : ${landlordContact}`,
-    `Adresse : ${fmt(getValue(p?.landlord?.address))}`,
-    "",
+    [
+      `Nom : ${fmt(getValue(p?.landlord?.name))}`,
+      `SIREN : ${fmt(getValue(p?.landlord?.siren))}`,
+      `Courriel et téléphone : ${landlordContact}`,
+      `Adresse : ${fmt(getValue(p?.landlord?.address))}`,
+    ].join("\n"),
   ])
   const landlordRepresentative = p?.landlordRepresentative
   rows.push([
     "Représentant du bailleur (le cas échéant)",
     landlordRepresentative
-      ? `Nom : ${fmt(getValue(landlordRepresentative?.name))}`
-      : `Nom : ${NON_MENTIONNE}`,
-    landlordRepresentative
-      ? `SIREN : ${fmt(getValue(landlordRepresentative?.siren))}`
-      : `SIREN : ${NON_MENTIONNE}`,
-    landlordRepresentative
-      ? `Courriel et téléphone : ${formatContact(
-          getValue(landlordRepresentative?.email),
-          getValue(landlordRepresentative?.phone)
-        )}`
-      : `Courriel et téléphone : ${NON_MENTIONNE}`,
-    landlordRepresentative
-      ? `Adresse : ${fmt(getValue(landlordRepresentative?.address))}`
-      : `Adresse : ${NON_MENTIONNE}`,
-    "",
+      ? [
+          `Nom : ${fmt(getValue(landlordRepresentative?.name))}`,
+          `SIREN : ${fmt(getValue(landlordRepresentative?.siren))}`,
+          `Courriel et téléphone : ${formatContact(
+            getValue(landlordRepresentative?.email),
+            getValue(landlordRepresentative?.phone)
+          )}`,
+          `Adresse : ${fmt(getValue(landlordRepresentative?.address))}`,
+        ].join("\n")
+      : [
+          `Nom : ${NON_MENTIONNE}`,
+          `SIREN : ${NON_MENTIONNE}`,
+          `Courriel et téléphone : ${NON_MENTIONNE}`,
+          `Adresse : ${NON_MENTIONNE}`,
+        ].join("\n"),
   ])
   const tenantContact = formatContact(
     getValue(p?.tenant?.email),
@@ -177,71 +171,42 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
   )
   rows.push([
     "Preneur",
-    `Nom : ${fmt(getValue(p?.tenant?.name))}`,
-    `SIREN : ${fmt(getValue(p?.tenant?.siren))}`,
-    `Courriel et téléphone : ${tenantContact}`,
-    `Adresse : ${fmt(getValue(p?.tenant?.address))}`,
-    "",
+    [
+      `Nom : ${fmt(getValue(p?.tenant?.name))}`,
+      `SIREN : ${fmt(getValue(p?.tenant?.siren))}`,
+      `Courriel et téléphone : ${tenantContact}`,
+      `Adresse : ${fmt(getValue(p?.tenant?.address))}`,
+    ].join("\n"),
   ])
 
   // 3. Description des locaux loués
-  rows.push(["3. Description des locaux loués", "", "", "", "", ""])
-  rows.push([
-    "Destination des locaux",
-    fmt(getValue(pr?.purpose)),
-    "",
-    "",
-    "",
-    "",
-  ])
-  rows.push(["Adresse des locaux", fmt(getValue(pr?.address)), "", "", "", ""])
+  rows.push(["3. Description des locaux loués", ""])
+  rows.push(["Destination des locaux", fmt(getValue(pr?.purpose))])
+  rows.push(["Adresse des locaux", fmt(getValue(pr?.address))])
   rows.push([
     "Année de construction de l'immeuble",
     fmt(getValue(pr?.buildingYear)),
-    "",
-    "",
-    "",
-    "",
   ])
   rows.push([
     "Etage(s) des locaux",
     Array.isArray(getValue(pr?.floors))
       ? (getValue(pr?.floors) as string[]).join(", ")
       : fmt(getValue(pr?.floors)),
-    "",
-    "",
-    "",
-    "",
   ])
   rows.push([
     "Numéro(s) du/des lot(s)",
     Array.isArray(getValue(pr?.lotNumbers))
       ? (getValue(pr?.lotNumbers) as string[]).join(", ")
       : fmt(getValue(pr?.lotNumbers)),
-    "",
-    "",
-    "",
-    "",
   ])
   rows.push([
     "Surface (en m²)",
     formatSurface(getValue(pr?.surfaceArea) as number | null),
-    "",
-    "",
-    "",
-    "",
   ])
   const isPartitioned = getValue(pr?.isPartitioned)
   const isPartitionedDisplay =
     isPartitioned === null ? NON_MENTIONNE : isPartitioned ? "Oui" : "Non"
-  rows.push([
-    "Les locaux sont-ils cloisonnés ?",
-    isPartitionedDisplay,
-    "",
-    "",
-    "",
-    "",
-  ])
+  rows.push(["Les locaux sont-ils cloisonnés ?", isPartitionedDisplay])
 
   const hasFurniture = getValue(pr?.hasFurniture)
   const furnitureDescription = fmt(getValue(pr?.furnishingConditions))
@@ -256,77 +221,39 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
   rows.push([
     "Les locaux sont-ils équipés avec du mobilier ?",
     hasFurnitureDisplay,
-    "",
-    "",
-    "",
-    "",
   ])
   rows.push([
     "Clause de garnissement des locaux",
     fmt(getValue(pr?.furnishingConditions)),
-    "",
-    "",
-    "",
-    "",
   ])
-  rows.push([
-    "Clause d'enseigne",
-    fmt(getValue(pr?.signageConditions)),
-    "",
-    "",
-    "",
-    "",
-  ])
+  rows.push(["Clause d'enseigne", fmt(getValue(pr?.signageConditions))])
 
   const hasOutdoorSpace = getValue(pr?.hasOutdoorSpace)
   const outdoorDisplay =
     hasOutdoorSpace === null ? NON_MENTIONNE : hasOutdoorSpace ? "Oui" : "Non"
-  rows.push([
-    "Existence d'un espace extérieur ?",
-    outdoorDisplay,
-    "",
-    "",
-    "",
-    "",
-  ])
+  rows.push(["Existence d'un espace extérieur ?", outdoorDisplay])
 
   const hasArchiveSpace = getValue(pr?.hasArchiveSpace)
   const archiveDisplay =
     hasArchiveSpace === null ? NON_MENTIONNE : hasArchiveSpace ? "Oui" : "Non"
-  rows.push([
-    "Existence d'un local d'archive ?",
-    archiveDisplay,
-    "",
-    "",
-    "",
-    "",
-  ])
+  rows.push(["Existence d'un local d'archive ?", archiveDisplay])
   rows.push([
     "Nombre d'emplacements de parkings (en unité)",
     formatUnits(getValue(pr?.parkingSpaces) as number | null, "u"),
-    "",
-    "",
-    "",
-    "",
   ])
   rows.push([
     "Quote-part de l'immeuble loué",
-    `Incluant les parties communes : ${fmt(getValue(pr?.shareWithCommonAreas))}`,
-    "",
-    `Hors parties communes : ${fmt(getValue(pr?.shareWithoutCommonAreas))}`,
-    "",
-    "",
+    [
+      `Incluant les parties communes : ${fmt(getValue(pr?.shareWithCommonAreas))}`,
+      `Hors parties communes : ${fmt(getValue(pr?.shareWithoutCommonAreas))}`,
+    ].join("\n"),
   ])
 
   // 4. Calendrier
-  rows.push(["4. Calendrier", "", "", "", "", ""])
+  rows.push(["4. Calendrier", ""])
   rows.push([
     "Date de signature du bail",
     formatDate(getValue(c?.signatureDate) as string | null),
-    "",
-    "",
-    "",
-    "",
   ])
   // Duration may be a number (9) or string ("9 ans")
   const durationValue = getValue(c?.duration)
@@ -339,68 +266,37 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
           ? String(durationValue)
           : `${durationValue} ans`
 
-  rows.push(["Durée du bail", durationDisplay, "", "", "", ""])
+  rows.push(["Durée du bail", durationDisplay])
   rows.push([
     "Date de prise d'effet",
     formatDate(getValue(c?.effectiveDate) as string | null),
-    "",
-    "",
-    "",
-    "",
   ])
   rows.push([
     "Mise à disposition anticipée",
     getValue(c?.earlyAccessDate)
       ? formatDate(getValue(c?.earlyAccessDate) as string)
       : NON_MENTIONNE,
-    "",
-    "",
-    "",
-    "",
   ])
   rows.push([
     "Prochaine(s) faculté(s) de résiliation/congé",
     formatDate(getValue(c?.nextTriennialDate) as string | null),
-    "",
-    "",
-    "",
-    "",
   ])
   rows.push([
     "Date de fin de bail",
     formatDate(getValue(c?.endDate) as string | null),
-    "",
-    "",
-    "",
-    "",
   ])
-  rows.push([
-    "Durée de préavis",
-    fmt(getValue(c?.noticePeriod)),
-    "",
-    "",
-    "",
-    "",
-  ])
+  rows.push(["Durée de préavis", fmt(getValue(c?.noticePeriod))])
   rows.push([
     "Conditions pour donner congé",
     fmt(getValue(c?.terminationConditions)),
-    "",
-    "",
-    "",
-    "",
   ])
   rows.push([
     "Conditions de renouvellement à l'échéance du bail",
     fmt(getValue(c?.renewalConditions)),
-    "",
-    "",
-    "",
-    "",
   ])
 
   // 5. Mesures d'accompagnement
-  rows.push(["5. Mesures d'accompagnement", "", "", "", "", ""])
+  rows.push(["5. Mesures d'accompagnement", ""])
   const hasRentFreePeriod = getValue(sm?.hasRentFreeperiod)
   const rentFreeMonths = getValue(sm?.rentFreePeriodMonths)
   const rentFreeAmount = getValue(sm?.rentFreePeriodAmount)
@@ -419,7 +315,7 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
       : hasRentFreePeriod === false
         ? "Non"
         : NON_MENTIONNE
-  rows.push(["Franchise de loyer", rentFreeDisplay, "", "", "", ""])
+  rows.push(["Franchise de loyer", rentFreeDisplay])
 
   const hasOtherMeasures = getValue(sm?.hasOtherMeasures)
   const otherMeasuresDescription = fmt(getValue(sm?.otherMeasuresDescription))
@@ -431,57 +327,46 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
       : hasOtherMeasures === false
         ? "Non"
         : NON_MENTIONNE
-  rows.push([
-    "Autres mesures d'accompagnement",
-    otherMeasuresDisplay,
-    "",
-    "",
-    "",
-    "",
-  ])
+  rows.push(["Autres mesures d'accompagnement", otherMeasuresDisplay])
 
   // 6. Loyer
-  rows.push(["6. Loyer", "", "", "", "", ""])
+  rows.push(["6. Loyer", ""])
   rows.push([
-    "Montant du loyer initial (en € et HTHC)",
-    `Annuel : ${formatCurrency(getValue(r?.annualRentExclTaxExclCharges) as number | null)}`,
-    "",
-    `Trimestriel : ${formatCurrency(getValue(r?.quarterlyRentExclTaxExclCharges) as number | null)}`,
-    "",
-    "",
+    "Montant du loyer initial annuel (en € et HTHC)",
+    formatCurrency(getValue(r?.annualRentExclTaxExclCharges) as number | null),
+  ])
+  rows.push([
+    "Montant du loyer initial trimestriel (en € et HTHC)",
+    formatCurrency(
+      getValue(r?.quarterlyRentExclTaxExclCharges) as number | null
+    ),
   ])
   rows.push([
     "Montant du loyer annuel initial au m² (en € et HTHC)",
     formatCurrency(
       getValue(r?.annualRentPerSqmExclTaxExclCharges) as number | null
     ),
-    "",
-    "",
-    "",
-    "",
   ])
   rows.push([
-    "Montant du loyer initial des emplacements de parking (en € et HTHC)",
-    `Annuel : ${formatCurrency(getValue(r?.annualParkingRentExclCharges) as number | null)}`,
-    "",
-    `Trimestriel : ${formatCurrency(getValue(r?.quarterlyParkingRentExclCharges) as number | null)}`,
-    "",
-    "",
+    "Montant du loyer initial annuel des emplacements de parking (en € et HTHC)",
+    formatCurrency(getValue(r?.annualParkingRentExclCharges) as number | null),
   ])
   rows.push([
-    "Montant du loyer annuel initial des emplacement de parkings par unité (en € et HTHC)",
+    "Montant du loyer initial trimestriel des emplacements de parking (en € et HTHC)",
+    formatCurrency(
+      getValue(r?.quarterlyParkingRentExclCharges) as number | null
+    ),
+  ])
+  rows.push([
+    "Montant du loyer annuel initial des emplacements de parkings par unité (en € et HTHC)",
     formatCurrency(
       getValue(r?.annualParkingRentPerUnitExclCharges) as number | null
     ),
-    "",
-    "",
-    "",
-    "",
   ])
   const isSubjectToVAT = getValue(r?.isSubjectToVAT)
   const vatDisplay =
     isSubjectToVAT === null ? NON_MENTIONNE : isSubjectToVAT ? "Oui" : "Non"
-  rows.push(["Soumission du loyer à la TVA", vatDisplay, "", "", "", ""])
+  rows.push(["Soumission du loyer à la TVA", vatDisplay])
   rows.push([
     "Périodicité de facturation du loyer",
     getValue(r?.paymentFrequency) === "monthly"
@@ -491,10 +376,6 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
         : getValue(r?.paymentFrequency) === "annual"
           ? "Annuel"
           : fmt(getValue(r?.paymentFrequency)),
-    "",
-    "",
-    "",
-    "",
   ])
   rows.push([
     "Montant et conditions d'application de pénalités pour retard de paiement des loyers",
@@ -505,15 +386,11 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
       fmt(getValue(r?.latePaymentPenaltyConditions)),
     ]
       .filter(Boolean)
-      .join(". ") || "",
-    "",
-    "",
-    "",
-    "",
+      .join(". ") || NON_MENTIONNE,
   ])
 
   // 7. Indexation
-  rows.push(["7. Indexation", "", "", "", "", ""])
+  rows.push(["7. Indexation", ""])
   // Check hasIndexationClause (newer) or indexationClause (legacy)
   const hasIndexation =
     getValue(idx?.hasIndexationClause) ?? getValue(idx?.indexationClause)
@@ -526,22 +403,14 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
           ? "Oui"
           : NON_MENTIONNE
 
-  rows.push(["Clause d'indexation", indexationDisplay, "", "", "", ""])
+  rows.push(["Clause d'indexation", indexationDisplay])
   rows.push([
     "Choix de l'indice d'indexation",
     fmt(getValue(idx?.indexationType)),
-    "",
-    "",
-    "",
-    "",
   ])
   rows.push([
     "Trimestre de référence de l'indice",
     fmt(getValue(idx?.referenceQuarter)),
-    "",
-    "",
-    "",
-    "",
   ])
   // firstIndexationDate can be a recurring date string ("Le 19 décembre de chaque année") or ISO date
   const firstIndexDate = getValue(idx?.firstIndexationDate)
@@ -552,29 +421,18 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
         ? formatDate(String(firstIndexDate))
         : String(firstIndexDate)
 
-  rows.push([
-    "Date de la première indexation",
-    firstIndexDateDisplay,
-    "",
-    "",
-    "",
-    "",
-  ])
+  rows.push(["Date de l'indexation", firstIndexDateDisplay])
   rows.push([
     "Périodicité de l'indexation",
     getValue(idx?.indexationFrequency) === "annual"
-      ? "Annuel"
+      ? "Annuellement"
       : getValue(idx?.indexationFrequency) === "quarterly"
-        ? "Trimestriel"
+        ? "Trimestriellement"
         : fmt(getValue(idx?.indexationFrequency)),
-    "",
-    "",
-    "",
-    "",
   ])
 
   // 8. Impôts et taxes
-  rows.push(["8. Impôts et taxes", "", "", "", "", ""])
+  rows.push(["8. Impôts et taxes", ""])
   const propertyTaxRebilled = getValue(tx?.propertyTaxRebilled)
   const propertyTaxRebilledDisplay =
     propertyTaxRebilled === null
@@ -585,71 +443,51 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
   rows.push([
     "Refacturation de la taxe foncière et de la TEOM au preneur",
     propertyTaxRebilledDisplay,
-    "",
-    "",
-    "",
-    "",
   ])
   rows.push([
-    "Montant annuel de la taxe foncière (en €)",
+    "Montant annuel de la provision pour taxe foncière (en €)",
     formatCurrency(getValue(tx?.propertyTaxAmount) as number | null),
-    "",
-    "",
-    "",
-    "",
   ])
   rows.push([
-    "Montant annuel de la TEOM (en €)",
+    "Montant annuel de la provision pour TEOM (en €)",
     formatCurrency(getValue(tx?.teomAmount) as number | null),
-    "",
-    "",
-    "",
-    "",
   ])
   rows.push([
-    "Montant annuel de la taxe sur les bureaux et les locaux commerciaux et de stockages (en €)",
+    "Montant annuel de la provision pour taxe sur les bureaux et les locaux commerciaux et de stockages (en €)",
     formatCurrency(getValue(tx?.officeTaxAmount) as number | null),
-    "",
-    "",
-    "",
-    "",
   ])
 
   // 9. Charges et honoraires
-  rows.push(["9. Charges et honoraires", "", "", "", "", ""])
+  rows.push(["9. Charges locatives et honoraires", ""])
   rows.push([
-    "Montant des provisions pour charges (en € et HT)",
-    `Annuel : ${formatCurrency(getValue(ch?.annualChargesProvisionExclTax) as number | null)}`,
-    "",
-    `Trimestriel : ${formatCurrency(getValue(ch?.quarterlyChargesProvisionExclTax) as number | null)}`,
-    "",
-    "",
+    "Montant annuel des provisions pour charges (en € et HT)",
+    formatCurrency(
+      getValue(ch?.annualChargesProvisionExclTax) as number | null
+    ),
+  ])
+  rows.push([
+    "Montant trimestriel des provisions pour charges (en € et HT)",
+    formatCurrency(
+      getValue(ch?.quarterlyChargesProvisionExclTax) as number | null
+    ),
   ])
   rows.push([
     "Montant annuel des provisions pour charges au m² (en € et HT)",
     formatCurrency(
       getValue(ch?.annualChargesProvisionPerSqmExclTax) as number | null
     ),
-    "",
-    "",
-    "",
-    "",
   ])
   rows.push([
-    "Montant de la redevance RIE (en € et HT)",
-    `Annuel : ${formatCurrency(getValue(ch?.annualRIEFeeExclTax) as number | null)}`,
-    "",
-    `Trimestriel : ${formatCurrency(getValue(ch?.quarterlyRIEFeeExclTax) as number | null)}`,
-    "",
-    "",
+    "Montant annuel de la redevance RIE (en € et HT)",
+    formatCurrency(getValue(ch?.annualRIEFeeExclTax) as number | null),
+  ])
+  rows.push([
+    "Montant trimestriel de la redevance RIE (en € et HT)",
+    formatCurrency(getValue(ch?.quarterlyRIEFeeExclTax) as number | null),
   ])
   rows.push([
     "Montant annuel de la redevance RIE au m² (en € et HT)",
     formatCurrency(getValue(ch?.annualRIEFeePerSqmExclTax) as number | null),
-    "",
-    "",
-    "",
-    "",
   ])
   const managementFees = getValue(ch?.managementFeesOnTenant)
   const managementFeesDisplay =
@@ -664,7 +502,7 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
   ])
 
   // 10. Assurances et recours
-  rows.push(["10. Assurances et recours", "", "", "", "", ""])
+  rows.push(["10. Assurances et recours", ""])
   rows.push([
     "Montant annuel des assurances (en € et HT)",
     formatCurrency(
@@ -720,7 +558,7 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
   ])
 
   // 11. Sûretés
-  rows.push(["11. Sûretés", "", "", "", "", ""])
+  rows.push(["11. Sûretés", ""])
   rows.push([
     "Montant du dépôt de garantie (en €)",
     formatCurrency(getValue(sec?.securityDepositAmount) as number | null),
@@ -742,10 +580,10 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
   } else {
     otherSecuritiesDisplay = NON_MENTIONNE
   }
-  rows.push(["Autres types de sûretés", otherSecuritiesDisplay, "", "", "", ""])
+  rows.push(["Autres types de sûretés", otherSecuritiesDisplay])
 
   // 12. Etats des lieux
-  rows.push(["12. Etats des lieux", "", "", "", "", ""])
+  rows.push(["12. Etats des lieux", ""])
   rows.push([
     "Conditions de l'état des lieux d'entrée",
     fmt(getValue(inv?.entryInventoryConditions)),
@@ -822,10 +660,10 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
       : hasAccessionClause
         ? `Oui. ${fmt(getValue(maint?.workConditionsImposedOnTenant))}`
         : "Non"
-  rows.push(["Clause d'accession", accessionDisplay, "", "", "", ""])
+  rows.push(["Clause d'accession", accessionDisplay])
 
   // 14. Restitution
-  rows.push(["14. Restitution des locaux loués", "", "", "", "", ""])
+  rows.push(["14. Restitution des locaux loués", ""])
   rows.push([
     "Conditions de restitution des locaux",
     fmt(getValue(rest?.restitutionConditions)),
@@ -844,7 +682,7 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
   ])
 
   // 15. Cession - Sous-location
-  rows.push(["15. Cession - Sous-location", "", "", "", "", ""])
+  rows.push(["15. Cession - Sous-location", ""])
   rows.push([
     "Conditions de sous-location",
     fmt(getValue(trans?.sublettingConditions)),
@@ -857,18 +695,13 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
   rows.push([
     "Si bail de sous-location en cours",
     subleaseInfo
-      ? `Identité sous-locataire : ${subleaseInfo.subtenantName || ""}`
+      ? [
+          `Identité sous-locataire : ${subleaseInfo.subtenantName || NON_MENTIONNE}`,
+          `Date d'effet : ${formatDate(subleaseInfo.effectiveDate)}`,
+          `Prochaine(s) faculté(s) de résiliation/congé : ${formatDate(subleaseInfo.nextTerminationDate)}`,
+          `Date de fin du bail de sous-location : ${formatDate(subleaseInfo.endDate)}`,
+        ].join("\n")
       : NON_MENTIONNE,
-    subleaseInfo
-      ? `Date d'effet : ${formatDate(subleaseInfo.effectiveDate)}`
-      : "",
-    subleaseInfo
-      ? `Prochaine(s) faculté(s) de résiliation/congé : ${formatDate(subleaseInfo.nextTerminationDate)}`
-      : "",
-    subleaseInfo
-      ? `Date de fin du bail de sous-location : ${formatDate(subleaseInfo.endDate)}`
-      : "",
-    "",
   ])
   rows.push([
     "Conditions de cession du bail",
@@ -891,8 +724,8 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
   ])
 
   // 16. Annexes
-  rows.push(["16. Annexes", "", "", "", "", ""])
-  rows.push(["16.1 Annexes environnementales", "", "", "", "", ""])
+  rows.push(["16. Annexes", ""])
+  rows.push(["16.1 Annexes environnementales", ""])
   const hasDPE = getValue(env?.hasDPE)
   const dpeDisplay =
     hasDPE === null
@@ -949,7 +782,7 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
     "",
   ])
 
-  rows.push(["16.2 Autres annexes", "", "", "", "", ""])
+  rows.push(["16.2 Autres annexes", ""])
   const hasInternalRegulations = getValue(ann?.hasInternalRegulations)
   const internalRegulationsDisplay =
     hasInternalRegulations === null
@@ -957,12 +790,12 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
       : hasInternalRegulations
         ? "Oui"
         : "Non"
-  rows.push(["Règlement intérieur", internalRegulationsDisplay, "", "", "", ""])
+  rows.push(["Règlement intérieur", internalRegulationsDisplay])
 
   const hasPremisesPlan = getValue(ann?.hasPremisesPlan)
   const premisesPlanDisplay =
     hasPremisesPlan === null ? NON_MENTIONNE : hasPremisesPlan ? "Oui" : "Non"
-  rows.push(["Plan des locaux", premisesPlanDisplay, "", "", "", ""])
+  rows.push(["Plan des locaux", premisesPlanDisplay])
 
   const hasChargesInventory = getValue(ann?.hasChargesInventory)
   const chargesInventoryDisplay =
@@ -1029,7 +862,7 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
   ])
 
   // 17. Autres
-  rows.push(["17. Autres", "", "", "", "", ""])
+  rows.push(["17. Autres", ""])
   const isSignedAndInitialed = getValue(other?.isSignedAndInitialed)
   const signedDisplay =
     isSignedAndInitialed === null
@@ -1121,11 +954,7 @@ async function createWorkbook(
   // Set column widths to match template
   worksheet.columns = [
     { width: 65 }, // A: Thèmes
-    { width: 35 }, // B: Bail value
-    { width: 25 }, // C: Sub-value
-    { width: 35 }, // D: Sub-value
-    { width: 30 }, // E: Sub-value
-    { width: 20 }, // F: Avenant
+    { width: 80 }, // B: Extraction
   ]
 
   // Define border style
