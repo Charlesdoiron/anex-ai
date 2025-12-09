@@ -1,40 +1,41 @@
-"use client";
+"use client"
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { signUp } from "@/app/lib/auth-client";
+import { useState } from "react"
+import { useRouter } from "next/navigation"
+import Link from "next/link"
+import { signUp } from "@/app/lib/auth-client"
+import { LoadingButton } from "@/app/components/ui/loading-button"
 
 export default function SignupPage() {
-  const router = useRouter();
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const router = useRouter()
+  const [name, setName] = useState("")
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [error, setError] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
-    setIsLoading(true);
+    e.preventDefault()
+    setError("")
+    setIsLoading(true)
 
     try {
       const result = await signUp.email({
         email,
         password,
         name,
-      });
+      })
 
       if (result.error) {
-        setError(result.error.message || "Failed to create account");
+        setError(result.error.message || "Failed to create account")
       } else {
-        router.push("/");
-        router.refresh();
+        router.push("/")
+        router.refresh()
       }
     } catch (err) {
-      setError("An error occurred. Please try again.");
+      setError("An error occurred. Please try again.")
     } finally {
-      setIsLoading(false);
+      setIsLoading(false)
     }
   }
 
@@ -112,13 +113,14 @@ export default function SignupPage() {
           </p>
         </div>
 
-        <button
+        <LoadingButton
           type="submit"
-          disabled={isLoading}
+          isLoading={isLoading}
+          loadingText="Création du compte..."
           className="w-full bg-gray-800 hover:bg-gray-900 disabled:bg-gray-400 disabled:cursor-not-allowed dark:bg-gray-700 dark:hover:bg-gray-600 text-white font-medium py-3 px-4 rounded-lg transition-colors"
         >
-          {isLoading ? "Creating account..." : "Sign Up"}
-        </button>
+          Créer un compte
+        </LoadingButton>
       </form>
 
       <p className="mt-4 text-center text-sm text-gray-600 dark:text-gray-400">
@@ -131,6 +133,5 @@ export default function SignupPage() {
         </Link>
       </p>
     </div>
-  );
+  )
 }
-

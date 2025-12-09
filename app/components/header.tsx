@@ -25,6 +25,7 @@ export function Header({ showLogo = true, className = "" }: HeaderProps) {
         {showLogo && (
           <Link
             href="/"
+            prefetch={true}
             className="flex items-center gap-2.5 group transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green/50 focus-visible:ring-offset-2 rounded-lg px-1"
           >
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-green to-green-800 flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow duration-300">

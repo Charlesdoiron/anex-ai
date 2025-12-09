@@ -1,13 +1,10 @@
 /**
- * Excel export matching client template format "2511_Calcul-Loyer_Template-Livrable.xlsx"
- * Horizontal timeline with quarterly/monthly breakdown
+ * Excel export matching EXACT client template format "2511_Calcul-Loyer_Template-Livrable.xlsx"
+ * Monthly breakdown with day-by-day granularity (ligne 22: # jours/mois)
  */
 
 import * as XLSX from "xlsx"
 import type { RentCalculationResult } from "@/app/lib/extraction/rent-calculation-service"
-import type { RentSchedulePeriod } from "@/app/lib/lease/types"
-
-type CellValue = string | number | null | undefined
 
 const MONTH_NAMES_FR = [
   "janvier",
@@ -24,737 +21,445 @@ const MONTH_NAMES_FR = [
   "décembre",
 ]
 
-// Utility functions
-function formatDateFR(isoDate: string | null | undefined): string {
-  if (!isoDate) return "—"
-  try {
-    const date = new Date(isoDate)
-    return date.toLocaleDateString("fr-FR", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    })
-  } catch {
-    return isoDate
-  }
+function getDaysInMonth(year: number, monthIndex: number): number {
+  return new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate()
 }
 
-function formatCurrency(value: number | null | undefined): string {
-  if (value === null || value === undefined) return "—"
-  return `${value.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`
-}
-
-function formatFrequency(freq: string | null | undefined): string {
-  if (freq === "monthly") return "Mensuel"
-  if (freq === "quarterly") return "Trimestriel"
-  return freq || "—"
+function formatDateForExcel(
+  isoDate: string | null | undefined
+): number | string {
+  if (!isoDate) return ""
+  const date = new Date(isoDate)
+  const epoch = new Date(Date.UTC(1899, 11, 30))
+  return Math.floor((date.getTime() - epoch.getTime()) / 86400000)
 }
 
 function getValue<T>(field: { value: T } | undefined | null): T | null {
   return field?.value ?? null
 }
 
-function getDaysInMonth(year: number, month: number): number {
-  return new Date(Date.UTC(year, month, 0)).getUTCDate()
+function round(value: number, decimals: number = 2): number {
+  return Math.round(value * Math.pow(10, decimals)) / Math.pow(10, decimals)
 }
 
-function getQuarter(month: number): number {
-  return Math.floor((month - 1) / 3) + 1
+interface MonthlyBreakdownItem {
+  year: number
+  month: number
+  monthName: string
+  quarter: number
+  quarterLabel: string
+  daysInMonth: number
+  daysInBail: number
+  daysSameIndex: number
+  daysDiffIndex: number
+  indexValue: number
+  officeRentHT: number
+  parkingRentHT: number
+  chargesHT: number
+  taxesHT: number
+  franchiseHT: number
+  incentiveHT: number
+  totalHT: number
 }
 
-function getEndOfQuarter(year: number, quarter: number): Date {
-  const nextQuarterMonth = quarter * 3
-  return new Date(Date.UTC(year, nextQuarterMonth, 0))
-}
-
-function dateToExcel(date: Date): number {
-  const epoch = new Date(Date.UTC(1899, 11, 30))
-  return Math.floor((date.getTime() - epoch.getTime()) / 86400000)
-}
-
-function parseISODate(isoString: string | null | undefined): Date | null {
-  if (!isoString) return null
-  const date = new Date(isoString)
-  return isNaN(date.getTime()) ? null : date
-}
-
-function roundCurrency(value: number): number {
-  return Math.round((value + Number.EPSILON) * 100) / 100
-}
-
-function padRow(
-  values: CellValue[],
-  targetCol: number,
-  legendValue?: string
-): CellValue[] {
-  const row: CellValue[] = [...values]
-  while (row.length < targetCol) {
-    row.push("")
-  }
-  if (legendValue) {
-    row.push(legendValue)
-  }
-  return row
-}
-
-interface ColumnData {
-  header1: string
-  header2: string
-  daysInMonth: number | null
-  daysSameIndex: number | null
-  daysDiffIndex: number | null
-  indexValue: number | null
-  depositHT: number | null
-  franchiseHT: number | null
-  incentivesHT: number | null
-  officeRentHT: number | null
-  parkingRentHT: number | null
-  chargesHT: number | null
-  taxesHT: number | null
-  otherHT: number | null
-  totalHT: number | null
-  isYearTotal?: boolean
-  isQuarterTotal?: boolean
-}
-
-function buildClientTemplateExport(
+export function generateRentCalculationExcel(
   result: RentCalculationResult
-): XLSX.WorkSheet {
+): Buffer {
   const extracted = result.extractedData
-  const input = result.scheduleInput
-  const summary = result.rentSchedule?.summary
   const schedule = result.rentSchedule?.schedule || []
+  const summary = result.rentSchedule?.summary
+  const input = result.scheduleInput
 
-  const startDateStr =
-    getValue(extracted.calendar.effectiveDate) ||
-    getValue(extracted.calendar.signatureDate)
-  const startDate = parseISODate(startDateStr)
-  const endDate = parseISODate(input?.endDate)
-
-  const baseIndexValue = input?.baseIndexValue || 0
-  const tcam = summary?.tcam || 0
-  const frequency = getValue(extracted.rent.paymentFrequency)
-  const isQuarterly = frequency === "quarterly"
-
-  const duration = getValue(extracted.calendar.duration) || 9
-  const annualRent = getValue(extracted.rent.annualRentExclTaxExclCharges)
-  const quarterlyRent = getValue(extracted.rent.quarterlyRentExclTaxExclCharges)
-  const parkingRentAnnual = getValue(
-    extracted.rent.annualParkingRentExclCharges
-  )
-
-  const officeRentPerQuarter = annualRent ? annualRent / 4 : quarterlyRent || 0
-  const parkingRentPerQuarter = parkingRentAnnual ? parkingRentAnnual / 4 : 0
-  const monthlyOfficeRent = officeRentPerQuarter / 3
-  const monthlyParkingRent = parkingRentPerQuarter / 3
-
-  const depositMonths = input?.depositMonths ?? 3
-  const franchiseMonths = input?.franchiseMonths ?? 0
-  const incentiveAmount = input?.incentiveAmount ?? 0
-  const chargesGrowthRate = input?.chargesGrowthRate ?? 0.02
-  const chargesPerQuarter = input?.chargesHT ?? 0
-  const taxesPerQuarter = input?.taxesHT ?? 0
-
-  const data: CellValue[][] = []
-
-  // === SECTION 1: DONNÉES D'ENTRÉE ===
-  // Legend column at P (index 15)
-  const LEGEND_COL = 15
-  data.push(padRow(["Données"], LEGEND_COL, "LÉGENDE"))
-
-  const effectiveDateDisplay = startDate ? formatDateFR(startDateStr) : "—"
-  data.push(
-    padRow(
-      ["Date de prise d'effet du bail", effectiveDateDisplay],
-      LEGEND_COL,
-      "🔵 Données extraites du bail"
-    )
-  )
-
-  // Calcul fin premier trimestre
-  let endQ1Date: Date | null = null
-  let daysUntilEndQ1 = 0
-  if (startDate) {
-    const q = getQuarter(startDate.getUTCMonth() + 1)
-    endQ1Date = getEndOfQuarter(startDate.getUTCFullYear(), q)
-    daysUntilEndQ1 =
-      Math.round((endQ1Date.getTime() - startDate.getTime()) / 86400000) + 1
-  }
-
-  const endQ1DateDisplay = endQ1Date
-    ? formatDateFR(endQ1Date.toISOString())
-    : "—"
-  data.push(
-    padRow(
+  if (!schedule.length || !input) {
+    const wb = XLSX.utils.book_new()
+    const ws = XLSX.utils.aoa_to_sheet([
+      ["Aucun échéancier de loyer disponible"],
+      [""],
       [
-        "Fin du premier trimestre à compter de la prise d'effet",
-        endQ1DateDisplay,
+        "Les données nécessaires pour calculer l'échéancier n'ont pas pu être extraites du bail.",
       ],
-      LEGEND_COL,
-      "🟢 Calculs automatiques"
-    )
-  )
-
-  data.push(
-    padRow(
-      [
-        "# jours de la date de prise d'effet jusqu'à fin de trimestre",
-        daysUntilEndQ1,
-      ],
-      LEGEND_COL
-    )
-  )
-
-  const endDateDisplay = endDate ? formatDateFR(input?.endDate) : "—"
-  data.push(
-    padRow(
-      ["Date de fin de bail", endDateDisplay, `(durée: ${duration} ans)`],
-      LEGEND_COL,
-      "🟡 Indices INSEE publiés"
-    )
-  )
-
-  data.push(
-    padRow(["Échéance de paiement", formatFrequency(frequency)], LEGEND_COL)
-  )
-
-  const indexTypeName = input?.indexType || "ILAT"
-  // Use extracted reference quarter from lease if available, otherwise calculate from start date
-  const extractedRefQuarter = getValue(extracted.indexation?.referenceQuarter)
-  const indexRef = extractedRefQuarter
-    ? extractedRefQuarter
-    : startDate
-      ? `${indexTypeName} T${getQuarter(startDate.getUTCMonth() + 1)} ${startDate.getUTCFullYear()}`
-      : "—"
-
-  data.push(
-    padRow(
-      ["Indice de référence", indexRef],
-      LEGEND_COL,
-      "🔴 Projections TCAM (estimées)"
-    )
-  )
-
-  data.push(
-    padRow(
-      [
-        "TCAM = taux d'évolution moyen de l'indice",
-        "",
-        "Évolution entre dernier indice connu et indice de référence",
-      ],
-      LEGEND_COL
-    )
-  )
-
-  const tcamDisplay = tcam ? `${(tcam * 100).toFixed(4)}%` : "—"
-  data.push(padRow(["TCAM valeur", tcamDisplay], LEGEND_COL))
-
-  data.push(padRow(["Dépôt de garantie (en mois)", depositMonths], LEGEND_COL))
-
-  // Franchise
-  let franchiseEndDate: Date | null = null
-  let franchiseDays = 0
-  if (startDate && franchiseMonths > 0) {
-    franchiseEndDate = new Date(
-      Date.UTC(
-        startDate.getUTCFullYear(),
-        startDate.getUTCMonth() + franchiseMonths,
-        startDate.getUTCDate() - 1
-      )
-    )
-    franchiseDays =
-      Math.round(
-        (franchiseEndDate.getTime() - startDate.getTime()) / 86400000
-      ) + 1
-  }
-
-  const franchiseEndDisplay = franchiseEndDate
-    ? formatDateFR(franchiseEndDate.toISOString())
-    : ""
-  data.push(
-    padRow(
-      [
-        "Franchise (en mois)",
-        franchiseMonths || "—",
-        franchiseEndDisplay,
-        franchiseEndDisplay ? "(date de fin franchise)" : "",
-        "",
-        "",
-        "",
-        "",
-        franchiseDays || "",
-        franchiseDays ? "(jours de franchise)" : "",
-      ],
-      LEGEND_COL
-    )
-  )
-
-  data.push(
-    padRow(
-      [
-        "Mesures d'accompagnement",
-        incentiveAmount > 0 ? formatCurrency(incentiveAmount) : "—",
-        incentiveAmount > 0 ? "de travaux pris en charge" : "",
-      ],
-      LEGEND_COL
-    )
-  )
-
-  const chargesRateDisplay = `${(chargesGrowthRate * 100).toFixed(1)}%`
-  data.push(
-    padRow(
-      ["Hypothèse augmentation charges/taxes (par an)", chargesRateDisplay],
-      LEGEND_COL
-    )
-  )
-
-  // Séparateur
-  data.push([])
-  data.push([])
-
-  // === SECTION 2: CALCUL DONNÉES FINANCIÈRES ===
-  if (schedule.length === 0 || !startDate) {
-    data.push(["Calcul données financières"])
-    data.push([
-      "Aucun échéancier calculé - données insuffisantes pour le calcul",
     ])
-    const ws = XLSX.utils.aoa_to_sheet(data)
-    ws["!cols"] = [{ wch: 55 }, { wch: 18 }, { wch: 18 }]
-    return ws
+    XLSX.utils.book_append_sheet(wb, ws, "Calcul loyer")
+    const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" })
+    return Buffer.from(buffer)
   }
 
-  // Build column data from schedule
-  const columns: ColumnData[] = []
+  const wb = XLSX.utils.book_new()
+  const wsData: any[][] = []
 
-  // Base bail column - use period-appropriate rent values
-  const baseOfficeRent = isQuarterly ? officeRentPerQuarter : monthlyOfficeRent
-  const baseParkingRent = isQuarterly
-    ? parkingRentPerQuarter
-    : monthlyParkingRent
-  const baseCharges = isQuarterly ? chargesPerQuarter : chargesPerQuarter / 3
-  const baseTaxes = isQuarterly ? taxesPerQuarter : taxesPerQuarter / 3
+  // ========== SECTION DONNÉES (Lignes 1-18) ==========
+  wsData.push([""]) // Ligne 1
+  wsData.push(["", "Données"])
 
-  const baseDeposit = (monthlyOfficeRent + monthlyParkingRent) * depositMonths
-  const baseFranchise =
-    (monthlyOfficeRent + monthlyParkingRent) * franchiseMonths
-  columns.push({
-    header1: "Base bail",
-    header2: isQuarterly ? "Trimestriel" : "Mensuel",
-    daysInMonth: null,
-    daysSameIndex: null,
-    daysDiffIndex: null,
-    indexValue: baseIndexValue,
-    depositHT: roundCurrency(baseDeposit),
-    franchiseHT: roundCurrency(baseFranchise),
-    incentivesHT: incentiveAmount,
-    officeRentHT: roundCurrency(baseOfficeRent),
-    parkingRentHT: roundCurrency(baseParkingRent),
-    chargesHT: roundCurrency(baseCharges),
-    taxesHT: roundCurrency(baseTaxes),
-    otherHT: 0,
-    totalHT: roundCurrency(
-      baseOfficeRent + baseParkingRent + baseCharges + baseTaxes
-    ),
-  })
+  const effectiveDate = getValue(extracted.calendar.effectiveDate)
+  const duration = getValue(extracted.calendar.duration) || 9
+  const frequency = getValue(extracted.rent.paymentFrequency)
+  const indexType = getValue(extracted.indexation?.indexationType) || "ILAT"
+  const referenceQuarter = getValue(extracted.indexation?.referenceQuarter)
+  const tcam = summary?.tcam || 0
+  const depositMonths = input.depositMonths || 3
+  const franchiseMonths = input.franchiseMonths || 0
+  const chargesGrowth = input.chargesGrowthRate || 0.02
 
-  // Group schedule by year and quarter
-  const yearQuarterMap = new Map<string, RentSchedulePeriod[]>()
-  for (const period of schedule) {
-    const pDate = new Date(period.periodStart)
-    const year = pDate.getUTCFullYear()
-    const q = period.quarter || getQuarter(pDate.getUTCMonth() + 1)
-    const key = `${year}-Q${q}`
-    if (!yearQuarterMap.has(key)) {
-      yearQuarterMap.set(key, [])
-    }
-    yearQuarterMap.get(key)!.push(period)
-  }
+  const startDate = effectiveDate
+    ? new Date(effectiveDate)
+    : new Date(schedule[0].periodStart)
+  const endDateObj =
+    schedule.length > 0
+      ? new Date(schedule[schedule.length - 1].periodEnd)
+      : (() => {
+          const end = new Date(startDate)
+          end.setUTCFullYear(end.getUTCFullYear() + duration)
+          return end
+        })()
 
-  // Accumulate year totals
-  const yearTotals = new Map<
-    number,
-    {
-      franchiseHT: number
-      incentivesHT: number
-      officeRentHT: number
-      parkingRentHT: number
-      chargesHT: number
-      taxesHT: number
-      totalHT: number
-    }
-  >()
+  // Fin premier trimestre
+  const startQuarter = Math.floor(startDate.getUTCMonth() / 3) + 1
+  const endQ1Month = startQuarter * 3 - 1
+  const endQ1 = new Date(
+    Date.UTC(
+      startDate.getUTCFullYear(),
+      endQ1Month,
+      getDaysInMonth(startDate.getUTCFullYear(), endQ1Month)
+    )
+  )
+  const daysUntilEndQ1 =
+    Math.floor((endQ1.getTime() - startDate.getTime()) / 86400000) + 1
 
-  let currentYear: number | null = null
-  let franchiseRemaining = franchiseMonths
-  let incentiveRemaining = incentiveAmount
+  wsData.push([
+    "",
+    "Date de prise d'effet du bail",
+    formatDateForExcel(effectiveDate),
+    "",
+    "par exemple",
+  ])
+  wsData.push([
+    "",
+    "Fin du premier trimestre à compter de la prise d'effet",
+    formatDateForExcel(endQ1.toISOString().split("T")[0]),
+    "",
+    `(fin T${startQuarter} ${startDate.getUTCFullYear().toString().slice(-2)})`,
+  ])
+  wsData.push([
+    "",
+    "# jours de la date de prise d'effet jusqu'à fin de trimestre",
+    daysUntilEndQ1,
+  ])
+  const endDateStr = endDateObj.toISOString().split("T")[0]
+  wsData.push([
+    "",
+    "Date de fin de bail",
+    formatDateForExcel(endDateStr || null),
+    "",
+    "(peut être directement indiquée dans le bail)",
+  ])
+  wsData.push([
+    "",
+    "Echéance de paiement",
+    frequency === "quarterly" ? "Trimestriel" : "Mensuel",
+    "",
+    "par exemple (peut être mensuel)",
+  ])
+  wsData.push([
+    "",
+    "Indice de référence",
+    referenceQuarter || `${indexType} (à déterminer)`,
+    "",
+    "par exemple (aussi possible ILC)",
+  ])
+  wsData.push([
+    "",
+    "TCAM = taux d'évolution moyen de l'indice",
+    "",
+    "",
+    "Evolution à compter du dernier indice connu",
+  ])
+  wsData.push(["", "TCAM valeur", tcam ? round(tcam, 6) : 0])
+  wsData.push(["", "Dépôt de garantie (en mois)", depositMonths])
+  wsData.push(["", "Franchise (en mois)", franchiseMonths])
+  wsData.push([
+    "",
+    "Echéance de paiement franchise",
+    "Mensuellement à compter de la date de prise d'effet",
+    "",
+    "par exemple",
+  ])
+  wsData.push(["", "Mesures d'accompagnement", "—", "", "par exemple"])
+  wsData.push([
+    "",
+    "Echéance de paiement mesures d'accompagnement",
+    "Sur présentation de facture",
+    "",
+    "par exemple",
+  ])
+  wsData.push([
+    "",
+    "Hypothèses augmentation charges et taxes",
+    chargesGrowth,
+    "",
+    "choix arbitraire",
+  ])
+  wsData.push([""]) // Ligne 17
+  wsData.push([""]) // Ligne 18
 
-  // Sorted keys
-  const sortedKeys = Array.from(yearQuarterMap.keys()).sort()
+  // ========== CALCUL DONNÉES FINANCIÈRES (Ligne 19+) ==========
+  wsData.push([
+    "",
+    "Calcul données financières",
+    "Taux indice connu (publié sur site INSEE)",
+  ])
 
-  for (const key of sortedKeys) {
-    const periods = yearQuarterMap.get(key)!
-    const [yearStr, qStr] = key.split("-")
-    const year = parseInt(yearStr, 10)
-    const quarter = parseInt(qStr.replace("Q", ""), 10)
+  // Build monthly breakdown
+  const monthly = buildMonthlyBreakdown(schedule, startDate, endDateObj, input)
 
-    // Initialize year totals
-    if (!yearTotals.has(year)) {
-      yearTotals.set(year, {
-        franchiseHT: 0,
-        incentivesHT: 0,
-        officeRentHT: 0,
-        parkingRentHT: 0,
-        chargesHT: 0,
-        taxesHT: 0,
-        totalHT: 0,
-      })
-    }
-
-    // Add year total column when year changes
-    if (currentYear !== null && year !== currentYear) {
-      const yt = yearTotals.get(currentYear)!
-      columns.push({
-        header1: String(currentYear),
-        header2: "",
-        daysInMonth: null,
-        daysSameIndex: null,
-        daysDiffIndex: null,
-        indexValue: null,
-        depositHT: null,
-        franchiseHT: roundCurrency(yt.franchiseHT),
-        incentivesHT: roundCurrency(yt.incentivesHT),
-        officeRentHT: roundCurrency(yt.officeRentHT),
-        parkingRentHT: roundCurrency(yt.parkingRentHT),
-        chargesHT: roundCurrency(yt.chargesHT),
-        taxesHT: roundCurrency(yt.taxesHT),
-        otherHT: 0,
-        totalHT: roundCurrency(yt.totalHT),
-        isYearTotal: true,
-      })
-    }
-    currentYear = year
-
-    // Quarter totals
-    let qOffice = 0,
-      qParking = 0,
-      qCharges = 0,
-      qTaxes = 0
-    let qFranchise = 0,
-      qIncentive = 0,
-      qTotal = 0
-    let qIndex = periods[0]?.indexValue || baseIndexValue
-
-    // Process each period (month) in the quarter
-    for (const period of periods) {
-      const pDate = new Date(period.periodStart)
-      const month = pDate.getUTCMonth() + 1
-      const daysInMonth = getDaysInMonth(year, month)
-
-      // Calculate prorated days
-      let daysSameIndex = daysInMonth
-      let daysDiffIndex = 0
-
-      // Check if this is anniversary month
-      if (
-        startDate &&
-        month === startDate.getUTCMonth() + 1 &&
-        year > startDate.getUTCFullYear()
-      ) {
-        const anniversaryDay = startDate.getUTCDate()
-        daysSameIndex = anniversaryDay - 1
-        daysDiffIndex = daysInMonth - daysSameIndex
-      }
-
-      // Handle first month proratization
-      let prorataFactor = 1
-      if (
-        startDate &&
-        year === startDate.getUTCFullYear() &&
-        month === startDate.getUTCMonth() + 1 &&
-        startDate.getUTCDate() > 1
-      ) {
-        const remainingDays = daysInMonth - startDate.getUTCDate() + 1
-        prorataFactor = remainingDays / daysInMonth
-        daysSameIndex = remainingDays
-      }
-
-      // Calculate franchise for this period
-      let periodFranchise = 0
-      if (franchiseRemaining > 0) {
-        const franchiseMonthsApplied = Math.min(
-          franchiseRemaining,
-          prorataFactor
-        )
-        periodFranchise =
-          -(period.officeRentHT + period.parkingRentHT) * franchiseMonthsApplied
-        franchiseRemaining -= franchiseMonthsApplied
-      }
-
-      // Calculate incentive (one-time)
-      let periodIncentive = 0
-      if (incentiveRemaining > 0) {
-        periodIncentive = -incentiveRemaining
-        incentiveRemaining = 0
-      }
-
-      // Month column (for monthly payments) or accumulate for quarterly
-      if (!isQuarterly) {
-        columns.push({
-          header1: "",
-          header2: MONTH_NAMES_FR[month - 1],
-          daysInMonth,
-          daysSameIndex,
-          daysDiffIndex,
-          indexValue: null,
-          depositHT: null,
-          franchiseHT:
-            period.franchiseHT !== 0 ? roundCurrency(period.franchiseHT) : null,
-          incentivesHT:
-            period.incentivesHT !== 0
-              ? roundCurrency(period.incentivesHT)
-              : null,
-          officeRentHT: roundCurrency(period.officeRentHT),
-          parkingRentHT: roundCurrency(period.parkingRentHT),
-          chargesHT: roundCurrency(period.chargesHT),
-          taxesHT: roundCurrency(period.taxesHT),
-          otherHT: roundCurrency(period.otherCostsHT),
-          totalHT: roundCurrency(period.netRentHT),
-        })
-      }
-
-      // Accumulate quarter totals
-      qOffice += period.officeRentHT
-      qParking += period.parkingRentHT
-      qCharges += period.chargesHT
-      qTaxes += period.taxesHT
-      qFranchise += period.franchiseHT
-      qIncentive += period.incentivesHT
-      qTotal += period.netRentHT
-      qIndex = period.indexValue
-    }
-
-    // Quarter summary column
-    const qCol: ColumnData = {
-      header1: `${quarter}T${String(year).slice(2)}`,
-      header2: "",
-      daysInMonth: null,
-      daysSameIndex: periods.reduce((sum, p) => {
-        const d = new Date(p.periodStart)
-        return sum + getDaysInMonth(d.getUTCFullYear(), d.getUTCMonth() + 1)
-      }, 0),
-      daysDiffIndex: null,
-      indexValue: qIndex,
-      depositHT: roundCurrency(
-        (monthlyOfficeRent + monthlyParkingRent) *
-          depositMonths *
-          (qIndex / baseIndexValue)
-      ),
-      franchiseHT: qFranchise !== 0 ? roundCurrency(qFranchise) : null,
-      incentivesHT: qIncentive !== 0 ? roundCurrency(qIncentive) : null,
-      officeRentHT: roundCurrency(qOffice),
-      parkingRentHT: roundCurrency(qParking),
-      chargesHT: roundCurrency(qCharges),
-      taxesHT: roundCurrency(qTaxes),
-      otherHT: 0,
-      totalHT: roundCurrency(qTotal),
-      isQuarterTotal: true,
-    }
-
-    // Insert quarter column before month columns for quarterly display
-    if (isQuarterly) {
-      columns.push(qCol)
-    } else {
-      // Find position to insert quarter header
-      const insertPos = columns.length - periods.length
-      columns.splice(insertPos, 0, qCol)
-    }
-
-    // Update year totals
-    const yt = yearTotals.get(year)!
-    yt.franchiseHT += qFranchise
-    yt.incentivesHT += qIncentive
-    yt.officeRentHT += qOffice
-    yt.parkingRentHT += qParking
-    yt.chargesHT += qCharges
-    yt.taxesHT += qTaxes
-    yt.totalHT += qTotal
-  }
-
-  // Add final year total
-  if (currentYear !== null) {
-    const yt = yearTotals.get(currentYear)!
-    columns.push({
-      header1: String(currentYear),
-      header2: "",
-      daysInMonth: null,
-      daysSameIndex: null,
-      daysDiffIndex: null,
-      indexValue: null,
-      depositHT: null,
-      franchiseHT: roundCurrency(yt.franchiseHT),
-      incentivesHT: roundCurrency(yt.incentivesHT),
-      officeRentHT: roundCurrency(yt.officeRentHT),
-      parkingRentHT: roundCurrency(yt.parkingRentHT),
-      chargesHT: roundCurrency(yt.chargesHT),
-      taxesHT: roundCurrency(yt.taxesHT),
-      otherHT: 0,
-      totalHT: roundCurrency(yt.totalHT),
-      isYearTotal: true,
-    })
-  }
-
-  // Build rows from columns
-  data.push(["Calcul données financières"])
-
-  const headerRow1: CellValue[] = [""]
-  const headerRow2: CellValue[] = [""]
-  const daysRow: CellValue[] = ["# jours / mois"]
-  const daysSameRow: CellValue[] = [
+  // Ligne 20-21 : Headers
+  const headerRow1: any[] = ["", "", "Base bail", ""]
+  const headerRow2: any[] = ["", "", frequency || "Trimestriel", ""]
+  const daysRow: any[] = ["", "# jours / mois", "", ""]
+  const sameDaysRow: any[] = [
+    "",
     "# jours même indice jusqu'à fin de trimestre",
+    "",
+    "",
   ]
-  const daysDiffRow: CellValue[] = [
+  const diffDaysRow: any[] = [
+    "",
     "# jours indice différent jusqu'à fin de trimestre",
+    "",
+    "",
   ]
-  const indexRow: CellValue[] = ["Taux indice"]
-  const depositRow: CellValue[] = ["Dépôt de garantie"]
-  const franchiseRow: CellValue[] = ["Franchise"]
-  const incentiveRow: CellValue[] = ["Mesures d'accompagnement"]
-  const officeRow: CellValue[] = ["Loyer bureaux"]
-  const parkingRow: CellValue[] = ["Loyer parking"]
-  const chargesRow: CellValue[] = ["Provision pour charges"]
-  const taxesRow: CellValue[] = ["Provision pour taxes"]
-  const otherRow: CellValue[] = ["Autres (honoraires, assurance...)"]
-  const totalRow: CellValue[] = ["TOTAL HT"]
+  const indexRow: any[] = ["", "Taux indice", input.baseIndexValue || "", ""]
 
-  for (const col of columns) {
-    headerRow1.push(col.header1)
-    headerRow2.push(col.header2)
-    daysRow.push(col.daysInMonth ?? "")
-    daysSameRow.push(col.daysSameIndex ?? "")
-    daysDiffRow.push(col.daysDiffIndex ?? "")
-    indexRow.push(col.indexValue ?? "")
-    depositRow.push(col.depositHT ?? "")
-    franchiseRow.push(col.franchiseHT ?? "")
-    incentiveRow.push(col.incentivesHT ?? "")
-    officeRow.push(col.officeRentHT ?? "")
-    parkingRow.push(col.parkingRentHT ?? "")
-    chargesRow.push(col.chargesHT ?? "")
-    taxesRow.push(col.taxesHT ?? "")
-    otherRow.push(col.otherHT ?? "")
-    totalRow.push(col.totalHT ?? "")
+  // Data rows
+  const depositRow: any[] = [
+    "",
+    "Dépôt de garantie",
+    summary?.depositHT || 0,
+    "",
+  ]
+  const officeRentRow: any[] = ["", "Loyer bureaux HT HC", "", ""]
+  const parkingRentRow: any[] = ["", "Loyer parkings HT HC", "", ""]
+  const chargesRow: any[] = ["", "Charges HT", "", ""]
+  const taxesRow: any[] = ["", "Taxes HT", "", ""]
+  const franchiseRow: any[] = ["", "Franchise", "", ""]
+  const incentiveRow: any[] = ["", "Mesures d'accompagnement", "", ""]
+  const totalRow: any[] = ["", "Total HT", "", ""]
+
+  // Fill monthly columns
+  let lastQuarter = 0
+  for (const m of monthly) {
+    if (m.quarter !== lastQuarter) {
+      headerRow1.push(m.quarterLabel)
+      lastQuarter = m.quarter
+    } else {
+      headerRow1.push("")
+    }
+
+    headerRow2.push(m.monthName)
+    daysRow.push(m.daysInMonth)
+    sameDaysRow.push(m.daysSameIndex || 0)
+    diffDaysRow.push(m.daysDiffIndex || 0)
+    indexRow.push(round(m.indexValue, 2))
+
+    depositRow.push("")
+    officeRentRow.push(m.officeRentHT)
+    parkingRentRow.push(m.parkingRentHT)
+    chargesRow.push(m.chargesHT)
+    taxesRow.push(m.taxesHT)
+    franchiseRow.push(m.franchiseHT)
+    incentiveRow.push(m.incentiveHT)
+    totalRow.push(m.totalHT)
   }
 
-  data.push(headerRow1)
-  data.push(headerRow2)
-  data.push(daysRow)
-  data.push(daysSameRow)
-  data.push(daysDiffRow)
-  data.push(indexRow)
-  data.push(depositRow)
-  data.push(franchiseRow)
-  data.push(incentiveRow)
-  data.push(officeRow)
-  data.push(parkingRow)
-  data.push(chargesRow)
-  data.push(taxesRow)
-  data.push(otherRow)
-  data.push(totalRow)
+  wsData.push(headerRow1)
+  wsData.push(headerRow2)
+  wsData.push(daysRow)
+  wsData.push(sameDaysRow)
+  wsData.push(diffDaysRow)
+  wsData.push(indexRow)
+  wsData.push([""]) // Spacer
+  wsData.push(depositRow)
+  wsData.push(officeRentRow)
+  wsData.push(parkingRentRow)
+  wsData.push(chargesRow)
+  wsData.push(taxesRow)
+  wsData.push(franchiseRow)
+  wsData.push(incentiveRow)
+  wsData.push(totalRow)
 
   // Create worksheet
-  const ws = XLSX.utils.aoa_to_sheet(data)
+  const ws = XLSX.utils.aoa_to_sheet(wsData)
 
-  // Set column widths
-  const cols: XLSX.ColInfo[] = [{ wch: 52 }]
-  for (let i = 0; i < columns.length; i++) {
-    cols.push({ wch: 14 })
+  // Column widths
+  const cols: XLSX.ColInfo[] = [
+    { wch: 2 },
+    { wch: 50 },
+    { wch: 18 },
+    { wch: 3 },
+  ]
+  for (let i = 0; i < monthly.length; i++) {
+    cols.push({ wch: 12 })
   }
   ws["!cols"] = cols
 
-  // Apply number formatting
-  const range = XLSX.utils.decode_range(ws["!ref"] || "A1")
-  const dataStartRow = 17 // Row where financial data starts (0-indexed: Calcul données financières)
+  XLSX.utils.book_append_sheet(wb, ws, "Calcul loyer")
 
-  for (let R = dataStartRow; R <= range.e.r; R++) {
-    for (let C = 1; C <= range.e.c; C++) {
-      const addr = XLSX.utils.encode_cell({ r: R, c: C })
-      const cell = ws[addr]
-      if (cell && typeof cell.v === "number") {
-        // TCAM row uses percentage format
-        if (R === 8) {
-          cell.z = "0.0000%"
-        }
-        // Charges growth rate
-        else if (R === 13) {
-          cell.z = "0.00%"
-        }
-        // Index values
-        else if (R === dataStartRow + 5) {
-          cell.z = "0.00"
-        }
-        // Currency values
-        else if (R >= dataStartRow + 6 && cell.v !== 0) {
-          cell.z = "#,##0.00"
-        }
+  const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" })
+  return Buffer.from(buffer)
+}
+
+function buildMonthlyBreakdown(
+  schedule: any[],
+  startDate: Date,
+  endDate: Date,
+  input: any
+): MonthlyBreakdownItem[] {
+  const monthly: MonthlyBreakdownItem[] = []
+  let currentDate = new Date(
+    Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth(), 1)
+  )
+
+  const endYear = endDate.getUTCFullYear()
+  const endMonth = endDate.getUTCMonth()
+  const anniversaryDay = startDate.getUTCDate()
+  const anniversaryMonth = startDate.getUTCMonth()
+
+  while (
+    currentDate.getUTCFullYear() < endYear ||
+    (currentDate.getUTCFullYear() === endYear &&
+      currentDate.getUTCMonth() <= endMonth)
+  ) {
+    const year = currentDate.getUTCFullYear()
+    const month = currentDate.getUTCMonth()
+    const monthName = MONTH_NAMES_FR[month]
+    const quarter = Math.floor(month / 3) + 1
+    const quarterLabel = `${quarter}T${year.toString().slice(-2)}`
+
+    const daysInMonth = getDaysInMonth(year, month)
+    const monthStart = new Date(Date.UTC(year, month, 1))
+    const monthEnd = new Date(Date.UTC(year, month, daysInMonth))
+
+    const effectiveStart = monthStart < startDate ? startDate : monthStart
+    const effectiveEnd = monthEnd > endDate ? endDate : monthEnd
+
+    const daysInBail =
+      effectiveStart <= effectiveEnd
+        ? Math.floor(
+            (effectiveEnd.getTime() - effectiveStart.getTime()) / 86400000
+          ) + 1
+        : 0
+
+    // Anniversary detection
+    const isAnniversaryMonth =
+      month === anniversaryMonth && year > startDate.getUTCFullYear()
+    let daysSameIndex = daysInBail
+    let daysDiffIndex = 0
+
+    if (isAnniversaryMonth && daysInBail > 0) {
+      const anniversaryDate = new Date(Date.UTC(year, month, anniversaryDay))
+      if (
+        anniversaryDate >= effectiveStart &&
+        anniversaryDate <= effectiveEnd
+      ) {
+        daysSameIndex = anniversaryDay - effectiveStart.getUTCDate()
+        if (daysSameIndex < 0) daysSameIndex = 0
+        daysDiffIndex = daysInBail - daysSameIndex
       }
     }
-  }
 
-  // Format date cells (Excel serial dates)
-  const dateCells = ["B2", "B3", "B5"]
-  for (const addr of dateCells) {
-    const cell = ws[addr]
-    if (cell && typeof cell.v === "number") {
-      cell.z = "DD/MM/YYYY"
+    // Find overlapping periods
+    const overlappingPeriods = schedule.filter((p: any) => {
+      const pStart = new Date(p.periodStart)
+      const pEnd = new Date(p.periodEnd)
+      return pStart <= monthEnd && pEnd >= monthStart
+    })
+
+    let officeRent = 0
+    let parkingRent = 0
+    let charges = 0
+    let taxes = 0
+    let franchise = 0
+    let indexValue = input.baseIndexValue || 0
+
+    for (const p of overlappingPeriods) {
+      const pStart = new Date(p.periodStart)
+      const pEnd = new Date(p.periodEnd)
+
+      const overlapStart = pStart > monthStart ? pStart : monthStart
+      const overlapEnd = pEnd < monthEnd ? pEnd : monthEnd
+
+      const daysOverlap =
+        Math.floor((overlapEnd.getTime() - overlapStart.getTime()) / 86400000) +
+        1
+
+      const periodTotalDays =
+        Math.floor((pEnd.getTime() - pStart.getTime()) / 86400000) + 1
+
+      const ratio = daysOverlap / periodTotalDays
+
+      officeRent += (p.officeRentHT || 0) * ratio
+      parkingRent += (p.parkingRentHT || 0) * ratio
+      charges += (p.chargesHT || 0) * ratio
+      taxes += (p.taxesHT || 0) * ratio
+      franchise += (p.franchiseHT || 0) * ratio
+      indexValue = p.indexValue || indexValue
     }
+
+    monthly.push({
+      year,
+      month,
+      monthName,
+      quarter,
+      quarterLabel,
+      daysInMonth,
+      daysInBail,
+      daysSameIndex,
+      daysDiffIndex,
+      indexValue,
+      officeRentHT: round(officeRent),
+      parkingRentHT: round(parkingRent),
+      chargesHT: round(charges),
+      taxesHT: round(taxes),
+      franchiseHT: round(franchise),
+      incentiveHT: 0,
+      totalHT: round(officeRent + parkingRent + charges + taxes + franchise),
+    })
+
+    currentDate = new Date(Date.UTC(year, month + 1, 1))
+
+    if (monthly.length > 120) break
   }
 
-  return ws
+  return monthly
 }
 
 export function exportRentCalculationToExcel(
   result: RentCalculationResult
 ): void {
-  const workbook = XLSX.utils.book_new()
-
-  const sheet = buildClientTemplateExport(result)
-  XLSX.utils.book_append_sheet(workbook, sheet, "Calcul loyer")
-
-  const fileName = result.fileName?.replace(/\.pdf$/i, "") || "calcul-loyer"
-  XLSX.writeFile(workbook, `${fileName}-echeancier.xlsx`)
+  const buffer = generateRentCalculationExcel(result)
+  const uint8Array = new Uint8Array(buffer)
+  const blob = new Blob([uint8Array], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement("a")
+  link.href = url
+  link.download = `${result.fileName.replace(/\.[^/.]+$/, "")}_calcul-loyer.xlsx`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
 }
 
-export function exportRentCalculationToExcelBuffer(
-  result: RentCalculationResult
-): Buffer {
-  const workbook = XLSX.utils.book_new()
-
-  const sheet = buildClientTemplateExport(result)
-  XLSX.utils.book_append_sheet(workbook, sheet, "Calcul loyer")
-
-  return Buffer.from(XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }))
-}
-
-export function getRentCalculationExcelFileName(
-  result: RentCalculationResult
-): string {
-  const baseName = result.fileName?.replace(/\.pdf$/i, "") || "calcul-loyer"
-  return `${baseName}-echeancier.xlsx`
-}
-
-export function isRentCalculationResult(data: unknown): boolean {
-  if (!data || typeof data !== "object") return false
-  const obj = data as Record<string, unknown>
-
-  if (obj.toolType === "calculation-rent") return true
-
-  if (obj.extractedData && typeof obj.extractedData === "object") {
-    const extracted = obj.extractedData as Record<string, unknown>
-    return (
-      extracted.calendar !== undefined &&
-      extracted.rent !== undefined &&
-      obj.rentSchedule !== undefined
-    )
-  }
-
-  return false
+export function isRentCalculationResult(
+  data: unknown
+): data is RentCalculationResult {
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    "toolType" in data &&
+    data.toolType === "calculation-rent" &&
+    "extractedData" in data &&
+    "rentSchedule" in data
+  )
 }
