@@ -94,6 +94,9 @@ export function computeLeaseRentSchedule(
   const periodType: RentSchedulePeriod["periodType"] =
     paymentFrequency === "monthly" ? "month" : "quarter"
 
+  // Calculate the first anniversary date (1 year after start)
+  const firstAnniversaryDate = addYears(startDate, 1)
+
   for (const period of timeline) {
     const isFullPeriod = period.billableDays === period.totalDays
 
@@ -105,10 +108,19 @@ export function computeLeaseRentSchedule(
       ? 1
       : period.billableDays / averageDaysPerPeriod
 
-    // Detect index changes within billing period
-    const anniversariesInPeriod = parsedPoints.filter(
-      (p) => p.date > period.billableStart && p.date <= period.billableEnd
+    // Check if we're still in the first year (before first anniversary)
+    const isFirstYear = period.billableEnd < firstAnniversaryDate
+
+    // Find the anniversary that falls within or has already passed for this period
+    // An anniversary affects a period if it falls within [periodStart, periodEnd]
+    const anniversaryInPeriod = parsedPoints.find(
+      (p) => p.date >= period.billableStart && p.date <= period.billableEnd
     )
+
+    // Find the last anniversary that has passed before this period started
+    const lastPassedAnniversary = parsedPoints
+      .filter((p) => p.date < period.billableStart)
+      .sort((a, b) => b.date.getTime() - a.date.getTime())[0]
 
     let officeRent = 0
     let parkingRent = 0
@@ -116,25 +128,34 @@ export function computeLeaseRentSchedule(
     let indexValue = 0
     let indexFactor = 0
 
-    if (anniversariesInPeriod.length > 0) {
-      // Split calculation when index changes mid-period
-      const anniversary = anniversariesInPeriod[0]
+    if (isFirstYear) {
+      // First year: no indexation, use base rent
+      indexValue = input.baseIndexValue
+      indexFactor = 1
 
+      officeRent = proration > 0 ? roundCurrency(officeRentHT * proration) : 0
+      parkingRent = proration > 0 ? roundCurrency(parkingRentHT * proration) : 0
+      otherCosts = proration > 0 ? roundCurrency(otherCostsHT * proration) : 0
+    } else if (anniversaryInPeriod) {
+      // Anniversary falls within this period - split calculation
       const daysBeforeAnniversary = differenceInDaysInclusive(
         period.billableStart,
-        addDays(anniversary.date, -1)
+        addDays(anniversaryInPeriod.date, -1)
       )
-      const indexBeforeAnniversary = indexResolver(period.billableStart)
+      // Use the previous index (or base) for days before anniversary
+      const indexBeforeAnniversary = lastPassedAnniversary
+        ? lastPassedAnniversary.indexValue
+        : input.baseIndexValue
       const factorBeforeAnniversary =
         indexBeforeAnniversary / input.baseIndexValue
       const prorationBeforeAnniversary =
         daysBeforeAnniversary / averageDaysPerPeriod
 
       const daysFromAnniversary = differenceInDaysInclusive(
-        anniversary.date,
+        anniversaryInPeriod.date,
         period.billableEnd
       )
-      const indexFromAnniversary = anniversary.indexValue
+      const indexFromAnniversary = anniversaryInPeriod.indexValue
       const factorFromAnniversary = indexFromAnniversary / input.baseIndexValue
       const prorationFromAnniversary =
         daysFromAnniversary / averageDaysPerPeriod
@@ -153,10 +174,12 @@ export function computeLeaseRentSchedule(
           otherCostsHT * prorationFromAnniversary * factorFromAnniversary
       )
 
+      // Display the new index value for this period
       indexValue = indexFromAnniversary
       indexFactor = factorFromAnniversary
-    } else {
-      indexValue = indexResolver(period.billableStart)
+    } else if (lastPassedAnniversary) {
+      // We're past an anniversary, use the last passed anniversary's index
+      indexValue = lastPassedAnniversary.indexValue
       indexFactor = indexValue / input.baseIndexValue
 
       officeRent =
@@ -171,6 +194,14 @@ export function computeLeaseRentSchedule(
         proration > 0
           ? roundCurrency(otherCostsHT * proration * indexFactor)
           : 0
+    } else {
+      // Fallback: use base index (shouldn't happen in normal flow)
+      indexValue = input.baseIndexValue
+      indexFactor = 1
+
+      officeRent = proration > 0 ? roundCurrency(officeRentHT * proration) : 0
+      parkingRent = proration > 0 ? roundCurrency(parkingRentHT * proration) : 0
+      otherCosts = proration > 0 ? roundCurrency(otherCostsHT * proration) : 0
     }
 
     const yearIndex = fullYearsSince(startDate, period.billableStart)

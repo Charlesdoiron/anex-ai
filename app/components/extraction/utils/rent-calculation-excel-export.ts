@@ -25,13 +25,13 @@ function getDaysInMonth(year: number, monthIndex: number): number {
   return new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate()
 }
 
-function formatDateForExcel(
-  isoDate: string | null | undefined
-): number | string {
+function formatDateForExcel(isoDate: string | null | undefined): string {
   if (!isoDate) return ""
   const date = new Date(isoDate)
-  const epoch = new Date(Date.UTC(1899, 11, 30))
-  return Math.floor((date.getTime() - epoch.getTime()) / 86400000)
+  const day = String(date.getUTCDate()).padStart(2, "0")
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0")
+  const year = date.getUTCFullYear()
+  return `${day}/${month}/${year}`
 }
 
 function getValue<T>(field: { value: T } | undefined | null): T | null {
@@ -163,7 +163,11 @@ export function generateRentCalculationExcel(
   wsData.push([
     "",
     "Indice de référence",
-    referenceQuarter || `${indexType} (à déterminer)`,
+    referenceQuarter
+      ? referenceQuarter.includes(indexType)
+        ? referenceQuarter
+        : `${indexType} ${referenceQuarter}`
+      : `${indexType} (à déterminer)`,
     "",
     "par exemple (aussi possible ILC)",
   ])
@@ -374,16 +378,79 @@ function buildMonthlyBreakdown(
       return pStart <= monthEnd && pEnd >= monthStart
     })
 
+    // Check if this is the last month of a quarter (for quarterly payments)
+    const paymentFrequency = input.paymentFrequency || "quarterly"
+    const isQuarterlyPayment = paymentFrequency === "quarterly"
+
+    // Determine if this month is the last month of a quarter
+    // Quarters: Jan-Mar (ends Mar=2), Apr-Jun (ends Jun=5), Jul-Sep (ends Sep=8), Oct-Dec (ends Dec=11)
+    // Last month of quarter: month % 3 === 2 (March, June, September, December)
+    const isLastMonthOfQuarter = month % 3 === 2
+
     let officeRent = 0
     let parkingRent = 0
     let charges = 0
     let taxes = 0
     let franchise = 0
-    let indexValue = input.baseIndexValue || 0
+    const baseIndex = input.baseIndexValue || 0
+    let indexValue = baseIndex
+
+    // Calculate how many full years (anniversaries) have passed
+    // The index changes on the MONTH of the anniversary (not the exact day)
+    // Example: if lease starts Dec 19, 2016 (anniversary month = December):
+    //   - Before December 2017: 0 anniversaries passed -> use base index
+    //   - December 2017 onward: 1 anniversary passed -> use index from 1st anniversary
+    //   - December 2018 onward: 2 anniversaries passed -> use index from 2nd anniversary
+
+    let anniversariesPassed = 0
+
+    // Count how many anniversary months have been reached
+    // Anniversary month is when the new index takes effect
+    for (let y = startDate.getUTCFullYear() + 1; y <= year; y++) {
+      // Check if we've reached or passed the anniversary month in year y
+      if (y < year || (y === year && month >= anniversaryMonth)) {
+        anniversariesPassed++
+      }
+    }
+
+    // Find the corresponding index value from the schedule
+    // The schedule has index values that apply after each anniversary
+    const knownIndexPoints = (input.knownIndexPoints || []) as Array<{
+      effectiveDate: string
+      indexValue: number
+    }>
+
+    if (anniversariesPassed > 0 && knownIndexPoints.length > 0) {
+      // Use the index from the last passed anniversary
+      const pointIndex = Math.min(
+        anniversariesPassed - 1,
+        knownIndexPoints.length - 1
+      )
+      indexValue = knownIndexPoints[pointIndex]?.indexValue || baseIndex
+    }
 
     for (const p of overlappingPeriods) {
       const pStart = new Date(p.periodStart)
       const pEnd = new Date(p.periodEnd)
+
+      // For quarterly payments, only show rent on the last month of the quarter
+      // Check if this period ends in this month (last month of quarter)
+      const periodEndMonth = pEnd.getUTCMonth()
+      const periodEndYear = pEnd.getUTCFullYear()
+      const isPeriodEndingThisMonth =
+        periodEndMonth === month && periodEndYear === year
+
+      // For quarterly payments: only show rent if:
+      // 1. This is the last month of a quarter (March, June, September, December), OR
+      // 2. A period ends in this month (for prorated first/last periods)
+      if (
+        isQuarterlyPayment &&
+        !isLastMonthOfQuarter &&
+        !isPeriodEndingThisMonth
+      ) {
+        // Skip rent calculation for non-quarter-end months in quarterly leases
+        continue
+      }
 
       const overlapStart = pStart > monthStart ? pStart : monthStart
       const overlapEnd = pEnd < monthEnd ? pEnd : monthEnd
@@ -395,14 +462,19 @@ function buildMonthlyBreakdown(
       const periodTotalDays =
         Math.floor((pEnd.getTime() - pStart.getTime()) / 86400000) + 1
 
-      const ratio = daysOverlap / periodTotalDays
+      // For quarterly payments on quarter-end month, use full period rent
+      // For monthly payments or prorated periods, use ratio
+      const ratio =
+        isQuarterlyPayment && isLastMonthOfQuarter && isPeriodEndingThisMonth
+          ? 1
+          : daysOverlap / periodTotalDays
 
       officeRent += (p.officeRentHT || 0) * ratio
       parkingRent += (p.parkingRentHT || 0) * ratio
       charges += (p.chargesHT || 0) * ratio
       taxes += (p.taxesHT || 0) * ratio
       franchise += (p.franchiseHT || 0) * ratio
-      indexValue = p.indexValue || indexValue
+      // Index value is already determined by anniversariesPassed above
     }
 
     monthly.push({

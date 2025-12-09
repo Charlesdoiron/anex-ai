@@ -38,15 +38,41 @@ export interface RentCalculationExtractedData {
     signatureDate: ExtractedValue<string | null>
     duration: ExtractedValue<number | null>
   }
+  premises?: {
+    address: ExtractedValue<string | null>
+    surfaceArea: ExtractedValue<number | null>
+    parkingSpaces: ExtractedValue<number | null>
+  }
   rent: {
     annualRentExclTaxExclCharges: ExtractedValue<number | null>
     quarterlyRentExclTaxExclCharges: ExtractedValue<number | null>
     annualParkingRentExclCharges: ExtractedValue<number | null>
+    annualRentPerSqmExclTaxExclCharges: ExtractedValue<number | null>
+    quarterlyParkingRentExclCharges: ExtractedValue<number | null>
+    annualParkingRentPerUnitExclCharges: ExtractedValue<number | null>
     paymentFrequency: ExtractedValue<"monthly" | "quarterly" | null>
   }
   indexation?: {
     indexationType: ExtractedValue<string | null>
     referenceQuarter: ExtractedValue<string | null>
+  }
+  supportMeasures?: {
+    rentFreePeriodMonths: ExtractedValue<number | null>
+    rentFreePeriodAmount: ExtractedValue<number | null>
+    otherMeasuresDescription: ExtractedValue<string | null>
+  }
+  securities?: {
+    securityDepositDescription: ExtractedValue<string | null>
+    securityDepositAmount: ExtractedValue<number | null>
+  }
+  charges?: {
+    annualChargesProvisionExclTax: ExtractedValue<number | null>
+    quarterlyChargesProvisionExclTax: ExtractedValue<number | null>
+    annualChargesProvisionPerSqmExclTax: ExtractedValue<number | null>
+  }
+  taxes?: {
+    propertyTaxAmount: ExtractedValue<number | null>
+    officeTaxAmount: ExtractedValue<number | null>
   }
 }
 
@@ -317,6 +343,21 @@ export class RentCalculationExtractionService {
 
       const endDate = this.toEndDate(startDate, durationYears)
 
+      // Derive franchise months
+      const rawFranchiseMonths =
+        data.supportMeasures?.rentFreePeriodMonths?.value
+      const franchiseMonths =
+        typeof rawFranchiseMonths === "number" && rawFranchiseMonths > 0
+          ? Math.round(rawFranchiseMonths)
+          : 0
+
+      // Derive deposit months
+      const depositMonths = this.deriveDepositMonths(data)
+
+      // Derive charges and taxes
+      const { chargesPerPeriod, taxesPerPeriod } =
+        this.deriveChargesAndTaxesPerPeriod(data, paymentFrequency)
+
       const scheduleInput: ComputeLeaseRentScheduleInput = {
         startDate,
         endDate,
@@ -326,7 +367,11 @@ export class RentCalculationExtractionService {
         knownIndexPoints,
         officeRentHT: officeRentPerPeriod,
         parkingRentHT: parkingRentPerPeriod || undefined,
+        chargesHT: chargesPerPeriod || undefined,
+        taxesHT: taxesPerPeriod || undefined,
         horizonYears,
+        franchiseMonths: franchiseMonths > 0 ? franchiseMonths : undefined,
+        depositMonths: depositMonths > 0 ? depositMonths : undefined,
       }
 
       const schedule = computeLeaseRentSchedule(scheduleInput)
@@ -382,6 +427,88 @@ export class RentCalculationExtractionService {
     return end.toISOString().split("T")[0]!
   }
 
+  private deriveDepositMonths(data: RentCalculationExtractedData): number {
+    // Try to extract months from description (e.g., "3 mois de loyer")
+    const description = data.securities?.securityDepositDescription?.value
+    if (description) {
+      const monthsMatch = description.match(/(\d+)\s*mois/i)
+      if (monthsMatch) {
+        return parseInt(monthsMatch[1], 10)
+      }
+    }
+
+    // Calculate from amount and rent if available
+    const depositAmount = data.securities?.securityDepositAmount?.value
+    if (typeof depositAmount !== "number" || depositAmount <= 0) {
+      return 0
+    }
+
+    const annualRent = data.rent.annualRentExclTaxExclCharges.value
+    const quarterlyRent = data.rent.quarterlyRentExclTaxExclCharges.value
+
+    let monthlyRent: number | null = null
+    if (typeof annualRent === "number" && annualRent > 0) {
+      monthlyRent = annualRent / 12
+    } else if (typeof quarterlyRent === "number" && quarterlyRent > 0) {
+      monthlyRent = quarterlyRent / 3
+    }
+
+    if (monthlyRent && monthlyRent > 0) {
+      return Math.round(depositAmount / monthlyRent)
+    }
+
+    return 0
+  }
+
+  private deriveChargesAndTaxesPerPeriod(
+    data: RentCalculationExtractedData,
+    paymentFrequency: "monthly" | "quarterly"
+  ): { chargesPerPeriod: number | null; taxesPerPeriod: number | null } {
+    const annualCharges = data.charges?.annualChargesProvisionExclTax?.value
+    const quarterlyCharges =
+      data.charges?.quarterlyChargesProvisionExclTax?.value
+    const propertyTax = data.taxes?.propertyTaxAmount?.value
+    const officeTax = data.taxes?.officeTaxAmount?.value
+
+    let chargesPerPeriod: number | null = null
+    let taxesPerPeriod: number | null = null
+
+    if (paymentFrequency === "quarterly") {
+      if (typeof quarterlyCharges === "number") {
+        chargesPerPeriod = quarterlyCharges
+      } else if (typeof annualCharges === "number") {
+        chargesPerPeriod = annualCharges / 4
+      }
+
+      if (typeof propertyTax === "number" || typeof officeTax === "number") {
+        const annualTaxes = (propertyTax ?? 0) + (officeTax ?? 0)
+        taxesPerPeriod = annualTaxes / 4
+      }
+    } else {
+      if (typeof annualCharges === "number") {
+        chargesPerPeriod = annualCharges / 12
+      } else if (typeof quarterlyCharges === "number") {
+        chargesPerPeriod = quarterlyCharges / 3
+      }
+
+      if (typeof propertyTax === "number" || typeof officeTax === "number") {
+        const annualTaxes = (propertyTax ?? 0) + (officeTax ?? 0)
+        taxesPerPeriod = annualTaxes / 12
+      }
+    }
+
+    return {
+      chargesPerPeriod:
+        chargesPerPeriod !== null ? this.roundCurrency(chargesPerPeriod) : null,
+      taxesPerPeriod:
+        taxesPerPeriod !== null ? this.roundCurrency(taxesPerPeriod) : null,
+    }
+  }
+
+  private roundCurrency(value: number): number {
+    return Math.round((value + Number.EPSILON) * 100) / 100
+  }
+
   private normalizeExtractedData(
     parsed: RentCalculationExtractedData
   ): RentCalculationExtractedData {
@@ -391,24 +518,61 @@ export class RentCalculationExtractionService {
       rawText: "Non mentionné",
     }
 
-    const extractedData = {
+    const extractedData: RentCalculationExtractedData = {
       calendar: {
         effectiveDate: parsed?.calendar?.effectiveDate ?? missing,
         signatureDate: parsed?.calendar?.signatureDate ?? missing,
         duration: parsed?.calendar?.duration ?? missing,
+      },
+      premises: {
+        address: parsed?.premises?.address ?? missing,
+        surfaceArea: parsed?.premises?.surfaceArea ?? missing,
+        parkingSpaces: parsed?.premises?.parkingSpaces ?? missing,
       },
       rent: {
         annualRentExclTaxExclCharges:
           parsed?.rent?.annualRentExclTaxExclCharges ?? missing,
         quarterlyRentExclTaxExclCharges:
           parsed?.rent?.quarterlyRentExclTaxExclCharges ?? missing,
+        annualRentPerSqmExclTaxExclCharges:
+          parsed?.rent?.annualRentPerSqmExclTaxExclCharges ?? missing,
         annualParkingRentExclCharges:
           parsed?.rent?.annualParkingRentExclCharges ?? missing,
+        quarterlyParkingRentExclCharges:
+          parsed?.rent?.quarterlyParkingRentExclCharges ?? missing,
+        annualParkingRentPerUnitExclCharges:
+          parsed?.rent?.annualParkingRentPerUnitExclCharges ?? missing,
         paymentFrequency: parsed?.rent?.paymentFrequency ?? missing,
       },
       indexation: {
         indexationType: parsed?.indexation?.indexationType ?? missing,
         referenceQuarter: parsed?.indexation?.referenceQuarter ?? missing,
+      },
+      supportMeasures: {
+        rentFreePeriodMonths:
+          parsed?.supportMeasures?.rentFreePeriodMonths ?? missing,
+        rentFreePeriodAmount:
+          parsed?.supportMeasures?.rentFreePeriodAmount ?? missing,
+        otherMeasuresDescription:
+          parsed?.supportMeasures?.otherMeasuresDescription ?? missing,
+      },
+      securities: {
+        securityDepositDescription:
+          parsed?.securities?.securityDepositDescription ?? missing,
+        securityDepositAmount:
+          parsed?.securities?.securityDepositAmount ?? missing,
+      },
+      charges: {
+        annualChargesProvisionExclTax:
+          parsed?.charges?.annualChargesProvisionExclTax ?? missing,
+        quarterlyChargesProvisionExclTax:
+          parsed?.charges?.quarterlyChargesProvisionExclTax ?? missing,
+        annualChargesProvisionPerSqmExclTax:
+          parsed?.charges?.annualChargesProvisionPerSqmExclTax ?? missing,
+      },
+      taxes: {
+        propertyTaxAmount: parsed?.taxes?.propertyTaxAmount ?? missing,
+        officeTaxAmount: parsed?.taxes?.officeTaxAmount ?? missing,
       },
     }
 
@@ -428,15 +592,41 @@ export class RentCalculationExtractionService {
         signatureDate: missing,
         duration: missing,
       },
+      premises: {
+        address: missing,
+        surfaceArea: missing,
+        parkingSpaces: missing,
+      },
       rent: {
         annualRentExclTaxExclCharges: missing,
         quarterlyRentExclTaxExclCharges: missing,
+        annualRentPerSqmExclTaxExclCharges: missing,
         annualParkingRentExclCharges: missing,
+        quarterlyParkingRentExclCharges: missing,
+        annualParkingRentPerUnitExclCharges: missing,
         paymentFrequency: missing,
       },
       indexation: {
         indexationType: missing,
         referenceQuarter: missing,
+      },
+      supportMeasures: {
+        rentFreePeriodMonths: missing,
+        rentFreePeriodAmount: missing,
+        otherMeasuresDescription: missing,
+      },
+      securities: {
+        securityDepositDescription: missing,
+        securityDepositAmount: missing,
+      },
+      charges: {
+        annualChargesProvisionExclTax: missing,
+        quarterlyChargesProvisionExclTax: missing,
+        annualChargesProvisionPerSqmExclTax: missing,
+      },
+      taxes: {
+        propertyTaxAmount: missing,
+        officeTaxAmount: missing,
       },
     }
   }

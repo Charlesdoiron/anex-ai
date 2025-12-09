@@ -58,7 +58,12 @@ Indices : "à compter du", "prenant effet le", "entrée en jouissance", "date d'
 
 Indices : "durée de NEUF années", "bail de 9 ans", "3/6/9"
 
-3. FRÉQUENCE DE PAIEMENT :
+3. LOCAUX :
+- premises.address : Adresse des locaux loués
+- premises.surfaceArea : Surface totale en m²
+- premises.parkingSpaces : Nombre de places de parking
+
+4. FRÉQUENCE DE PAIEMENT :
 - paymentFrequency : "monthly" | "quarterly"
 
 Indices :
@@ -66,9 +71,10 @@ Indices :
 - "trimestriel", "par trimestre", "terme" → "quarterly"
 - "à terme échu", "d'avance" (contexte)
 
-4. LOYER BUREAUX (HORS TAXES, HORS CHARGES) :
+5. LOYER BUREAUX (HORS TAXES, HORS CHARGES) :
 - annualRentExclTaxExclCharges : Loyer annuel HTHC (en euros, nombre sans symbole)
 - quarterlyRentExclTaxExclCharges : Loyer trimestriel HTHC (si explicite, sinon null)
+- annualRentPerSqmExclTaxExclCharges : Loyer au m² /an HTHC (si explicite, sinon null)
 
 Indices : "loyer annuel", "€ HT/an", "HTHC", "hors taxes et hors charges"
 
@@ -77,10 +83,28 @@ ATTENTION :
 - Ne pas confondre loyer mensuel/trimestriel/annuel
 - Si seul le trimestriel est donné, laisser annuel à null
 
-5. LOYER PARKING (OPTIONNEL) :
+6. LOYER PARKING (OPTIONNEL) :
 - annualParkingRentExclCharges : Loyer annuel parkings HTHC
+- quarterlyParkingRentExclCharges : Loyer trimestriel parkings HTHC
+- annualParkingRentPerUnitExclCharges : Loyer parking /unité/an HTHC
 
-6. INDICE D'INDEXATION :
+7. CHARGES ET TAXES :
+- charges.annualChargesProvisionExclTax : Provision annuelle pour charges HT
+- charges.quarterlyChargesProvisionExclTax : Provision trimestrielle pour charges HT
+- charges.annualChargesProvisionPerSqmExclTax : Provision charges HT/m²/an
+- taxes.propertyTaxAmount : Montant annuel taxe foncière
+- taxes.officeTaxAmount : Montant annuel taxe bureaux
+
+8. MESURES D'ACCOMPAGNEMENT :
+- supportMeasures.rentFreePeriodMonths : Nombre de mois de franchise de loyer
+- supportMeasures.rentFreePeriodAmount : Montant total de la franchise en € HT
+- supportMeasures.otherMeasuresDescription : Description autres mesures
+
+9. DÉPÔT DE GARANTIE :
+- securities.securityDepositDescription : Description du dépôt
+- securities.securityDepositAmount : Montant du dépôt de garantie
+
+10. INDICE D'INDEXATION :
 - indexation.indexationType : Acronyme EXACT de l'indice utilisé (ILC, ILAT, ICC)
 - indexation.referenceQuarter : Trimestre de référence pour l'indexation (ex: "ILC 2ème trimestre 2016", "ILAT T1 2024")
 - Si l'indice n'est pas mentionné, retourner null avec rawText \"Non mentionné\"
@@ -102,15 +126,41 @@ FORMAT DE SORTIE JSON :
     "signatureDate": { "value": "YYYY-MM-DD" | null, "confidence": "...", "source": "...", "rawText": "..." },
     "duration": { "value": number | null, "confidence": "...", "source": "...", "rawText": "..." }
   },
+  "premises": {
+    "address": { "value": string | null, "confidence": "...", "source": "...", "rawText": "..." },
+    "surfaceArea": { "value": number | null, "confidence": "...", "source": "...", "rawText": "..." },
+    "parkingSpaces": { "value": number | null, "confidence": "...", "source": "...", "rawText": "..." }
+  },
   "rent": {
     "annualRentExclTaxExclCharges": { "value": number | null, "confidence": "...", "source": "...", "rawText": "..." },
     "quarterlyRentExclTaxExclCharges": { "value": number | null, "confidence": "...", "source": "...", "rawText": "..." },
+    "annualRentPerSqmExclTaxExclCharges": { "value": number | null, "confidence": "...", "source": "...", "rawText": "..." },
     "annualParkingRentExclCharges": { "value": number | null, "confidence": "...", "source": "...", "rawText": "..." },
+    "quarterlyParkingRentExclCharges": { "value": number | null, "confidence": "...", "source": "...", "rawText": "..." },
+    "annualParkingRentPerUnitExclCharges": { "value": number | null, "confidence": "...", "source": "...", "rawText": "..." },
     "paymentFrequency": { "value": "monthly" | "quarterly" | null, "confidence": "...", "source": "...", "rawText": "..." }
   },
   "indexation": {
     "indexationType": { "value": "ILC" | "ILAT" | "ICC" | null, "confidence": "...", "source": "...", "rawText": "..." },
     "referenceQuarter": { "value": string | null, "confidence": "...", "source": "...", "rawText": "..." }
+  },
+  "supportMeasures": {
+    "rentFreePeriodMonths": { "value": number | null, "confidence": "...", "source": "...", "rawText": "..." },
+    "rentFreePeriodAmount": { "value": number | null, "confidence": "...", "source": "...", "rawText": "..." },
+    "otherMeasuresDescription": { "value": string | null, "confidence": "...", "source": "...", "rawText": "..." }
+  },
+  "securities": {
+    "securityDepositDescription": { "value": string | null, "confidence": "...", "source": "...", "rawText": "..." },
+    "securityDepositAmount": { "value": number | null, "confidence": "...", "source": "...", "rawText": "..." }
+  },
+  "charges": {
+    "annualChargesProvisionExclTax": { "value": number | null, "confidence": "...", "source": "...", "rawText": "..." },
+    "quarterlyChargesProvisionExclTax": { "value": number | null, "confidence": "...", "source": "...", "rawText": "..." },
+    "annualChargesProvisionPerSqmExclTax": { "value": number | null, "confidence": "...", "source": "...", "rawText": "..." }
+  },
+  "taxes": {
+    "propertyTaxAmount": { "value": number | null, "confidence": "...", "source": "...", "rawText": "..." },
+    "officeTaxAmount": { "value": number | null, "confidence": "...", "source": "...", "rawText": "..." }
   }
 }`
 
