@@ -4,6 +4,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { signIn } from "@/app/lib/auth-client"
+import { LoadingButton } from "@/app/components/ui/loading-button"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -88,13 +89,14 @@ export default function LoginPage() {
           />
         </div>
 
-        <button
+        <LoadingButton
           type="submit"
-          disabled={isLoading}
+          isLoading={isLoading}
+          loadingText="Connexion..."
           className="w-full bg-gray-800 hover:bg-gray-900 disabled:bg-gray-400 disabled:cursor-not-allowed dark:bg-gray-700 dark:hover:bg-gray-600 text-white font-medium py-3 px-4 rounded-lg transition-colors"
         >
-          {isLoading ? "Signing in..." : "Sign In"}
-        </button>
+          Se connecter
+        </LoadingButton>
       </form>
 
       <p className="mt-4 text-center text-sm text-gray-600 dark:text-gray-400">

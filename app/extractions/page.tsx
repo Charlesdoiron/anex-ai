@@ -13,12 +13,13 @@ interface ExtractionSummary {
 async function loadExtractions(): Promise<ExtractionSummary[]> {
   const ids = await extractionStorage.listExtractions()
 
-  const items: ExtractionSummary[] = []
+  const extractions: ExtractionSummary[] = []
+
   for (const id of ids) {
     const extraction = await extractionStorage.getExtraction(id)
     if (!extraction) continue
 
-    items.push({
+    extractions.push({
       id: extraction.documentId,
       documentId: extraction.documentId,
       fileName: extraction.fileName || "Document",
@@ -27,13 +28,11 @@ async function loadExtractions(): Promise<ExtractionSummary[]> {
     })
   }
 
-  items.sort((a, b) => {
+  return extractions.sort((a, b) => {
     const aTime = new Date(a.createdAt).getTime()
     const bTime = new Date(b.createdAt).getTime()
     return bTime - aTime
   })
-
-  return items
 }
 
 export default async function ExtractionsPage() {
@@ -58,6 +57,7 @@ export default async function ExtractionsPage() {
             </div>
             <Link
               href="/"
+              prefetch={true}
               className="inline-flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
             >
               <svg
@@ -125,6 +125,7 @@ export default async function ExtractionsPage() {
             </p>
             <Link
               href="/"
+              prefetch={true}
               className="mt-6 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
             >
               Upload Document
@@ -136,6 +137,7 @@ export default async function ExtractionsPage() {
               <Link
                 key={extraction.id}
                 href={`/extractions/${extraction.documentId}`}
+                prefetch={true}
                 className="block group"
               >
                 <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 hover:shadow-lg hover:border-blue-300 dark:hover:border-blue-600 transition-all duration-200">

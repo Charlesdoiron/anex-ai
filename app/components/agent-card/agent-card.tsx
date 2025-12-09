@@ -39,7 +39,8 @@ export default function AgentCard({
   return (
     <Link
       href={href}
-      className="group block bg-white rounded-xl p-5 sm:p-6 border border-gray-200/80 shadow-sm hover:shadow-md transition-all duration-300 hover:border-brand-green/40 hover:bg-brand-cream/30 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green/50 focus-visible:ring-offset-2 focus-visible:border-brand-green"
+      prefetch={true}
+      className="group block bg-white rounded-xl p-5 sm:p-6 border border-gray-200/80 shadow-sm hover:shadow-md transition-all duration-300 hover:border-brand-green/40 hover:bg-brand-cream/30 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green/50 focus-visible:ring-offset-2 focus-visible:border-brand-green active:scale-[0.98] active:transition-transform"
     >
       <div className="flex items-start gap-4">
         {icon && (

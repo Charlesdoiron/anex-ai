@@ -4,6 +4,7 @@ import { EnvChecker } from "./components/env-checker"
 import { validateEnv } from "./lib/env-check"
 import { JobTrackerProvider, JobStatusBanner } from "./components/job-tracker"
 import { Header } from "./components/header"
+import { NavigationProgress } from "./components/navigation-progress"
 
 export const metadata: Metadata = {
   title: "Anex AI - Agents intelligents",
@@ -25,6 +26,7 @@ export default function RootLayout({
     <html lang="fr">
       <body className="antialiased bg-brand-cream">
         <JobTrackerProvider>
+          <NavigationProgress />
           <EnvChecker />
           <Header />
           {children}

@@ -18,6 +18,7 @@ import {
   AlertCircle,
 } from "lucide-react"
 import type { LeaseExtractionResult } from "@/app/lib/extraction/types"
+import { PageLoader } from "@/app/components/ui/page-loader"
 import { exportExtractionToExcel } from "@/app/components/extraction/utils/excel-export"
 import {
   exportRentCalculationToExcel,
@@ -398,13 +399,7 @@ const ExtractionHistory = forwardRef<
   if (loading) {
     return (
       <div className="rounded-lg p-6 bg-white border border-gray-200">
-        <div className="flex flex-col items-center justify-center py-6">
-          <div className="relative">
-            <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-200"></div>
-            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-brand-green absolute top-0 left-0"></div>
-          </div>
-          <p className="text-xs text-gray-400 mt-3">Chargement...</p>
-        </div>
+        <PageLoader message="Chargement..." size="sm" />
       </div>
     )
   }

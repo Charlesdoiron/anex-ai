@@ -35,6 +35,7 @@ export default async function AgentPage({
                 <BreadcrumbLink asChild>
                   <Link
                     href="/"
+                    prefetch={true}
                     className="transition-colors hover:text-brand-green focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green/50 focus-visible:ring-offset-2 rounded px-1"
                   >
                     Accueil

@@ -80,6 +80,9 @@ export interface ComputeLeaseRentScheduleSummary {
   depositHT: number
   tcam?: number
   yearlyTotals: YearlyTotalSummary[]
+  totalBaseRentHT?: number
+  totalChargesHT?: number
+  totalNetRentHT?: number
 }
 
 export interface ComputeLeaseRentScheduleResult {

@@ -12,6 +12,7 @@ import {
   CheckCircle,
   BarChart3,
   ChevronDown,
+  Coins,
 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { exportRentCalculationToExcel } from "@/app/components/extraction/utils/rent-calculation-excel-export"
@@ -258,6 +259,48 @@ function RentCalculationContent({ result }: { result: RentCalculationData }) {
         </div>
       )}
 
+      {/* Summary KPIs - Only when schedule is available */}
+      {hasSchedule && schedule.summary && (
+        <SectionCard
+          title="Résumé financier"
+          icon={<Coins className="w-4 h-4" strokeWidth={1.5} />}
+          highlight
+        >
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <div className="text-xs text-gray-500 mb-1">Total loyers</div>
+              <div className="text-lg font-semibold text-emerald-600">
+                {formatCurrency(schedule.summary.totalBaseRentHT ?? 0)}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-gray-500 mb-1">Total charges</div>
+              <div className="text-base font-semibold text-gray-900">
+                {formatCurrency(schedule.summary.totalChargesHT ?? 0)}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-gray-500 mb-1">Total net</div>
+              <div className="text-lg font-semibold text-emerald-600">
+                {formatCurrency(schedule.summary.totalNetRentHT ?? 0)}
+              </div>
+            </div>
+          </div>
+          {schedule.summary.depositHT > 0 && (
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-gray-500">
+                  Dépôt de garantie HT
+                </span>
+                <span className="text-sm font-medium text-gray-900">
+                  {formatCurrency(schedule.summary.depositHT)}
+                </span>
+              </div>
+            </div>
+          )}
+        </SectionCard>
+      )}
+
       {/* Charts - Only when schedule is available */}
       {hasSchedule && input && (
         <RentCalculationCharts
@@ -274,7 +317,7 @@ function RentCalculationContent({ result }: { result: RentCalculationData }) {
         <div className="flex items-center gap-2">
           <BarChart3 className="w-4 h-4 text-gray-500" />
           <span className="text-xs font-medium text-gray-700">
-            Détails de l&apos;extraction et échéancier
+            Détails de l&apos;extraction et échéancier complet
           </span>
         </div>
         <ChevronDown
@@ -289,52 +332,67 @@ function RentCalculationContent({ result }: { result: RentCalculationData }) {
             title="Données extraites"
             icon={<FileText className="w-3.5 h-3.5" strokeWidth={1.5} />}
           >
-            <div className="grid grid-cols-2 gap-x-6">
-              <FieldRow
-                label="Date d'effet"
-                value={extracted.calendar.effectiveDate?.value}
-                type="date"
-              />
-              <FieldRow
-                label="Date de signature"
-                value={extracted.calendar.signatureDate?.value}
-                type="date"
-              />
-              <FieldRow
-                label="Durée"
-                value={
-                  extracted.calendar.duration?.value
-                    ? `${extracted.calendar.duration.value} ans`
-                    : null
-                }
-              />
-              <FieldRow
-                label="Fréquence"
-                value={formatFrequency(extracted.rent.paymentFrequency?.value)}
-              />
-              <FieldRow
-                label="Loyer annuel bureaux HT"
-                value={extracted.rent.annualRentExclTaxExclCharges?.value}
-                type="currency"
-              />
-              <FieldRow
-                label="Loyer trimestriel bureaux HT"
-                value={extracted.rent.quarterlyRentExclTaxExclCharges?.value}
-                type="currency"
-              />
-              <FieldRow
-                label="Loyer annuel parking HT"
-                value={extracted.rent.annualParkingRentExclCharges?.value}
-                type="currency"
-              />
-              <FieldRow
-                label="Type d'indice"
-                value={extracted.indexation?.indexationType?.value}
-              />
-              <FieldRow
-                label="Indice de référence"
-                value={extracted.indexation?.referenceQuarter?.value}
-              />
+            <div className="space-y-3">
+              <div>
+                <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                  Calendrier
+                </div>
+                <div className="grid grid-cols-2 gap-x-6">
+                  <FieldRow
+                    label="Date d'effet"
+                    value={extracted.calendar.effectiveDate?.value}
+                    type="date"
+                  />
+                  <FieldRow
+                    label="Durée"
+                    value={
+                      extracted.calendar.duration?.value
+                        ? `${extracted.calendar.duration.value} ans`
+                        : null
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-gray-100">
+                <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                  Loyers
+                </div>
+                <div className="grid grid-cols-2 gap-x-6">
+                  <FieldRow
+                    label="Loyer annuel bureaux HT"
+                    value={extracted.rent.annualRentExclTaxExclCharges?.value}
+                    type="currency"
+                  />
+                  <FieldRow
+                    label="Loyer annuel parking HT"
+                    value={extracted.rent.annualParkingRentExclCharges?.value}
+                    type="currency"
+                  />
+                  <FieldRow
+                    label="Fréquence"
+                    value={formatFrequency(
+                      extracted.rent.paymentFrequency?.value
+                    )}
+                  />
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-gray-100">
+                <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                  Indexation
+                </div>
+                <div className="grid grid-cols-2 gap-x-6">
+                  <FieldRow
+                    label="Type d'indice"
+                    value={extracted.indexation?.indexationType?.value}
+                  />
+                  <FieldRow
+                    label="Indice de référence"
+                    value={extracted.indexation?.referenceQuarter?.value}
+                  />
+                </div>
+              </div>
             </div>
           </SectionCard>
 
@@ -515,14 +573,38 @@ interface SectionCardProps {
   title: string
   icon: React.ReactNode
   children: React.ReactNode
+  highlight?: boolean
 }
 
-function SectionCard({ title, icon, children }: SectionCardProps) {
+function SectionCard({
+  title,
+  icon,
+  children,
+  highlight,
+}: SectionCardProps & { highlight?: boolean }) {
   return (
-    <div className="bg-white rounded-md border border-gray-200 overflow-hidden">
-      <div className="px-4 py-2.5 border-b border-gray-100 flex items-center gap-2">
-        <span className="text-emerald-600">{icon}</span>
-        <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
+    <div
+      className={`bg-white rounded-md border overflow-hidden ${
+        highlight
+          ? "border-emerald-500/30 shadow-sm ring-1 ring-emerald-500/10"
+          : "border-gray-200"
+      }`}
+    >
+      <div
+        className={`px-4 py-2.5 border-b flex items-center gap-2 ${
+          highlight
+            ? "bg-emerald-50 border-emerald-200"
+            : "bg-gray-50/50 border-gray-100"
+        }`}
+      >
+        <span className={highlight ? "text-emerald-600" : "text-emerald-600"}>
+          {icon}
+        </span>
+        <h3
+          className={`text-xs font-semibold uppercase tracking-wide ${
+            highlight ? "text-gray-800" : "text-gray-700"
+          }`}
+        >
           {title}
         </h3>
       </div>
