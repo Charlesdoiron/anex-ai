@@ -314,9 +314,12 @@ CHAMPS À EXTRAIRE :
   - Ex: création d'une salle de réunion dans la clause suspensive → true
   
 - hasFurniture : Présence de mobilier FOURNI par le bailleur ?
-  - Valeurs : "Oui" / "Non" / "Non mentionné"
+  ⚠️ FORMAT : boolean (true/false) ou null
+  - true : si mobilier fourni par le bailleur est explicitement mentionné
+  - false : si explicitement mentionné qu'il n'y a PAS de mobilier fourni
+  - null : si non mentionné (pas d'information dans le document)
   - ATTENTION : Ne pas confondre avec la clause de garnissement (obligation du preneur)
-  - Si pas de mobilier fourni explicitement mentionné → "Non"
+  - Si pas de mobilier fourni explicitement mentionné → null (pas false)
   
 - furnishingConditions (CLAUSE DE GARNISSEMENT - RECHERCHE ACTIVE) :
   ⚠️ Cette clause est TRÈS COURANTE, chercher dans article "MODALITÉS D'OCCUPATION"
@@ -334,16 +337,21 @@ CHAMPS À EXTRAIRE :
 
 5. ESPACES ANNEXES :
 - hasOutdoorSpace : Espace extérieur (terrasse, cour, jardin) LOUÉ avec les locaux
-  - "Oui" : si un espace extérieur fait partie des locaux loués
-  - "Non" : si pas d'espace extérieur loué OU si non mentionné
+  ⚠️ FORMAT : boolean (true/false) ou null
+  - true : si un espace extérieur fait explicitement partie des locaux loués
+  - false : si explicitement mentionné qu'il n'y a PAS d'espace extérieur loué
+  - null : si non mentionné (pas d'information dans le document)
   ⚠️ ATTENTION : Ne pas confondre avec des mentions d'espaces dans :
   - Les travaux préalables/clause suspensive (aménagements avant entrée)
   - Les descriptions générales de l'immeuble
   - Les parties communes non louées
+  - Les parkings extérieurs (ce sont des parkings, pas un espace extérieur loué)
   
 - hasArchiveSpace : Local d'archives LOUÉ avec les locaux
-  - "Oui" : si un local d'archives fait explicitement partie des locaux loués
-  - "Non" : si pas de local d'archives loué OU si non mentionné
+  ⚠️ FORMAT : boolean (true/false) ou null
+  - true : si un local d'archives fait explicitement partie des locaux loués
+  - false : si explicitement mentionné qu'il n'y a PAS de local d'archives
+  - null : si non mentionné (pas d'information dans le document)
   
 - parkingSpaces : Nombre de places de parking voitures (nombre entier, 0 si absent)
 - twoWheelerSpaces : Places deux-roues motorisés
@@ -552,13 +560,14 @@ CHAMPS À EXTRAIRE :
   - "annuellement", "par an" → Annuel
 
 4. PÉNALITÉS DE RETARD :
-- latePaymentPenaltyConditions : Description COMPLÈTE des conditions de pénalités
-  - Inclure : délai avant application, moyens de notification, montant/taux
-  - Format : "[Taux/montant] [conditions d'application]"
-  - Chercher dans article "sanctions", "pénalités", "retard de paiement"
-  - Ex: "10% de toutes les sommes exigibles à l'expiration d'un délai de 15 jours"
-  - Ex: "Taux de base bancaire + 3 points après mise en demeure par RAR restée 8 jours sans suite"
-- latePaymentPenaltyAmount : Montant ou taux des pénalités (valeur uniquement)
+- latePaymentPenaltyConditions : Description des conditions de pénalités
+  ⚠️ FORMAT : Une seule phrase synthétique, SANS RÉPÉTITION
+  - Inclure : taux/montant, délai avant application
+  - NE PAS répéter la même information deux fois
+  - Ex: "Taux d'intérêt légal majoré de 300 points de base, exigible 15 jours après mise en demeure"
+  - ❌ MAUVAIS : "Taux légal majoré de 300 points. Taux légal majoré de 300 points exigible après..."
+  - ✅ BON : "Taux d'intérêt légal majoré de 300 points de base, exigible 15 jours après mise en demeure restée sans effet"
+- latePaymentPenaltyAmount : Montant ou taux des pénalités (valeur uniquement, sans la description)
 
 INDICES COURANTS :
 - "Le loyer annuel est fixé à...", "soit un loyer de X € HT/an"
@@ -604,11 +613,15 @@ CHAMPS À EXTRAIRE :
   - "ICC" : Indice du Coût de la Construction (ancien)
 
 2. RÉFÉRENCES ET FRÉQUENCE :
-- referenceQuarter : Trimestre de référence avec indice type et valeur si disponible
-  - Format AVEC valeur : "Dernier indice publié à la date d'effet soit ILAT 3T2015 à 107,98"
-  - Format SANS valeur : "ILAT 3ème trimestre 2015" ou "ILAT 3T2015"
+- referenceQuarter : Trimestre de référence avec indice type
+  ⚠️ FORMAT OBLIGATOIRE : "[ACRONYME] T[1-4] [ANNÉE 2 CHIFFRES]"
+  - Format exact : "ILAT T2 23" ou "ILC T4 15" ou "ICC T1 20"
+  - Acronyme : ILC, ILAT, ou ICC
+  - Trimestre : T1, T2, T3, ou T4 (1er, 2ème, 3ème, 4ème trimestre)
+  - Année : deux derniers chiffres (ex: 23 pour 2023, 15 pour 2015)
+  - ❌ NE PAS inclure : la valeur de l'indice, "référence au", "trimestre", descriptions supplémentaires
   - Chercher SPÉCIFIQUEMENT dans CONDITIONS PARTICULIÈRES : "Indice de référence: ..."
-  - Chercher : "indice de base", "indice de référence", valeur numérique (ex: 107,98)
+  - Chercher : "indice de base", "indice de référence", trimestre et année
   
 - firstIndexationDate : Date RÉCURRENTE de l'indexation (pas une date unique)
   ⚠️ FORMAT OBLIGATOIRE : "Le [jour] [mois] de chaque année"
@@ -627,60 +640,89 @@ EXEMPLES :
   → firstIndexationDate: "Le 19 décembre de chaque année" (si prise d'effet le 19/12)
   → indexationFrequency: "Annuellement"
   
-- "indice du 2ème trimestre 2016 (indice de base)"
-  → referenceQuarter: "ILC 2ème trimestre 2016" ou avec valeur si mentionnée
+- "indice du 2ème trimestre 2016 (indice de base)" ou "ILAT 2T2016" ou "ILAT référence au 2ème trimestre 2016 (104,60)"
+  → referenceQuarter: "ILAT T2 16"
+  
+- "ILC du 4ème trimestre 2011 à 104,60"
+  → referenceQuarter: "ILC T4 11"
+  
+- "Indice de référence: ILAT 3T2015"
+  → referenceQuarter: "ILAT T3 15"
 
 Format de sortie JSON conforme à IndexationData.`
 
 export const TAXES_PROMPT = `Extraire les informations sur les impôts et taxes.
+
+⚠️ PRIORITÉ DE RECHERCHE - TRÈS IMPORTANT :
+Pour les baux avec "Conditions Générales" et "Conditions Particulières" :
+1. Chercher d'abord dans les CONDITIONS PARTICULIÈRES (peut être appelé TITRE II, CHAPITRE I, etc.)
+2. Les articles numérotés (8.1, 8.2, 8.3, etc.) dans les conditions particulières contiennent souvent les montants précis
+3. L'article "IMPOTS, CONTRIBUTIONS ET TAXES" ou "CHARGES ET TAXES" donne les détails
+4. Chercher aussi dans la section "IV. LOYER" ou "IV. CHARGES" si présente
 
 CHAMPS À EXTRAIRE :
 
 1. REFACTURATION DES TAXES AU PRENEUR :
 - propertyTaxRebilled : Refacturation de la taxe foncière et TEOM au preneur
   FORMAT DE RÉPONSE : Description textuelle de ce qui est refacturé
-  - Ex: "le Preneur devra par ailleurs rembourser au Bailleur : la taxe d'enlèvement des ordures ménagères, la quote-part de taxe foncière afférente aux Locaux Loués"
-  - Ex: "Oui" (si simplement mentionné que c'est à la charge du preneur)
+  - Ex: "Oui, taxe foncière et TEOM à la charge du preneur"
   - Ex: "Non mentionné" (si pas de clause)
-  
-  INDICES : "taxe foncière à la charge du preneur", "refacturation", "rembourser au Bailleur"
 
 2. PROVISIONS POUR TAXES (montants si mentionnés) :
-- propertyTaxAmount : Provision annuelle pour taxe foncière (en euros)
-  - Retourner "Non mentionné" si pas de montant indiqué
-- teomAmount : Provision annuelle pour TEOM (en euros)
-  - Retourner "Non mentionné" si pas de montant indiqué
-- officeTaxAmount : Provision annuelle pour taxe bureaux (en euros, IDF uniquement)
-  - Retourner "Non mentionné" si pas de montant indiqué
-- parkingTaxAmount : Provision annuelle pour taxe sur emplacements de parking
-  - Retourner "Non mentionné" si pas de montant indiqué
+- propertyTaxAmount : Provision annuelle pour taxe foncière (en euros, valeur numérique)
+  ⚠️ Chercher dans TITRE II articles sur les taxes (ex: article 8.1)
+  - Retourner null si pas de montant indiqué
+  
+- teomAmount : Provision annuelle pour TEOM (en euros, valeur numérique)
+  ⚠️ TRÈS IMPORTANT - DÉFINITION :
+  TEOM = Taxe d'Enlèvement des Ordures Ménagères
+  Cette taxe peut être mentionnée sous différents noms dans les baux :
+  - "TEOM" (acronyme)
+  - "taxe d'enlèvement des ordures ménagères" (nom complet)
+  - "ordures ménagères" (forme abrégée)
+  - "enlèvement des ordures ménagères"
+  
+  INDICES À RECHERCHER :
+  - Chercher les termes EXACTS ci-dessus dans TOUT le document
+  - Chercher dans CONDITIONS PARTICULIÈRES articles numérotés (ex: article 8.2, IV.3, etc.)
+  - Chercher dans sections "CHARGES", "TAXES", "IMPOTS"
+  - Les montants peuvent être dans un tableau ou une liste de provisions
+  - Format possible : "TEOM : provision annuelle de X €" ou "taxe d'enlèvement... : X €"
+  - Retourner null si pas de montant indiqué
+  
+- officeTaxAmount : Provision annuelle pour taxe bureaux/TSB (en euros, valeur numérique)
+  ⚠️ Aussi appelée : "taxe sur les bureaux", "TSB", "taxe annuelle sur les locaux à usage de bureaux"
+  - Chercher dans CONDITIONS PARTICULIÈRES articles numérotés (ex: article 8.3, IV.3, etc.)
+  - Chercher dans sections "CHARGES", "TAXES", "IMPOTS"
+  - Format possible : "taxe sur les bureaux : provision annuelle de X €"
+  - Retourner null si pas de montant indiqué
+
+- parkingTaxAmount : Provision annuelle pour taxe sur les emplacements de parking (en euros, valeur numérique)
+  ⚠️ Aussi appelée : "taxe parking", "taxe sur les emplacements de stationnement"
+  - Chercher dans CONDITIONS PARTICULIÈRES articles numérotés
+  - Chercher dans sections "CHARGES", "TAXES", "IMPOTS", "PARKING"
+  - Retourner null si pas de montant indiqué ou si pas de taxe parking mentionnée
+
+OÙ CHERCHER (PRIORITAIRE) :
+1. CONDITIONS PARTICULIÈRES (TITRE II, CHAPITRE I, etc.) - articles numérotés (8.1, 8.2, 8.3, IV.3, etc.)
+2. Section "IV. LOYER" ou "IV. CHARGES" dans les conditions particulières
+3. Article "IMPOTS, CONTRIBUTIONS ET TAXES" ou "CHARGES ET TAXES"
+4. Annexe "état récapitulatif des charges"
+5. Parcourir TOUT le document pour trouver les mentions de TEOM et taxe bureaux
+
+EXEMPLES CONCRETS :
+- "Article 8.2 - TEOM : provision annuelle de 7 211,80 €"
+  → teomAmount: { value: 7211.80, confidence: "high", source: "Article 8.2 du Titre II" }
+
+- "Article 8.3 - Taxe bureaux : provision annuelle de 2 456,52 €"
+  → officeTaxAmount: { value: 2456.52, confidence: "high", source: "Article 8.3 du Titre II" }
 
 ATTENTION - MONTANTS PAR M² vs MONTANTS TOTAUX :
-- Si le document donne "40 €/m²" ou "17 euros HT par m2", ceci est un montant PAR M²
+- Si le document donne "40 €/m²" : ceci est un montant PAR M²
 - Les champs doivent contenir les montants TOTAUX annuels
-- Si seul le montant par m² est donné : retourner "Non mentionné" et mentionner le montant par m² dans rawText
+- Si seul le montant par m² est donné : retourner null et mentionner le montant par m² dans rawText
 
-OÙ CHERCHER :
-- Article "charges" ou sous-article "charges"
-- Annexe "état récapitulatif des charges"
-- Article sur les obligations financières du preneur
-
-INDICES À RECHERCHER :
-- "taxe foncière", "contribution foncière"
-- "TEOM", "taxe d'enlèvement des ordures ménagères", "ordures ménagères"
-- "taxe sur les bureaux", "TSB"
-- "à la charge du preneur", "supportée par le locataire"
-- "provision", "acompte"
-
-EXEMPLES :
-- "Le preneur remboursera la taxe foncière et la TEOM"
-  → propertyTaxRebilled: "Oui, taxe foncière et TEOM à la charge du preneur"
-  → propertyTaxAmount: "Non mentionné", teomAmount: "Non mentionné"
-
-- "Provision annuelle pour taxe foncière : 2.040 €"
-  → propertyTaxAmount: 2040
-
-Format de sortie JSON conforme à TaxesData.`
+Format de sortie JSON avec valeurs numériques (pas de symbole €).`
 
 export const CHARGES_PROMPT = `Extraire les charges et honoraires de gestion.
 
@@ -699,8 +741,14 @@ CHAMPS À EXTRAIRE :
   - Ne PAS calculer : sera déduit automatiquement si absent
 
 3. HONORAIRES DE GESTION :
-- managementFeesOnTenant : Honoraires de gestion locative à charge du preneur
-- rentManagementFeesOnTenant : Honoraires de gestion des loyers à charge du preneur
+- managementFeesOnTenant : Honoraires de gestion locative à charge du preneur (true/false/null)
+- rentManagementFeesOnTenant : Honoraires de gestion des loyers à charge du preneur (true/false/null)
+- managementFeesAnnualAmount : Montant ANNUEL des honoraires de gestion (en euros HT)
+  - Retourner null si non mentionné
+- managementFeesQuarterlyAmount : Montant TRIMESTRIEL des honoraires de gestion (en euros HT)
+  - Retourner null si non mentionné
+- managementFeesPerSqmAmount : Montant des honoraires de gestion au m² (en euros HT/m²/an)
+  - Retourner null si non mentionné
 
 ATTENTION - MONTANTS PAR M² vs MONTANTS TOTAUX :
 - Si le document donne "30 €/m²/an", ceci est un montant PAR M², pas le total
@@ -892,28 +940,47 @@ CHAMPS À EXTRAIRE :
     - "Travaux soumis à autorisation expresse et écrite du bailleur"
   - ❌ NE PAS copier tout l'article ni mélanger plusieurs articles
 
-3. CLAUSE D'ACCESSION (CRITIQUE - BIEN DISTINGUER) :
-- hasAccessionClause : Présence d'une clause d'accession
-  - Valeurs : "Oui, [description courte]" / "Non" / "Non mentionné"
+3. CLAUSE D'ACCESSION (CRITIQUE - FORMAT STRICT) :
+- hasAccessionClause : Présence d'une clause d'accession (boolean : true/false)
+  
+  ⚠️ RETOURNER UN BOOLEAN, PAS UNE CHAÎNE DE CARACTÈRES !
+  - Si clause trouvée : value = true
+  - Si pas de clause trouvée : value = false (pas null, pas "Non mentionné")
   
   ⚠️ DÉFINITION STRICTE : La clause d'accession concerne UNIQUEMENT le TRANSFERT DE PROPRIÉTÉ
   des travaux réalisés par le preneur au bailleur en fin de bail.
   
-  CE QU'IL FAUT EXTRAIRE (formulation EXACTE attendue) :
-  - "Oui, tous les travaux réalisés par le preneur deviendront la propriété du bailleur sans indemnité à la fin du bail"
-  
   ⚠️ CE QUI N'EST PAS UNE CLAUSE D'ACCESSION (NE PAS CONFONDRE) :
-  - L'obligation de demander une autorisation pour faire des travaux → NON
-  - Les conditions d'exécution des travaux (architecte, assurances) → NON
-  - La possibilité pour le bailleur d'exiger la remise en état → NON (c'est l'inverse)
+  - L'obligation de demander une autorisation pour faire des travaux → false
+  - Les conditions d'exécution des travaux (architecte, assurances) → false
+  - La possibilité pour le bailleur d'exiger la remise en état → false (c'est l'inverse)
   
-  INDICES À RECHERCHER (mots-clés EXACTS) :
-  - "deviendront la propriété du bailleur" ← C'EST ÇA
-  - "acquerront au bailleur" ← C'EST ÇA
-  - "resteront acquis au bailleur" ← C'EST ÇA
-  - "sans indemnité à la fin du bail" ← C'EST ÇA
+  INDICES À RECHERCHER (mots-clés EXACTS pour true) :
+  - "deviendront la propriété du bailleur" ← true
+  - "acquerront au bailleur" ← true
+  - "resteront acquis au bailleur" ← true
+  - "sans indemnité à la fin du bail" ← true
   
   OÙ CHERCHER : Article "TRAVAUX" section "Travaux du preneur", souvent alinéa d)
+  
+  FORMAT DE SORTIE :
+  {
+    "hasAccessionClause": {
+      "value": true,
+      "confidence": "high",
+      "source": "Article 7 - Travaux du preneur",
+      "rawText": "les travaux réalisés par le preneur deviendront la propriété du bailleur"
+    }
+  }
+  OU si absent :
+  {
+    "hasAccessionClause": {
+      "value": false,
+      "confidence": "medium",
+      "source": "Document entier",
+      "rawText": "Non mentionné"
+    }
+  }
 
 ARTICLE 606 DU CODE CIVIL (référence pour travaux bailleur) :
 - Gros murs, voûtes, planchers
@@ -989,20 +1056,23 @@ CHAMPS À EXTRAIRE :
 
 2. CESSION :
 - assignmentConditions : Conditions de cession du bail
-  ⚠️ FORMAT ATTENDU : Phrase structurée et lisible
-  - Structure : "[Étendue] et [autorisation] avec [clause de solidarité si applicable]"
+  ⚠️ FORMAT ATTENDU : Phrase structurée COURTE et synthétique
+  - Structure : "[Étendue], [autorisation], [solidarité]"
+  - NE PAS répéter les mêmes informations
+  - NE PAS inclure de détails superflus
   
   EXEMPLES DE BONNES RÉPONSES :
-  - "Sur la totalité et soumise à autorisation du bailleur avec une clause de solidarité pendant 3 ans"
-  - "Cession autorisée uniquement à l'acquéreur de la totalité du fonds de commerce"
+  - "Totalité, soumise à agrément du bailleur, clause de solidarité 3 ans"
+  - "Acquéreur du fonds de commerce uniquement, avec agrément préalable"
   
-  ❌ MAUVAISE RÉPONSE (trop détaillée, mal rédigée) :
-  - "Le preneur ne pourra céder le bail que pour l'acquéreur..." (copie du texte)
+  ❌ MAUVAISES RÉPONSES :
+  - Trop longue avec répétitions : "...soumise à agrément/conditions prévues; le cédant demeure garant solidaire pendant trois (3) ans... (clause de solidarité pendant 3 ans)."
+  - Copie du texte brut sans synthèse
   
-  ÉLÉMENTS À EXTRAIRE ET SYNTHÉTISER :
-  - Étendue : "totalité" ou "partielle" ?
-  - Autorisation : "soumise à autorisation du bailleur" ?
-  - Solidarité : "clause de solidarité pendant X ans" ?
+  ÉLÉMENTS À SYNTHÉTISER (chacun UNE SEULE FOIS) :
+  - Étendue : "totalité" ou "partielle"
+  - Autorisation : "soumise à agrément" ou "libre"
+  - Solidarité : durée en années si applicable
 
 3. DIVISION DES LOCAUX :
 - divisionPossible : Possibilité de diviser les locaux

@@ -16,6 +16,7 @@ import {
 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { exportRentCalculationToExcel } from "@/app/components/extraction/utils/rent-calculation-excel-export"
+import { exportRentCalculationToPDF } from "@/app/components/extraction/utils/pdf-export"
 import RentCalculationCharts from "./rent-calculation-charts"
 import type {
   RentCalculationResult,
@@ -88,7 +89,7 @@ export default function RentCalculationDetailModal({
 
   if (!result) return null
 
-  function handleDownload() {
+  function handleDownloadExcel() {
     if (!result) return
     try {
       // Convert to expected format if needed
@@ -115,6 +116,36 @@ export default function RentCalculationDetailModal({
       exportRentCalculationToExcel(exportData)
     } catch (error) {
       console.error("Error exporting to Excel:", error)
+    }
+  }
+
+  function handleDownloadPDF() {
+    if (!result) return
+    try {
+      // Convert to expected format if needed
+      const exportData: RentCalculationResult = {
+        documentId: result.documentId,
+        fileName: result.fileName,
+        extractionDate: result.extractionDate,
+        pageCount: result.pageCount ?? 0,
+        toolType: "calculation-rent",
+        extractedData: result.extractedData,
+        rentSchedule: result.rentSchedule,
+        scheduleInput: result.scheduleInput,
+        metadata: (result as RentCalculationResult).metadata ?? {
+          processingTimeMs:
+            (result as RentCalculationStoredData).extractionMetadata
+              ?.processingTimeMs ?? 0,
+          retries:
+            (result as RentCalculationStoredData).extractionMetadata?.retries ??
+            0,
+          extractionSuccess: true,
+          scheduleSuccess: !!result.rentSchedule,
+        },
+      }
+      exportRentCalculationToPDF(exportData)
+    } catch (error) {
+      console.error("Error exporting to PDF:", error)
     }
   }
 
@@ -164,8 +195,17 @@ export default function RentCalculationDetailModal({
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
                 <button
-                  onClick={handleDownload}
+                  onClick={handleDownloadPDF}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+                  title="Télécharger en PDF"
+                >
+                  <FileText size={14} />
+                  <span className="hidden sm:inline">PDF</span>
+                </button>
+                <button
+                  onClick={handleDownloadExcel}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-emerald-600 text-white rounded-md hover:bg-emerald-700 transition-colors"
+                  title="Télécharger en Excel"
                 >
                   <Download size={14} />
                   <span className="hidden sm:inline">Excel</span>

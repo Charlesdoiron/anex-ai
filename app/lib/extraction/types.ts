@@ -178,6 +178,7 @@ export interface TaxesData {
   propertyTaxAmount: ExtractedValue<number | null>
   teomAmount: ExtractedValue<number | null> // Taxe d'Enlèvement des Ordures Ménagères
   officeTaxAmount: ExtractedValue<number | null>
+  parkingTaxAmount: ExtractedValue<number | null> // Taxe sur emplacements de parking
 }
 
 // 9. Charges et honoraires
@@ -190,6 +191,10 @@ export interface ChargesData {
   annualRIEFeePerSqmExclTax: ExtractedValue<number | null>
   managementFeesOnTenant: ExtractedValue<boolean | null>
   rentManagementFeesOnTenant: ExtractedValue<boolean | null>
+  // Honoraires de gestion détaillés (montants)
+  managementFeesAnnualAmount: ExtractedValue<number | null>
+  managementFeesQuarterlyAmount: ExtractedValue<number | null>
+  managementFeesPerSqmAmount: ExtractedValue<number | null>
 }
 
 // 10. Assurances et recours
