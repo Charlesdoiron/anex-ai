@@ -24,10 +24,8 @@ import { getExtractionServiceOptions } from "./prompt-service"
 import { computeRentScheduleFromExtraction } from "../lease/from-extraction"
 import { documentIngestionService } from "../rag/ingestion/document-ingestion-service"
 import { getOpenAIClient } from "@/app/lib/openai/client"
-import {
-  collectResponseText,
-  truncateText,
-} from "@/app/lib/openai/response-utils"
+import { collectResponseText } from "@/app/lib/openai/response-utils"
+import { prepareDocumentText } from "./document-structure"
 
 const openai = getOpenAIClient()
 
@@ -42,6 +40,10 @@ const SECTIONS_PER_CALL = Math.max(
   1,
   Number(process.env.EXTRACTION_SECTIONS_PER_CALL || "2")
 )
+
+// Max text per LLM call - gpt-5-mini has 400k token context window
+// We use 1M chars (~250k tokens) to leave room for prompts and response
+const MAX_TEXT_PER_CALL = 1_000_000
 
 const CONFIDENCE_VALUES: ConfidenceLevel[] = [
   "high",
@@ -223,6 +225,14 @@ export class ExtractionService {
         sectionStore[key] = value
       }
 
+      // Prepare document text (most docs sent as-is, very large ones truncated)
+      const preparedDoc = prepareDocumentText(pdfData.text, MAX_TEXT_PER_CALL)
+      if (preparedDoc.wasTruncated) {
+        console.log(
+          `[Extraction] Document truncated: ${preparedDoc.originalLength} → ${preparedDoc.text.length} chars`
+        )
+      }
+
       const totalSections = this.extractionPrompts.length
       const groupedPrompts = chunkItems(
         this.extractionPrompts,
@@ -258,7 +268,7 @@ export class ExtractionService {
           }
 
           const batchResult = await this.runBatchExtraction(
-            pdfData.text,
+            preparedDoc.text,
             promptGroup
           )
           await this.ensureNotCancelled()
@@ -298,7 +308,7 @@ export class ExtractionService {
 
           for (const prompt of missingPrompts) {
             const singleResult = await this.runSingleExtraction(
-              pdfData.text,
+              preparedDoc.text,
               prompt
             )
             await this.ensureNotCancelled()
@@ -539,10 +549,7 @@ export class ExtractionService {
       input: [
         {
           role: "user",
-          content: `Document text:\n\n${truncateText(
-            documentText,
-            50000
-          )}\n\nExtract all sections simultaneously and respond with a single JSON object whose top-level keys exactly match: ${sectionNames
+          content: `Document text:\n\n${documentText}\n\nExtract all sections simultaneously and respond with a single JSON object whose top-level keys exactly match: ${sectionNames
             .map((name) => `"${name}"`)
             .join(", ")}.\n\n${sectionsPrompt}`,
         },
@@ -581,16 +588,14 @@ export class ExtractionService {
     prompt: string
   ): Promise<SectionExtractionValue> {
     await this.ensureNotCancelled()
+
     const response = await openai.responses.create({
       model: EXTRACTION_MODEL,
       instructions: this.systemInstructions,
       input: [
         {
           role: "user",
-          content: `Document text:\n\n${truncateText(
-            documentText,
-            50000
-          )}\n\n${prompt}`,
+          content: `Document text:\n\n${documentText}\n\n${prompt}`,
         },
       ],
       text: {

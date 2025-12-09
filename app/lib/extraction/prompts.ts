@@ -84,6 +84,13 @@ Certains champs seront calculés automatiquement après l'extraction :
 - Si tu ne trouves PAS explicitement ces valeurs dans le document, laisse-les null.
 - NE PAS calculer toi-même ces valeurs, le système s'en charge.
 
+BAUX AVEC CONDITIONS GÉNÉRALES ET CONDITIONS PARTICULIÈRES :
+Certains baux sont structurés en deux parties :
+- TITRE I / CONDITIONS GÉNÉRALES : clauses types et mécanismes (ex: "Article LOYER", "Article INDEXATION")
+- TITRE II / CONDITIONS PARTICULIÈRES : valeurs concrètes (ex: "Loyer annuel : 105 525€", "Indice: ILAT 3T2015")
+⚠️ TOUJOURS PRIORISER les CONDITIONS PARTICULIÈRES pour les valeurs chiffrées.
+Les mentions dans l'exposé préalable/préambule sont souvent HISTORIQUES (ancien bail résilié).
+
 FORMAT DE SORTIE :
 Pour chaque champ extrait :
 {
@@ -497,10 +504,21 @@ Format de sortie JSON conforme à SupportMeasuresData.`
 
 export const RENT_PROMPT = `Extraire toutes les informations relatives au loyer.
 
+⚠️ PRIORITÉ DE RECHERCHE - TRÈS IMPORTANT :
+Pour les baux avec "Conditions Générales" et "Conditions Particulières" :
+1. TOUJOURS PRIORISER les valeurs dans les CONDITIONS PARTICULIÈRES / TITRE II
+2. Les mentions dans le "préambule" ou "exposé préalable" sont souvent HISTORIQUES (ancien bail)
+3. Chercher "LOYER ANNUEL DE BASE" dans les conditions particulières
+4. Ignorer les mentions comme "bail du [date antérieure] moyennant un loyer de X" qui sont l'historique
+
 CHAMPS À EXTRAIRE :
 
 1. LOYER PRINCIPAL (HORS TAXES, HORS CHARGES) :
 - annualRentExclTaxExclCharges : Loyer annuel HTHC (en euros, sans symbole)
+  ⚠️ ATTENTION AUX BAUX RENOUVELÉS :
+  - Si le préambule mentionne un ancien loyer ET les conditions particulières un nouveau loyer
+  - PRENDRE LE LOYER DES CONDITIONS PARTICULIÈRES (le loyer actuel)
+  - L'ancien loyer est juste l'historique
   IMPORTANT - CAS DU LOYER PROGRESSIF :
   - Si le bail prévoit un loyer différent par année (ex: 79000€ en 2016, 82000€ en 2017...)
   - Extraire le loyer de la PREMIÈRE ANNÉE (loyer initial)
@@ -566,6 +584,13 @@ Format : valeurs numériques SANS symbole € ni séparateurs de milliers.`
 
 export const INDEXATION_PROMPT = `Extraire les clauses d'indexation du loyer.
 
+⚠️ PRIORITÉ DE RECHERCHE - TRÈS IMPORTANT :
+Pour les baux avec "Conditions Générales" et "Conditions Particulières" :
+1. Chercher d'abord dans les CONDITIONS PARTICULIÈRES / TITRE II
+2. Section "INDICE DE REFERENCE" dans les conditions particulières
+3. L'article "CLAUSE D'INDEXATION" dans les conditions générales décrit la méthode
+4. Les CONDITIONS PARTICULIÈRES donnent l'indice concret et sa valeur
+
 CHAMPS À EXTRAIRE :
 
 1. CLAUSE ET TYPE :
@@ -580,9 +605,10 @@ CHAMPS À EXTRAIRE :
 
 2. RÉFÉRENCES ET FRÉQUENCE :
 - referenceQuarter : Trimestre de référence avec indice type et valeur si disponible
-  - Format AVEC valeur : "Dernier indice publié à la date d'effet soit ILC 2T2016 à 108,40"
-  - Format SANS valeur : "ILC 2ème trimestre 2016" ou "ILC 2T2016"
-  - Chercher : "indice de base", "indice de référence", valeur numérique (ex: 108,40)
+  - Format AVEC valeur : "Dernier indice publié à la date d'effet soit ILAT 3T2015 à 107,98"
+  - Format SANS valeur : "ILAT 3ème trimestre 2015" ou "ILAT 3T2015"
+  - Chercher SPÉCIFIQUEMENT dans CONDITIONS PARTICULIÈRES : "Indice de référence: ..."
+  - Chercher : "indice de base", "indice de référence", valeur numérique (ex: 107,98)
   
 - firstIndexationDate : Date RÉCURRENTE de l'indexation (pas une date unique)
   ⚠️ FORMAT OBLIGATOIRE : "Le [jour] [mois] de chaque année"

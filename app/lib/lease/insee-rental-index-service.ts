@@ -162,11 +162,13 @@ function computeTcamFromSeries(
   return Math.pow(endValue / startValue, 1 / years) - 1
 }
 
-function getQuarter(date: Date): number {
+export function getQuarter(date: Date): number {
   return Math.floor(date.getUTCMonth() / 3) + 1
 }
 
-function parseISODateSafe(value: string | null | undefined): Date | null {
+export function parseISODateSafe(
+  value: string | null | undefined
+): Date | null {
   if (!value) {
     return null
   }
