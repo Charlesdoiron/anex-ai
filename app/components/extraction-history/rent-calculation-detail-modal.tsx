@@ -4,20 +4,14 @@ import {
   X,
   Download,
   FileText,
-  Calendar,
-  TrendingUp,
-  Calculator,
-  Info,
-  AlertTriangle,
-  CheckCircle,
-  BarChart3,
-  ChevronDown,
+  Building2,
   Coins,
+  TrendingUp,
+  Calendar,
 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { exportRentCalculationToExcel } from "@/app/components/extraction/utils/rent-calculation-excel-export"
 import { exportRentCalculationToPDF } from "@/app/components/extraction/utils/pdf-export"
-import RentCalculationCharts from "./rent-calculation-charts"
 import type {
   RentCalculationResult,
   RentCalculationExtractedData,
@@ -39,12 +33,10 @@ interface RentCalculationStoredData {
   extractedData: RentCalculationExtractedData
   rentSchedule: ComputeLeaseRentScheduleResult | null
   scheduleInput: ComputeLeaseRentScheduleInput | null
-  // extractionMetadata from DB (different from metadata)
   extractionMetadata?: {
     processingTimeMs: number
     retries: number
   }
-  // Original metadata if available
   metadata?: RentCalculationResult["metadata"]
 }
 
@@ -92,7 +84,6 @@ export default function RentCalculationDetailModal({
   function handleDownloadExcel() {
     if (!result) return
     try {
-      // Convert to expected format if needed
       const exportData: RentCalculationResult = {
         documentId: result.documentId,
         fileName: result.fileName,
@@ -122,7 +113,6 @@ export default function RentCalculationDetailModal({
   function handleDownloadPDF() {
     if (!result) return
     try {
-      // Convert to expected format if needed
       const exportData: RentCalculationResult = {
         documentId: result.documentId,
         fileName: result.fileName,
@@ -159,7 +149,7 @@ export default function RentCalculationDetailModal({
       />
 
       <div
-        className={`relative w-full max-w-4xl mx-4 my-8 transition-all duration-300 ${
+        className={`relative w-full max-w-5xl mx-4 my-8 transition-all duration-300 ${
           isVisible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-4"
         }`}
       >
@@ -169,7 +159,7 @@ export default function RentCalculationDetailModal({
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-9 h-9 rounded-md bg-emerald-600/10 flex items-center justify-center text-emerald-600 flex-shrink-0">
-                  <Calculator className="w-4 h-4" strokeWidth={1.5} />
+                  <Coins className="w-4 h-4" strokeWidth={1.5} />
                 </div>
                 <div className="min-w-0">
                   <h2 className="text-base font-semibold text-gray-900 truncate">
@@ -223,7 +213,7 @@ export default function RentCalculationDetailModal({
           {/* Content */}
           <div
             ref={scrollRef}
-            className="p-5 max-h-[calc(100vh-180px)] overflow-y-auto bg-gray-50/30"
+            className="p-6 max-h-[calc(100vh-180px)] overflow-y-auto bg-gray-50/30"
           >
             <RentCalculationContent result={result} />
           </div>
@@ -234,7 +224,6 @@ export default function RentCalculationDetailModal({
 }
 
 function RentCalculationContent({ result }: { result: RentCalculationData }) {
-  const [showDetails, setShowDetails] = useState(true)
   const extracted = result.extractedData
   const schedule = result.rentSchedule
   const input = result.scheduleInput
@@ -242,367 +231,389 @@ function RentCalculationContent({ result }: { result: RentCalculationData }) {
   const hasSchedule =
     schedule && schedule.schedule && schedule.schedule.length > 0
 
-  // Handle both metadata structures (from fresh result vs from DB)
-  const errorMessage = (result as RentCalculationResult).metadata?.errorMessage
+  // Calculate today's date for splitting past/future periods
+  const today = new Date()
+  const todayStr = today.toISOString().split("T")[0]
 
-  // Check for missing critical fields
-  const hasEffectiveDate = !!extracted?.calendar?.effectiveDate?.value
-  const hasRent = !!(
-    extracted?.rent?.annualRentExclTaxExclCharges?.value ||
-    extracted?.rent?.quarterlyRentExclTaxExclCharges?.value
+  // Split schedule into past and future periods
+  const pastPeriods = hasSchedule
+    ? schedule.schedule.filter((p) => p.periodEnd < todayStr)
+    : []
+  const futurePeriods = hasSchedule
+    ? schedule.schedule.filter((p) => p.periodStart >= todayStr)
+    : []
+
+  // Calculate cumulative amounts
+  const totalOfficeRentHT = hasSchedule
+    ? schedule.schedule.reduce((sum, p) => sum + p.officeRentHT, 0)
+    : 0
+  const totalParkingRentHT = hasSchedule
+    ? schedule.schedule.reduce((sum, p) => sum + p.parkingRentHT, 0)
+    : 0
+
+  const paidOfficeRentHT = pastPeriods.reduce(
+    (sum, p) => sum + p.officeRentHT,
+    0
   )
-  const hasCriticalData = hasEffectiveDate && hasRent
-  const extractionFailed = !hasCriticalData
+  const paidParkingRentHT = pastPeriods.reduce(
+    (sum, p) => sum + p.parkingRentHT,
+    0
+  )
+
+  const remainingOfficeRentHT = futurePeriods.reduce(
+    (sum, p) => sum + p.officeRentHT,
+    0
+  )
+  const remainingParkingRentHT = futurePeriods.reduce(
+    (sum, p) => sum + p.parkingRentHT,
+    0
+  )
+
+  // Get franchise and measures
+  const franchiseMonths =
+    extracted.supportMeasures?.rentFreePeriodMonths?.value ?? 0
+  const franchiseAmount =
+    extracted.supportMeasures?.rentFreePeriodAmount?.value ?? 0
+  const measuresDescription =
+    extracted.supportMeasures?.otherMeasuresDescription?.value
 
   return (
     <div className="space-y-4">
-      {/* Status banner */}
-      {hasSchedule ? (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-md p-3 flex items-start gap-2">
-          <CheckCircle className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" />
-          <div className="text-xs text-emerald-700">
-            <span className="font-medium">Calcul réussi</span>
-            <span className="text-emerald-600">
-              {" "}
-              — {schedule.schedule.length} périodes calculées
-            </span>
-          </div>
+      {/* Données bail */}
+      <SectionCard
+        title="Données bail"
+        icon={<Building2 className="w-4 h-4" strokeWidth={1.5} />}
+      >
+        <div className="space-y-2">
+          <DataRow
+            label="Nom de l'actif"
+            value={result.fileName?.replace(/\.pdf$/i, "") || "—"}
+          />
+          <DataRow
+            label="Adresse du bien"
+            value={extracted.premises?.address?.value}
+          />
+          <DataRow
+            label="Date d'effet"
+            value={extracted.calendar.effectiveDate?.value}
+            type="date"
+          />
+          <DataRow
+            label="Durée du bail"
+            value={
+              extracted.calendar.duration?.value
+                ? `${extracted.calendar.duration.value} années`
+                : null
+            }
+          />
+          <DataRow
+            label="Surface"
+            value={
+              extracted.premises?.surfaceArea?.value
+                ? `${extracted.premises.surfaceArea.value} m²`
+                : null
+            }
+          />
+          <DataRow
+            label="# places de parking"
+            value={
+              extracted.premises?.parkingSpaces?.value
+                ? `${extracted.premises.parkingSpaces.value} unités`
+                : null
+            }
+          />
         </div>
-      ) : extractionFailed ? (
-        <div className="bg-red-50 border border-red-200 rounded-md p-3 flex items-start gap-2">
-          <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
-          <div className="text-xs text-red-700">
-            <span className="font-medium">Extraction incomplète</span>
-            <div className="mt-1 text-red-600">
-              Données manquantes : {!hasEffectiveDate && "date d'effet"}
-              {!hasEffectiveDate && !hasRent && ", "}
-              {!hasRent && "loyer"}
-              <br />
-              {"L'échéancier n'a pas pu être calculé."}
+      </SectionCard>
+
+      {/* Données financières */}
+      <SectionCard
+        title="Données financières"
+        icon={<Coins className="w-4 h-4" strokeWidth={1.5} />}
+        highlight
+      >
+        <div className="space-y-2">
+          <DataRow
+            label="Fréquence de paiement"
+            value={formatFrequency(extracted.rent.paymentFrequency?.value)}
+          />
+
+          <div className="pt-3 pb-1 border-t border-gray-100">
+            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+              Loyers bureaux
             </div>
           </div>
-        </div>
-      ) : errorMessage ? (
-        <div className="bg-amber-50 border border-amber-200 rounded-md p-3 flex items-start gap-2">
-          <Info className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
-          <div className="text-xs text-amber-700">
-            <span className="font-medium">Échéancier non calculé : </span>
-            {errorMessage}
-          </div>
-        </div>
-      ) : (
-        <div className="bg-gray-50 border border-gray-200 rounded-md p-3 flex items-start gap-2">
-          <Info className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
-          <div className="text-xs text-gray-600">
-            Aucun échéancier disponible
-          </div>
-        </div>
-      )}
+          <DataRow
+            label="Loyer de base annuel HTHC"
+            value={extracted.rent.annualRentExclTaxExclCharges?.value}
+            type="currency"
+          />
+          <DataRow
+            label="Loyer de base trimestriel HTHC"
+            value={extracted.rent.quarterlyRentExclTaxExclCharges?.value}
+            type="currency"
+          />
+          <DataRow
+            label="Loyer HTHC / m² / an"
+            value={extracted.rent.annualRentPerSqmExclTaxExclCharges?.value}
+            type="currency"
+          />
 
-      {/* Summary KPIs - Only when schedule is available */}
-      {hasSchedule && schedule.summary && (
+          <div className="pt-3 pb-1 border-t border-gray-100">
+            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+              Loyers parking
+            </div>
+          </div>
+          <DataRow
+            label="Loyer de base parking annuel HTHC"
+            value={extracted.rent.annualParkingRentExclCharges?.value}
+            type="currency"
+          />
+          <DataRow
+            label="Loyer de base parking trimestriel HTHC"
+            value={extracted.rent.quarterlyParkingRentExclCharges?.value}
+            type="currency"
+          />
+          <DataRow
+            label="Loyer parking HTHC / unité / an"
+            value={extracted.rent.annualParkingRentPerUnitExclCharges?.value}
+            type="currency"
+          />
+
+          <div className="pt-3 pb-1 border-t border-gray-100">
+            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+              Charges et taxes
+            </div>
+          </div>
+          <DataRow
+            label="Provisions pour charges annuelles HT"
+            value={extracted.charges?.annualChargesProvisionExclTax?.value}
+            type="currency"
+          />
+          <DataRow
+            label="Provisions pour charges trimestrielles HT"
+            value={extracted.charges?.quarterlyChargesProvisionExclTax?.value}
+            type="currency"
+          />
+          <DataRow
+            label="Provision pour charges HT / m² / an"
+            value={
+              extracted.charges?.annualChargesProvisionPerSqmExclTax?.value
+            }
+            type="currency"
+          />
+          <DataRow
+            label="Provisions pour taxes annuelles"
+            value={extracted.taxes?.propertyTaxAmount?.value}
+            type="currency"
+          />
+          <DataRow
+            label="Provisions pour taxes trimestrielles"
+            value={
+              extracted.taxes?.propertyTaxAmount?.value
+                ? extracted.taxes.propertyTaxAmount.value / 4
+                : null
+            }
+            type="currency"
+          />
+          <DataRow
+            label="Provision pour taxes HT / m² / an"
+            value={
+              extracted.taxes?.propertyTaxAmount?.value &&
+              extracted.premises?.surfaceArea?.value
+                ? extracted.taxes.propertyTaxAmount.value /
+                  extracted.premises.surfaceArea.value
+                : null
+            }
+            type="currency"
+          />
+
+          <div className="pt-3 pb-1 border-t border-gray-100">
+            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+              Mesures d&apos;accompagnement
+            </div>
+          </div>
+          <DataRow
+            label="Franchise accordée"
+            value={
+              franchiseMonths > 0
+                ? `${franchiseMonths} mois${franchiseAmount > 0 ? ` + ${formatCurrency(franchiseAmount)}` : ""}`
+                : null
+            }
+          />
+          <DataRow
+            label="Mesures d'accompagnement"
+            value={measuresDescription}
+          />
+          <DataRow
+            label="Dépôt de garantie montant"
+            value={extracted.securities?.securityDepositAmount?.value}
+            type="currency"
+          />
+
+          <div className="pt-3 pb-1 border-t border-gray-100">
+            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+              Indexation
+            </div>
+          </div>
+          <DataRow
+            label="Indice"
+            value={
+              extracted.indexation?.indexationType?.value
+                ? `${extracted.indexation.indexationType.value}${
+                    extracted.indexation.referenceQuarter?.value
+                      ? ` - ${extracted.indexation.referenceQuarter.value}`
+                      : ""
+                  }`
+                : null
+            }
+          />
+          <DataRow
+            label="Périodicité de l'indice"
+            value={formatIndexFrequency(null)}
+          />
+        </div>
+      </SectionCard>
+
+      {/* Loyers cumulés (only if schedule exists) */}
+      {hasSchedule && (
         <SectionCard
-          title="Résumé financier"
-          icon={<Coins className="w-4 h-4" strokeWidth={1.5} />}
+          title="Loyers cumulés et prévisionnels"
+          icon={<TrendingUp className="w-4 h-4" strokeWidth={1.5} />}
           highlight
         >
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <div className="text-xs text-gray-500 mb-1">Total loyers</div>
-              <div className="text-lg font-semibold text-emerald-600">
-                {formatCurrency(schedule.summary.totalBaseRentHT ?? 0)}
+          <div className="space-y-2">
+            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+              Sur la durée totale du bail
+            </div>
+            <DataRow
+              label="Loyers cumulés HTHC sur la durée du bail"
+              value={totalOfficeRentHT}
+              type="currency"
+              highlight
+            />
+            <DataRow
+              label="Loyers parking cumulés HTHC sur la durée du bail"
+              value={totalParkingRentHT}
+              type="currency"
+              highlight
+            />
+
+            <div className="pt-3 pb-1 border-t border-gray-100">
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                Périodes passées
               </div>
             </div>
-            <div>
-              <div className="text-xs text-gray-500 mb-1">Total charges</div>
-              <div className="text-base font-semibold text-gray-900">
-                {formatCurrency(schedule.summary.totalChargesHT ?? 0)}
+            <DataRow
+              label="Loyers cumulés HTHC payés"
+              value={paidOfficeRentHT}
+              type="currency"
+            />
+            <DataRow
+              label="Loyers parking cumulés HTHC payés"
+              value={paidParkingRentHT}
+              type="currency"
+            />
+
+            <div className="pt-3 pb-1 border-t border-gray-100">
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                Périodes futures
               </div>
             </div>
-            <div>
-              <div className="text-xs text-gray-500 mb-1">Total net</div>
-              <div className="text-lg font-semibold text-emerald-600">
-                {formatCurrency(schedule.summary.totalNetRentHT ?? 0)}
-              </div>
-            </div>
+            <DataRow
+              label="Loyers prévisionnel HTHC restant dû jusqu'à l'échéance du bail"
+              value={remainingOfficeRentHT}
+              type="currency"
+            />
+            <DataRow
+              label="Loyers parking prévisionnel HTHC restant dû jusqu'à l'échéance du bail"
+              value={remainingParkingRentHT}
+              type="currency"
+            />
           </div>
-          {schedule.summary.depositHT > 0 && (
-            <div className="mt-3 pt-3 border-t border-gray-100">
-              <div className="flex justify-between items-center">
-                <span className="text-xs text-gray-500">
-                  Dépôt de garantie HT
-                </span>
-                <span className="text-sm font-medium text-gray-900">
-                  {formatCurrency(schedule.summary.depositHT)}
-                </span>
-              </div>
-            </div>
-          )}
         </SectionCard>
       )}
 
-      {/* Charts - Only when schedule is available */}
-      {hasSchedule && input && (
-        <RentCalculationCharts
-          schedule={schedule}
-          baseIndexValue={input.baseIndexValue}
-        />
+      {/* Échéancier des périodes passées */}
+      {pastPeriods.length > 0 && (
+        <SectionCard
+          title={`Échéancier des périodes passées (${pastPeriods.length} périodes)`}
+          icon={<Calendar className="w-4 h-4" strokeWidth={1.5} />}
+        >
+          <div className="overflow-x-auto -mx-4">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-gray-500 border-b border-gray-100 bg-gray-50">
+                  <th className="text-left font-medium py-2.5 px-4">Période</th>
+                  <th className="text-right font-medium py-2.5 px-4">
+                    Loyers HTHC
+                  </th>
+                  <th className="text-right font-medium py-2.5 px-4">
+                    Loyers parking HTHC
+                  </th>
+                  <th className="text-right font-medium py-2.5 px-4">
+                    Loyer total HTHC
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {pastPeriods.map((period: RentSchedulePeriod, idx: number) => {
+                  const periodLabel =
+                    period.periodType === "month"
+                      ? `${period.year}-${String(period.month).padStart(2, "0")}`
+                      : `${period.quarter}T${period.year}`
+
+                  const totalRent = period.officeRentHT + period.parkingRentHT
+
+                  return (
+                    <tr
+                      key={idx}
+                      className="border-b border-gray-50 hover:bg-gray-50"
+                    >
+                      <td className="py-2.5 px-4 font-medium text-gray-900">
+                        {periodLabel}
+                      </td>
+                      <td className="py-2.5 px-4 text-right text-gray-700">
+                        {formatCurrency(period.officeRentHT)}
+                      </td>
+                      <td className="py-2.5 px-4 text-right text-gray-700">
+                        {formatCurrency(period.parkingRentHT)}
+                      </td>
+                      <td className="py-2.5 px-4 text-right font-medium text-emerald-600">
+                        {formatCurrency(totalRent)}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-gray-200 bg-gray-50 font-semibold">
+                  <td className="py-2.5 px-4 text-gray-900">Total</td>
+                  <td className="py-2.5 px-4 text-right text-gray-900">
+                    {formatCurrency(paidOfficeRentHT)}
+                  </td>
+                  <td className="py-2.5 px-4 text-right text-gray-900">
+                    {formatCurrency(paidParkingRentHT)}
+                  </td>
+                  <td className="py-2.5 px-4 text-right text-emerald-600">
+                    {formatCurrency(paidOfficeRentHT + paidParkingRentHT)}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </SectionCard>
       )}
 
-      {/* Collapsible details section */}
-      <button
-        onClick={() => setShowDetails(!showDetails)}
-        className="w-full flex items-center justify-between px-4 py-2.5 bg-gray-50 hover:bg-gray-100 rounded-lg border border-gray-200 transition-colors"
-      >
-        <div className="flex items-center gap-2">
-          <BarChart3 className="w-4 h-4 text-gray-500" />
-          <span className="text-xs font-medium text-gray-700">
-            Détails de l&apos;extraction et échéancier complet
-          </span>
+      {pastPeriods.length === 0 && hasSchedule && (
+        <div className="bg-amber-50 border border-amber-200 rounded-md p-3 text-xs text-amber-700">
+          Aucune période passée. Le bail commence dans le futur ou
+          aujourd&apos;hui.
         </div>
-        <ChevronDown
-          className={`w-4 h-4 text-gray-400 transition-transform ${showDetails ? "rotate-180" : ""}`}
-        />
-      </button>
+      )}
 
-      {showDetails && (
-        <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
-          {/* Extracted data */}
-          <SectionCard
-            title="Données extraites"
-            icon={<FileText className="w-3.5 h-3.5" strokeWidth={1.5} />}
-          >
-            <div className="space-y-3">
-              <div>
-                <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                  Calendrier
-                </div>
-                <div className="grid grid-cols-2 gap-x-6">
-                  <FieldRow
-                    label="Date d'effet"
-                    value={extracted.calendar.effectiveDate?.value}
-                    type="date"
-                  />
-                  <FieldRow
-                    label="Durée"
-                    value={
-                      extracted.calendar.duration?.value
-                        ? `${extracted.calendar.duration.value} ans`
-                        : null
-                    }
-                  />
-                </div>
-              </div>
-
-              <div className="pt-2 border-t border-gray-100">
-                <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                  Loyers
-                </div>
-                <div className="grid grid-cols-2 gap-x-6">
-                  <FieldRow
-                    label="Loyer annuel bureaux HT"
-                    value={extracted.rent.annualRentExclTaxExclCharges?.value}
-                    type="currency"
-                  />
-                  <FieldRow
-                    label="Loyer annuel parking HT"
-                    value={extracted.rent.annualParkingRentExclCharges?.value}
-                    type="currency"
-                  />
-                  <FieldRow
-                    label="Fréquence"
-                    value={formatFrequency(
-                      extracted.rent.paymentFrequency?.value
-                    )}
-                  />
-                </div>
-              </div>
-
-              <div className="pt-2 border-t border-gray-100">
-                <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                  Indexation
-                </div>
-                <div className="grid grid-cols-2 gap-x-6">
-                  <FieldRow
-                    label="Type d'indice"
-                    value={extracted.indexation?.indexationType?.value}
-                  />
-                  <FieldRow
-                    label="Indice de référence"
-                    value={extracted.indexation?.referenceQuarter?.value}
-                  />
-                </div>
-              </div>
-            </div>
-          </SectionCard>
-
-          {/* Schedule input parameters */}
-          {input && (
-            <SectionCard
-              title="Paramètres de calcul"
-              icon={<Calculator className="w-3.5 h-3.5" strokeWidth={1.5} />}
-            >
-              <div className="grid grid-cols-2 gap-x-6">
-                <FieldRow
-                  label="Date de début"
-                  value={input.startDate}
-                  type="date"
-                />
-                <FieldRow
-                  label="Date de fin"
-                  value={input.endDate}
-                  type="date"
-                />
-                <FieldRow
-                  label="Indice INSEE de base"
-                  value={input.baseIndexValue?.toFixed(2)}
-                />
-                <FieldRow
-                  label="Type d'indice"
-                  value={input.indexType?.toUpperCase()}
-                />
-                <FieldRow
-                  label="Fréquence"
-                  value={formatFrequency(input.paymentFrequency)}
-                />
-                <FieldRow
-                  label="Loyer bureaux / période"
-                  value={input.officeRentHT}
-                  type="currency"
-                />
-                <FieldRow
-                  label="Loyer parking / période"
-                  value={input.parkingRentHT}
-                  type="currency"
-                />
-              </div>
-            </SectionCard>
-          )}
-
-          {/* Yearly totals */}
-          {hasSchedule && schedule.summary.yearlyTotals.length > 0 && (
-            <SectionCard
-              title="Totaux annuels"
-              icon={<TrendingUp className="w-3.5 h-3.5" strokeWidth={1.5} />}
-            >
-              <div className="overflow-x-auto -mx-4">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="text-gray-500 border-b border-gray-100">
-                      <th className="text-left font-medium py-2 px-4">Année</th>
-                      <th className="text-right font-medium py-2 px-4">
-                        Loyer base HT
-                      </th>
-                      <th className="text-right font-medium py-2 px-4">
-                        Charges HT
-                      </th>
-                      <th className="text-right font-medium py-2 px-4">
-                        Loyer net HT
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {schedule.summary.yearlyTotals.map(
-                      (year: YearlyTotalSummary) => (
-                        <tr key={year.year} className="border-b border-gray-50">
-                          <td className="py-2 px-4 font-medium text-gray-900">
-                            {year.year}
-                          </td>
-                          <td className="py-2 px-4 text-right text-gray-700">
-                            {formatCurrency(year.baseRentHT)}
-                          </td>
-                          <td className="py-2 px-4 text-right text-gray-700">
-                            {formatCurrency(year.chargesHT)}
-                          </td>
-                          <td className="py-2 px-4 text-right font-medium text-emerald-600">
-                            {formatCurrency(year.netRentHT)}
-                          </td>
-                        </tr>
-                      )
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              {schedule.summary.depositHT > 0 && (
-                <div className="mt-3 pt-3 border-t border-gray-100">
-                  <FieldRow
-                    label="Dépôt de garantie HT"
-                    value={schedule.summary.depositHT}
-                    type="currency"
-                  />
-                </div>
-              )}
-            </SectionCard>
-          )}
-
-          {/* Detailed schedule preview */}
-          {hasSchedule && (
-            <SectionCard
-              title={`Échéancier détaillé (${schedule.schedule.length} périodes)`}
-              icon={<Calendar className="w-3.5 h-3.5" strokeWidth={1.5} />}
-            >
-              <div className="overflow-x-auto -mx-4">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="text-gray-500 border-b border-gray-100">
-                      <th className="text-left font-medium py-2 px-4">
-                        Période
-                      </th>
-                      <th className="text-right font-medium py-2 px-4">
-                        Indice
-                      </th>
-                      <th className="text-right font-medium py-2 px-4">
-                        Bureaux HT
-                      </th>
-                      <th className="text-right font-medium py-2 px-4">
-                        Parking HT
-                      </th>
-                      <th className="text-right font-medium py-2 px-4">
-                        Net HT
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {schedule.schedule
-                      .slice(0, 12)
-                      .map((period: RentSchedulePeriod, idx: number) => {
-                        const periodLabel =
-                          period.periodType === "month"
-                            ? `${period.year}-${String(period.month).padStart(2, "0")}`
-                            : `${period.year} T${period.quarter}`
-
-                        return (
-                          <tr key={idx} className="border-b border-gray-50">
-                            <td className="py-2 px-4 font-medium text-gray-900">
-                              {periodLabel}
-                            </td>
-                            <td className="py-2 px-4 text-right text-gray-500">
-                              {period.indexValue.toFixed(2)}
-                            </td>
-                            <td className="py-2 px-4 text-right text-gray-700">
-                              {formatCurrency(period.officeRentHT)}
-                            </td>
-                            <td className="py-2 px-4 text-right text-gray-700">
-                              {formatCurrency(period.parkingRentHT)}
-                            </td>
-                            <td className="py-2 px-4 text-right font-medium text-emerald-600">
-                              {formatCurrency(period.netRentHT)}
-                            </td>
-                          </tr>
-                        )
-                      })}
-                  </tbody>
-                </table>
-              </div>
-              {schedule.schedule.length > 12 && (
-                <p className="text-xs text-gray-400 mt-2 px-4">
-                  ... et {schedule.schedule.length - 12} autres périodes (voir
-                  Excel pour le détail complet)
-                </p>
-              )}
-            </SectionCard>
-          )}
+      {!hasSchedule && (
+        <div className="bg-gray-50 border border-gray-200 rounded-md p-3 text-xs text-gray-600">
+          Échéancier non disponible
         </div>
       )}
     </div>
@@ -616,12 +627,7 @@ interface SectionCardProps {
   highlight?: boolean
 }
 
-function SectionCard({
-  title,
-  icon,
-  children,
-  highlight,
-}: SectionCardProps & { highlight?: boolean }) {
+function SectionCard({ title, icon, children, highlight }: SectionCardProps) {
   return (
     <div
       className={`bg-white rounded-md border overflow-hidden ${
@@ -637,9 +643,7 @@ function SectionCard({
             : "bg-gray-50/50 border-gray-100"
         }`}
       >
-        <span className={highlight ? "text-emerald-600" : "text-emerald-600"}>
-          {icon}
-        </span>
+        <span className="text-emerald-600">{icon}</span>
         <h3
           className={`text-xs font-semibold uppercase tracking-wide ${
             highlight ? "text-gray-800" : "text-gray-700"
@@ -653,22 +657,25 @@ function SectionCard({
   )
 }
 
-interface FieldRowProps {
+interface DataRowProps {
   label: string
   value: string | number | boolean | null | undefined
-  type?: "text" | "date" | "boolean" | "currency"
+  type?: "text" | "date" | "currency"
+  highlight?: boolean
 }
 
-function FieldRow({ label, value, type = "text" }: FieldRowProps) {
+function DataRow({ label, value, type = "text", highlight }: DataRowProps) {
   let displayValue: string
 
   if (value === null || value === undefined || value === "") {
     displayValue = "—"
-  } else if (type === "boolean") {
-    displayValue = value ? "Oui" : "Non"
   } else if (type === "date" && value) {
     try {
-      displayValue = new Date(String(value)).toLocaleDateString("fr-FR")
+      displayValue = new Date(String(value)).toLocaleDateString("fr-FR", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      })
     } catch {
       displayValue = String(value)
     }
@@ -681,10 +688,16 @@ function FieldRow({ label, value, type = "text" }: FieldRowProps) {
   const isEmpty = displayValue === "—"
 
   return (
-    <div className="flex items-start justify-between py-1.5 gap-4">
-      <span className="text-xs text-gray-500 flex-shrink-0">{label}</span>
+    <div className="flex items-start justify-between py-1.5 gap-4 hover:bg-gray-50/50 -mx-2 px-2 rounded">
+      <span className="text-xs text-gray-600 flex-shrink-0">{label}</span>
       <span
-        className={`text-xs text-right ${isEmpty ? "text-gray-300" : "text-gray-800"}`}
+        className={`text-xs text-right font-medium ${
+          isEmpty
+            ? "text-gray-300"
+            : highlight
+              ? "text-emerald-600 text-sm"
+              : "text-gray-900"
+        }`}
       >
         {displayValue}
       </span>
@@ -700,5 +713,13 @@ function formatCurrency(value: number | null | undefined): string | null {
 function formatFrequency(freq: string | null | undefined): string {
   if (freq === "monthly") return "Mensuel"
   if (freq === "quarterly") return "Trimestriel"
+  if (freq === "annual") return "Annuel"
+  return freq || "—"
+}
+
+function formatIndexFrequency(freq: string | null | undefined): string {
+  if (freq === "annual") return "Annuelle"
+  if (freq === "quarterly") return "Trimestrielle"
+  if (freq === "other") return "Autre"
   return freq || "—"
 }

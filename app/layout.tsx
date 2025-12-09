@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import "./globals.css"
 import { EnvChecker } from "./components/env-checker"
+import { DeploymentGuard } from "./components/deployment-guard"
 import { validateEnv } from "./lib/env-check"
 import { JobTrackerProvider, JobStatusBanner } from "./components/job-tracker"
 import { Header } from "./components/header"
@@ -26,6 +27,7 @@ export default function RootLayout({
     <html lang="fr">
       <body className="antialiased bg-brand-cream">
         <JobTrackerProvider>
+          <DeploymentGuard />
           <NavigationProgress />
           <EnvChecker />
           <Header />

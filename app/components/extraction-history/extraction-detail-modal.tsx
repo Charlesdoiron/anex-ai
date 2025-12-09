@@ -4,15 +4,15 @@ import {
   X,
   Download,
   FileText,
-  Calendar,
   Building2,
   Users,
   MapPin,
-  Clock,
+  Calendar,
   Coins,
   TrendingUp,
-  Receipt,
   Shield,
+  Wrench,
+  File,
 } from "lucide-react"
 import type {
   LeaseExtractionResult,
@@ -22,10 +22,6 @@ import { exportExtractionToExcel } from "@/app/components/extraction/utils/excel
 import { exportExtractionToPDF } from "@/app/components/extraction/utils/pdf-export"
 import { useCallback, useEffect, useRef, useState } from "react"
 
-/**
- * Extract the value from an ExtractedValue object
- * Matches the logic used in excel-export.ts for consistency
- */
 function getValue<T>(field: ExtractedValue<T> | undefined | null): T | null {
   if (!field) return null
   if (typeof field !== "object") return field as T
@@ -103,7 +99,7 @@ export default function ExtractionDetailModal({
       />
 
       <div
-        className={`relative w-full max-w-3xl mx-4 my-8 transition-all duration-300 ${
+        className={`relative w-full max-w-5xl mx-4 my-8 transition-all duration-300 ${
           isVisible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-4"
         }`}
       >
@@ -163,7 +159,7 @@ export default function ExtractionDetailModal({
           {/* Content */}
           <div
             ref={scrollRef}
-            className="p-5 max-h-[calc(100vh-180px)] overflow-y-auto bg-gray-50/30"
+            className="p-6 max-h-[calc(100vh-180px)] overflow-y-auto bg-gray-50/30"
           >
             <ExtractionContent extraction={extraction} />
           </div>
@@ -173,66 +169,19 @@ export default function ExtractionDetailModal({
   )
 }
 
-interface FieldRowProps {
-  label: string
-  value: string | number | boolean | null | undefined
-  type?: "text" | "date" | "boolean" | "currency"
-}
-
-function FieldRow({ label, value, type = "text" }: FieldRowProps) {
-  let displayValue: string
-
-  if (value === null || value === undefined || value === "") {
-    displayValue = "—"
-  } else if (type === "boolean") {
-    displayValue = value ? "Oui" : "Non"
-  } else if (type === "date" && value) {
-    try {
-      displayValue = new Date(String(value)).toLocaleDateString("fr-FR")
-    } catch {
-      displayValue = String(value)
-    }
-  } else if (type === "currency" && typeof value === "number") {
-    displayValue = value.toLocaleString("fr-FR") + " €"
-  } else {
-    displayValue = String(value)
-  }
-
-  const isEmpty = displayValue === "—"
-
-  return (
-    <div className="flex items-start justify-between py-2 gap-4">
-      <span className="text-xs text-gray-500 flex-shrink-0">{label}</span>
-      <span
-        className={`text-xs text-right ${isEmpty ? "text-gray-300" : "text-gray-800"}`}
-      >
-        {displayValue}
-      </span>
-    </div>
-  )
-}
-
-/**
- * Get regime value - handles both { regime: { value } } and { value } structures
- */
 function getRegimeValue(
   regime: LeaseExtractionResult["regime"] | undefined
 ): string | null {
   if (!regime) return null
-  // New structure: { regime: { value, confidence } }
   if ("regime" in regime && regime.regime) {
     return getValue(regime.regime)
   }
-  // Old structure: { value, confidence } directly
   if ("value" in regime) {
     return getValue(regime as unknown as ExtractedValue<string>)
   }
   return null
 }
 
-/**
- * Format array or string value for display
- */
 function formatArrayValue(value: unknown): string | null {
   if (!value) return null
   if (Array.isArray(value)) {
@@ -248,72 +197,7 @@ interface SectionCardProps {
   highlight?: boolean
 }
 
-interface KpiFieldProps {
-  label: string
-  value: number | null
-  primary?: boolean
-}
-
-function KpiField({ label, value, primary }: KpiFieldProps) {
-  const displayValue =
-    value !== null && value !== undefined
-      ? `${value.toLocaleString("fr-FR")} €`
-      : "—"
-
-  const isEmpty = value === null || value === undefined
-
-  return (
-    <div className="py-2">
-      <div className="text-xs text-gray-500 mb-1">{label}</div>
-      <div
-        className={`font-semibold ${
-          primary ? "text-lg text-brand-green" : "text-base text-gray-900"
-        } ${isEmpty ? "text-gray-300" : ""}`}
-      >
-        {displayValue}
-      </div>
-    </div>
-  )
-}
-
-interface PartyMainInfoProps {
-  name: string | null
-  siren: string | null
-}
-
-function PartyMainInfo({ name, siren }: PartyMainInfoProps) {
-  return (
-    <div>
-      <div className="text-sm font-semibold text-gray-900 mb-0.5">
-        {name || "—"}
-      </div>
-      {siren && <div className="text-xs text-gray-600">SIREN: {siren}</div>}
-    </div>
-  )
-}
-
-interface ContactFieldProps {
-  icon: string
-  value: string | null
-}
-
-function ContactField({ icon, value }: ContactFieldProps) {
-  if (!value) return null
-
-  return (
-    <div className="flex items-start gap-1.5 text-xs text-gray-600">
-      <span className="text-[10px] mt-0.5">{icon}</span>
-      <span className="break-all">{value}</span>
-    </div>
-  )
-}
-
-function SectionCard({
-  title,
-  icon,
-  children,
-  highlight,
-}: SectionCardProps & { highlight?: boolean }) {
+function SectionCard({ title, icon, children, highlight }: SectionCardProps) {
   return (
     <div
       className={`bg-white rounded-md border overflow-hidden ${
@@ -329,9 +213,7 @@ function SectionCard({
             : "bg-gray-50/50 border-gray-100"
         }`}
       >
-        <span className={highlight ? "text-brand-green" : "text-brand-green"}>
-          {icon}
-        </span>
+        <span className="text-brand-green">{icon}</span>
         <h3
           className={`text-xs font-semibold uppercase tracking-wide ${
             highlight ? "text-gray-800" : "text-gray-700"
@@ -345,261 +227,403 @@ function SectionCard({
   )
 }
 
+interface DataRowProps {
+  label: string
+  value: string | number | boolean | null | undefined
+  type?: "text" | "date" | "currency"
+  highlight?: boolean
+}
+
+function DataRow({ label, value, type = "text", highlight }: DataRowProps) {
+  let displayValue: string
+
+  if (value === null || value === undefined || value === "") {
+    displayValue = "—"
+  } else if (type === "date" && value) {
+    try {
+      displayValue = new Date(String(value)).toLocaleDateString("fr-FR", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      })
+    } catch {
+      displayValue = String(value)
+    }
+  } else if (type === "currency" && typeof value === "number") {
+    displayValue = `${value.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`
+  } else if (typeof value === "boolean") {
+    displayValue = value ? "Oui" : "Non"
+  } else {
+    displayValue = String(value)
+  }
+
+  const isEmpty = displayValue === "—"
+
+  return (
+    <div className="flex items-start justify-between py-1.5 gap-4 hover:bg-gray-50/50 -mx-2 px-2 rounded">
+      <span className="text-xs text-gray-600 flex-shrink-0">{label}</span>
+      <span
+        className={`text-xs text-right font-medium ${
+          isEmpty
+            ? "text-gray-300"
+            : highlight
+              ? "text-brand-green text-sm"
+              : "text-gray-900"
+        }`}
+      >
+        {displayValue}
+      </span>
+    </div>
+  )
+}
+
 function ExtractionContent({
   extraction,
 }: {
   extraction: LeaseExtractionResult
 }) {
-  const iconClass = "w-3.5 h-3.5"
+  const iconClass = "w-4 h-4"
   const iconStroke = 1.5
 
-  // Calculate total annual cost
-  const annualRent = getValue(extraction.rent?.annualRentExclTaxExclCharges)
-  const annualCharges = getValue(
-    extraction.charges?.annualChargesProvisionExclTax
+  // Get franchise and measures
+  const franchiseMonths =
+    getValue(extraction.supportMeasures?.rentFreePeriodMonths) ?? 0
+  const franchiseAmount =
+    getValue(extraction.supportMeasures?.rentFreePeriodAmount) ?? 0
+  const measuresDescription = getValue(
+    extraction.supportMeasures?.otherMeasuresDescription
   )
-  const totalAnnual = (annualRent || 0) + (annualCharges || 0)
+
+  // Get surfaces (using available fields)
+  const totalSurface = getValue(extraction.premises?.surfaceArea)
 
   return (
-    <div className="space-y-3">
-      {/* 1. SYNTHÈSE FINANCIÈRE - KPIs en tête */}
+    <div className="space-y-4">
+      {/* Données de base */}
       <SectionCard
-        title="Synthèse financière"
-        icon={<Coins className={iconClass} strokeWidth={iconStroke} />}
-        highlight
+        title="Données de base"
+        icon={<Building2 className={iconClass} strokeWidth={iconStroke} />}
       >
-        <div className="grid grid-cols-2 gap-4">
-          <KpiField label="Loyer annuel HT/HC" value={annualRent} primary />
-          <KpiField
-            label="Loyer au m² / an"
-            value={getValue(
-              extraction.rent?.annualRentPerSqmExclTaxExclCharges
-            )}
+        <div className="space-y-2">
+          <DataRow
+            label="Régime juridique"
+            value={getRegimeValue(extraction.regime)}
           />
-          <KpiField label="Charges annuelles HT" value={annualCharges} />
-          <KpiField
-            label="Total annuel"
-            value={totalAnnual > 0 ? totalAnnual : null}
-            primary
+          <DataRow
+            label="Bailleur"
+            value={getValue(extraction.parties?.landlord?.name)}
           />
-        </div>
-        <div className="mt-3 pt-3 border-t border-gray-100">
-          <FieldRow
-            label="Dépôt de garantie"
-            value={getValue(extraction.securities?.securityDepositAmount)}
-            type="currency"
+          <DataRow
+            label="Preneur"
+            value={getValue(extraction.parties?.tenant?.name)}
           />
-        </div>
-      </SectionCard>
-
-      {/* 2. DATES CLÉS */}
-      <SectionCard
-        title="Dates clés"
-        icon={<Clock className={iconClass} strokeWidth={iconStroke} />}
-      >
-        <div className="grid grid-cols-2 gap-x-6">
-          <FieldRow
-            label="Prise d'effet"
-            value={getValue(extraction.calendar?.effectiveDate)}
-            type="date"
-          />
-          <FieldRow
-            label="Fin du bail"
-            value={getValue(extraction.calendar?.endDate)}
-            type="date"
-          />
-          <FieldRow
-            label="Durée"
-            value={
-              getValue(extraction.calendar?.duration)
-                ? `${getValue(extraction.calendar?.duration)} ans`
-                : null
-            }
-          />
-          <FieldRow
-            label="Prochaine échéance triennale"
-            value={getValue(extraction.calendar?.nextTriennialDate)}
-            type="date"
-          />
-        </div>
-      </SectionCard>
-
-      {/* 3. INDEXATION */}
-      <SectionCard
-        title="Indexation"
-        icon={<TrendingUp className={iconClass} strokeWidth={iconStroke} />}
-      >
-        <div className="grid grid-cols-2 gap-x-6">
-          <FieldRow
-            label="Type d'indice"
-            value={getValue(extraction.indexation?.indexationType)}
-          />
-          <FieldRow
-            label="Trimestre de référence"
-            value={getValue(extraction.indexation?.referenceQuarter)}
-          />
-          <FieldRow
-            label="Première indexation"
-            value={getValue(extraction.indexation?.firstIndexationDate)}
-            type="date"
-          />
-          <FieldRow
-            label="Fréquence"
-            value={getValue(extraction.indexation?.indexationFrequency)}
-          />
-        </div>
-      </SectionCard>
-
-      {/* 4. PARTIES */}
-      <SectionCard
-        title="Parties au contrat"
-        icon={<Users className={iconClass} strokeWidth={iconStroke} />}
-      >
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
-              Bailleur
-            </div>
-            <div className="space-y-2">
-              <PartyMainInfo
-                name={getValue(extraction.parties?.landlord?.name)}
-                siren={getValue(extraction.parties?.landlord?.siren)}
-              />
-              <div className="pt-2 border-t border-gray-50 space-y-1.5">
-                <ContactField
-                  icon="📧"
-                  value={getValue(extraction.parties?.landlord?.email)}
-                />
-                <ContactField
-                  icon="📞"
-                  value={getValue(extraction.parties?.landlord?.phone)}
-                />
-                <ContactField
-                  icon="📍"
-                  value={getValue(extraction.parties?.landlord?.address)}
-                />
-              </div>
-            </div>
-          </div>
-          <div>
-            <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
-              Preneur
-            </div>
-            <div className="space-y-2">
-              <PartyMainInfo
-                name={getValue(extraction.parties?.tenant?.name)}
-                siren={getValue(extraction.parties?.tenant?.siren)}
-              />
-              <div className="pt-2 border-t border-gray-50 space-y-1.5">
-                <ContactField
-                  icon="📧"
-                  value={getValue(extraction.parties?.tenant?.email)}
-                />
-                <ContactField
-                  icon="📞"
-                  value={getValue(extraction.parties?.tenant?.phone)}
-                />
-                <ContactField
-                  icon="📍"
-                  value={getValue(extraction.parties?.tenant?.address)}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      </SectionCard>
-
-      {/* 5. LOCAUX */}
-      <SectionCard
-        title="Locaux"
-        icon={<MapPin className={iconClass} strokeWidth={iconStroke} />}
-      >
-        <div className="grid grid-cols-2 gap-x-6">
-          <FieldRow
-            label="Adresse"
+          <DataRow
+            label="Adresse de l'actif"
             value={getValue(extraction.premises?.address)}
           />
-          <FieldRow
-            label="Surface"
-            value={
-              getValue(extraction.premises?.surfaceArea)
-                ? `${getValue(extraction.premises?.surfaceArea)} m²`
-                : null
-            }
+        </div>
+      </SectionCard>
+
+      {/* Surfaces */}
+      <SectionCard
+        title="Surfaces"
+        icon={<MapPin className={iconClass} strokeWidth={iconStroke} />}
+      >
+        <div className="space-y-2">
+          <DataRow
+            label="Surface totale"
+            value={totalSurface ? `${totalSurface} m²` : null}
           />
-          <FieldRow
-            label="Destination"
-            value={getValue(extraction.premises?.purpose)}
-          />
-          <FieldRow
-            label="Parking"
+          <DataRow
+            label="Places de parking"
             value={
               getValue(extraction.premises?.parkingSpaces)
-                ? `${getValue(extraction.premises?.parkingSpaces)} places`
+                ? `${getValue(extraction.premises?.parkingSpaces)} unités`
                 : null
             }
           />
-          <FieldRow
-            label="Désignation"
-            value={getValue(extraction.premises?.designation)}
-          />
-          <FieldRow
-            label="Étages"
+          <DataRow
+            label="Étage(s) des locaux"
             value={formatArrayValue(getValue(extraction.premises?.floors))}
           />
         </div>
       </SectionCard>
 
-      {/* 6. DÉTAILS FINANCIERS */}
+      {/* Durée et dates clés */}
       <SectionCard
-        title="Détails financiers complémentaires"
-        icon={<Receipt className={iconClass} strokeWidth={iconStroke} />}
+        title="Durée et dates clés"
+        icon={<Calendar className={iconClass} strokeWidth={iconStroke} />}
       >
-        <div className="grid grid-cols-2 gap-x-6">
-          <FieldRow
-            label="Loyer trimestriel HT/HC"
+        <div className="space-y-2">
+          <DataRow
+            label="Durée du bail"
+            value={
+              getValue(extraction.calendar?.duration)
+                ? `${getValue(extraction.calendar?.duration)} années`
+                : null
+            }
+          />
+          <DataRow
+            label="Date signature"
+            value={getValue(extraction.calendar?.signatureDate)}
+            type="date"
+          />
+          <DataRow
+            label="Date d'effet"
+            value={getValue(extraction.calendar?.effectiveDate)}
+            type="date"
+          />
+          <DataRow
+            label="Prochaine faculté de résiliation/congé"
+            value={getValue(extraction.calendar?.nextTriennialDate)}
+            type="date"
+          />
+          <DataRow
+            label="Préavis"
+            value={getValue(extraction.calendar?.noticePeriod)}
+          />
+        </div>
+      </SectionCard>
+
+      {/* Données financières */}
+      <SectionCard
+        title="Données financières"
+        icon={<Coins className={iconClass} strokeWidth={iconStroke} />}
+        highlight
+      >
+        <div className="space-y-2">
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+            Loyers bureaux
+          </div>
+          <DataRow
+            label="Loyer de base annuel HTHC"
+            value={getValue(extraction.rent?.annualRentExclTaxExclCharges)}
+            type="currency"
+          />
+          <DataRow
+            label="Loyer de base trimestriel HTHC"
             value={getValue(extraction.rent?.quarterlyRentExclTaxExclCharges)}
             type="currency"
           />
-          <FieldRow
-            label="Provision charges trimestrielle HT"
+          <DataRow
+            label="Loyer HTHC / m² / an"
+            value={getValue(
+              extraction.rent?.annualRentPerSqmExclTaxExclCharges
+            )}
+            type="currency"
+          />
+
+          <div className="pt-3 pb-1 border-t border-gray-100">
+            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+              Loyers parking
+            </div>
+          </div>
+          <DataRow
+            label="Loyer de base parking annuel HTHC"
+            value={getValue(extraction.rent?.annualParkingRentExclCharges)}
+            type="currency"
+          />
+          <DataRow
+            label="Loyer de base parking trimestriel HTHC"
+            value={getValue(extraction.rent?.quarterlyParkingRentExclCharges)}
+            type="currency"
+          />
+          <DataRow
+            label="Loyer parking HTHC / unité / an"
+            value={getValue(
+              extraction.rent?.annualParkingRentPerUnitExclCharges
+            )}
+            type="currency"
+          />
+
+          <div className="pt-3 pb-1 border-t border-gray-100">
+            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+              Charges et taxes
+            </div>
+          </div>
+          <DataRow
+            label="Provisions pour charges annuelles HT"
+            value={getValue(extraction.charges?.annualChargesProvisionExclTax)}
+            type="currency"
+          />
+          <DataRow
+            label="Provisions pour charges trimestrielles HT"
             value={getValue(
               extraction.charges?.quarterlyChargesProvisionExclTax
             )}
             type="currency"
           />
-          <FieldRow
-            label="TVA applicable"
-            value={getValue(extraction.rent?.isSubjectToVAT)}
-            type="boolean"
-          />
-          <FieldRow
-            label="Fréquence de paiement"
-            value={getValue(extraction.rent?.paymentFrequency)}
-          />
-          <FieldRow
-            label="Honoraires de gestion (preneur)"
-            value={getValue(extraction.charges?.managementFeesOnTenant)}
-            type="boolean"
-          />
-          <FieldRow
-            label="Autres sûretés"
-            value={formatArrayValue(
-              getValue(extraction.securities?.otherSecurities)
+          <DataRow
+            label="Provisions pour charges HT/m²/an"
+            value={getValue(
+              extraction.charges?.annualChargesProvisionPerSqmExclTax
             )}
+            type="currency"
+          />
+          <DataRow
+            label="Provisions pour taxes annuelles"
+            value={getValue(extraction.taxes?.propertyTaxAmount)}
+            type="currency"
+          />
+          <DataRow
+            label="Provisions pour taxes trimestrielles"
+            value={
+              getValue(extraction.taxes?.propertyTaxAmount)
+                ? getValue(extraction.taxes?.propertyTaxAmount)! / 4
+                : null
+            }
+            type="currency"
+          />
+          <DataRow
+            label="Provisions pour taxes HT/m²/an"
+            value={
+              getValue(extraction.taxes?.propertyTaxAmount) && totalSurface
+                ? getValue(extraction.taxes?.propertyTaxAmount)! / totalSurface
+                : null
+            }
+            type="currency"
+          />
+
+          <div className="pt-3 pb-1 border-t border-gray-100">
+            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+              Mesures d&apos;accompagnement
+            </div>
+          </div>
+          <DataRow
+            label="Franchise accordée"
+            value={
+              franchiseMonths > 0
+                ? `${franchiseMonths} mois${
+                    franchiseAmount > 0
+                      ? ` + ${franchiseAmount.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} € HT`
+                      : ""
+                  }`
+                : null
+            }
+          />
+          <DataRow
+            label="Mesures d'accompagnement"
+            value={measuresDescription}
+          />
+          <DataRow
+            label="Dépôt de garantie"
+            value={getValue(extraction.securities?.securityDepositAmount)}
+            type="currency"
+          />
+
+          <div className="pt-3 pb-1 border-t border-gray-100">
+            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+              Indexation
+            </div>
+          </div>
+          <DataRow
+            label="Indice"
+            value={
+              getValue(extraction.indexation?.indexationType)
+                ? `${getValue(extraction.indexation?.indexationType)}${
+                    getValue(extraction.indexation?.referenceQuarter)
+                      ? ` - ${getValue(extraction.indexation?.referenceQuarter)}`
+                      : ""
+                  }`
+                : null
+            }
+          />
+          <DataRow
+            label="Périodicité de l'indexation"
+            value={
+              getValue(extraction.indexation?.indexationFrequency) === "annual"
+                ? "Annuelle"
+                : getValue(extraction.indexation?.indexationFrequency) ===
+                    "quarterly"
+                  ? "Trimestrielle"
+                  : getValue(extraction.indexation?.indexationFrequency)
+            }
+          />
+          <DataRow
+            label="Soumission TVA"
+            value={
+              getValue(extraction.rent?.isSubjectToVAT)
+                ? "Oui 20%"
+                : getValue(extraction.rent?.isSubjectToVAT) === false
+                  ? "Non"
+                  : null
+            }
           />
         </div>
       </SectionCard>
 
-      {/* 7. RÉGIME (si présent) */}
-      {extraction.regime && (
-        <SectionCard
-          title="Régime du bail"
-          icon={<Building2 className={iconClass} strokeWidth={iconStroke} />}
-        >
-          <FieldRow label="Type" value={getRegimeValue(extraction.regime)} />
-        </SectionCard>
-      )}
+      {/* Autres */}
+      <SectionCard
+        title="Autres"
+        icon={<Shield className={iconClass} strokeWidth={iconStroke} />}
+      >
+        <div className="space-y-2">
+          <DataRow
+            label="Assurance - non-recours réciproque"
+            value={getValue(extraction.insurance?.hasWaiverOfRecourse)}
+          />
+          <DataRow
+            label="Sûreté"
+            value={
+              getValue(extraction.securities?.otherSecurities)
+                ? `Oui${
+                    formatArrayValue(
+                      getValue(extraction.securities?.otherSecurities)
+                    )
+                      ? ` - ${formatArrayValue(getValue(extraction.securities?.otherSecurities))}`
+                      : ""
+                  }`
+                : "Non"
+            }
+          />
+        </div>
+      </SectionCard>
+
+      {/* Travaux */}
+      <SectionCard
+        title="Travaux et restitution"
+        icon={<Wrench className={iconClass} strokeWidth={iconStroke} />}
+      >
+        <div className="space-y-2">
+          <DataRow
+            label="Travaux à la charge du bailleur"
+            value={formatArrayValue(
+              getValue(extraction.maintenance?.landlordWorksList)
+            )}
+          />
+          <DataRow
+            label="Travaux à la charge du preneur"
+            value={formatArrayValue(
+              getValue(extraction.maintenance?.tenantWorksList)
+            )}
+          />
+          <DataRow
+            label="Condition de remise en état / restitution"
+            value={getValue(extraction.restitution?.restitutionConditions)}
+          />
+        </div>
+      </SectionCard>
+
+      {/* Annexes */}
+      <SectionCard
+        title="Annexes"
+        icon={<File className={iconClass} strokeWidth={iconStroke} />}
+      >
+        <div className="space-y-2">
+          <DataRow
+            label="Règlement intérieur"
+            value={getValue(extraction.otherAnnexes?.hasInternalRegulations)}
+          />
+          <DataRow
+            label="Plan des locaux"
+            value={getValue(extraction.otherAnnexes?.hasPremisesPlan)}
+          />
+          <DataRow
+            label="État des lieux charges"
+            value={getValue(extraction.otherAnnexes?.hasChargesInventory)}
+          />
+        </div>
+      </SectionCard>
     </div>
   )
 }

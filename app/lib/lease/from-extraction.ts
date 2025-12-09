@@ -32,6 +32,7 @@ async function buildScheduleInputFromExtraction(
   const charges = extraction.charges
   const taxes = extraction.taxes
   const support = extraction.supportMeasures
+  const securities = extraction.securities
 
   const effectiveDate = calendar?.effectiveDate?.value
   const signatureDate = calendar?.signatureDate?.value
@@ -52,7 +53,8 @@ async function buildScheduleInputFromExtraction(
     toLeaseIndexType(extraction.indexation?.indexationType?.value) ??
     DEFAULT_LEASE_INDEX_TYPE
 
-  const horizonYears = 3
+  const durationYears = calendar?.duration?.value ?? 9
+  const horizonYears = durationYears // Use actual lease duration instead of fixed 3 years
   const series = await getInseeRentalIndexSeries(detectedIndexType)
 
   const indexStartDate = effectiveDate || signatureDate || startDate
@@ -99,7 +101,9 @@ async function buildScheduleInputFromExtraction(
       ? Math.round(rawFranchiseMonths)
       : 0
 
-  const durationYears = calendar?.duration?.value ?? horizonYears
+  // Derive deposit months from extracted security deposit
+  const depositMonths = deriveDepositMonths(securities, rent, paymentFrequency)
+
   const endDate = toEndDate(startDate, durationYears)
 
   return {
@@ -115,6 +119,7 @@ async function buildScheduleInputFromExtraction(
     taxesHT: taxesPerPeriod || undefined,
     horizonYears,
     franchiseMonths: franchiseMonths > 0 ? franchiseMonths : undefined,
+    depositMonths: depositMonths > 0 ? depositMonths : undefined,
   }
 }
 
@@ -226,6 +231,47 @@ function toEndDate(startDateISO: string, durationYears: number): string {
 
 function roundCurrency(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100
+}
+
+function deriveDepositMonths(
+  securities: LeaseExtractionResult["securities"],
+  rent: LeaseExtractionResult["rent"],
+  paymentFrequency: "monthly" | "quarterly"
+): number {
+  // First, try to extract months from description (e.g., "3 mois de loyer")
+  const description = securities?.securityDepositDescription?.value
+  if (description) {
+    const monthsMatch = description.match(/(\d+)\s*mois/i)
+    if (monthsMatch) {
+      return parseInt(monthsMatch[1], 10)
+    }
+  }
+
+  // If no months in description, calculate from amount and rent
+  const depositAmount = securities?.securityDepositAmount?.value
+  if (typeof depositAmount !== "number" || depositAmount <= 0) {
+    return 0
+  }
+
+  // Get quarterly or annual rent to calculate months
+  const annualRent = rent?.annualRentExclTaxExclCharges?.value
+  const quarterlyRent = rent?.quarterlyRentExclTaxExclCharges?.value
+
+  let monthlyRent: number | null = null
+
+  if (typeof annualRent === "number" && annualRent > 0) {
+    monthlyRent = annualRent / 12
+  } else if (typeof quarterlyRent === "number" && quarterlyRent > 0) {
+    monthlyRent = quarterlyRent / 3
+  }
+
+  if (monthlyRent && monthlyRent > 0) {
+    const calculatedMonths = depositAmount / monthlyRent
+    // Round to nearest integer (typically 1, 2, or 3 months)
+    return Math.round(calculatedMonths)
+  }
+
+  return 0
 }
 
 function parseReferenceQuarter(

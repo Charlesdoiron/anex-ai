@@ -68,6 +68,15 @@ function createMockResult(): RentCalculationResult {
         annualRentExclTaxExclCharges: { value: 12000, confidence: "high" },
         quarterlyRentExclTaxExclCharges: { value: 3000, confidence: "high" },
         annualParkingRentExclCharges: { value: 2000, confidence: "high" },
+        annualRentPerSqmExclTaxExclCharges: {
+          value: null,
+          confidence: "missing",
+        },
+        quarterlyParkingRentExclCharges: { value: null, confidence: "missing" },
+        annualParkingRentPerUnitExclCharges: {
+          value: null,
+          confidence: "missing",
+        },
         paymentFrequency: { value: "quarterly", confidence: "high" },
       },
     },
