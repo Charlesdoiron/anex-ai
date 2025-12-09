@@ -302,8 +302,10 @@ function normalizeSupportMeasuresField(
 }
 
 /**
- * Normalize premises boolean fields - convert null to false for space fields
- * where "not mentioned" means "not present"
+ * Normalize premises boolean fields
+ * NOTE: We do NOT convert null to false for hasOutdoorSpace/hasArchiveSpace/hasFurniture
+ * because "not mentioned" should remain "Non mentionné" in the output, not "Non"
+ * However, we DO convert string "Non" to null (LLM sometimes returns "Non" instead of null)
  */
 function normalizePremisesBooleanFields(
   premises: LeaseExtractionResult["premises"]
@@ -312,29 +314,33 @@ function normalizePremisesBooleanFields(
 
   const normalized = { ...premises }
 
-  // hasOutdoorSpace: null → false (no outdoor space if not mentioned)
+  // hasFurniture: "Non" (string) → null (should be null if not mentioned)
   if (
-    normalized.hasOutdoorSpace?.value === null ||
-    normalized.hasOutdoorSpace?.confidence === "missing"
+    normalized.hasFurniture &&
+    typeof normalized.hasFurniture.value === "string" &&
+    (normalized.hasFurniture.value === "Non" ||
+      normalized.hasFurniture.value === "non")
   ) {
-    normalized.hasOutdoorSpace = {
-      value: false,
-      confidence: "medium",
-      source: "Document entier",
-      rawText: "Non mentionné (considéré comme absent)",
+    normalized.hasFurniture = {
+      value: null,
+      confidence: "missing",
+      source: normalized.hasFurniture.source || "Document entier",
+      rawText: "Non mentionné",
     }
   }
 
-  // hasArchiveSpace: null → false (no archive space if not mentioned)
+  // hasOutdoorSpace: "Non" (string) → null (should be null if not mentioned)
   if (
-    normalized.hasArchiveSpace?.value === null ||
-    normalized.hasArchiveSpace?.confidence === "missing"
+    normalized.hasOutdoorSpace &&
+    typeof normalized.hasOutdoorSpace.value === "string" &&
+    (normalized.hasOutdoorSpace.value === "Non" ||
+      normalized.hasOutdoorSpace.value === "non")
   ) {
-    normalized.hasArchiveSpace = {
-      value: false,
-      confidence: "medium",
-      source: "Document entier",
-      rawText: "Non mentionné (considéré comme absent)",
+    normalized.hasOutdoorSpace = {
+      value: null,
+      confidence: "missing",
+      source: normalized.hasOutdoorSpace.source || "Document entier",
+      rawText: "Non mentionné",
     }
   }
 
@@ -554,6 +560,22 @@ function computeChargesFields(
     }
   }
 
+  // SECOND: Compute annualCharges from quarterlyCharges × 4 (if only quarterly is given)
+  if (
+    !hasValue(charges.annualChargesProvisionExclTax) &&
+    hasValue(charges.quarterlyChargesProvisionExclTax)
+  ) {
+    const quarterlyCharges = charges.quarterlyChargesProvisionExclTax.value
+
+    if (typeof quarterlyCharges === "number" && quarterlyCharges > 0) {
+      charges.annualChargesProvisionExclTax = {
+        value: roundCurrency(quarterlyCharges * 4),
+        confidence: charges.quarterlyChargesProvisionExclTax.confidence,
+        source: "calculé depuis charges trimestrielles × 4",
+      }
+    }
+  }
+
   // Compute quarterlyCharges from annualCharges / 4
   if (
     !hasValue(charges.quarterlyChargesProvisionExclTax) &&
@@ -612,6 +634,22 @@ function computeChargesFields(
         value: roundCurrency(riePerSqm * surfaceArea),
         confidence: sourceConfidence,
         source: "calculé depuis RIE/m² × surface",
+      }
+    }
+  }
+
+  // Compute annualRIEFee from quarterlyRIEFee × 4 (if only quarterly is given)
+  if (
+    !hasValue(charges.annualRIEFeeExclTax) &&
+    hasValue(charges.quarterlyRIEFeeExclTax)
+  ) {
+    const quarterlyRIE = charges.quarterlyRIEFeeExclTax.value
+
+    if (typeof quarterlyRIE === "number" && quarterlyRIE > 0) {
+      charges.annualRIEFeeExclTax = {
+        value: roundCurrency(quarterlyRIE * 4),
+        confidence: charges.quarterlyRIEFeeExclTax.confidence,
+        source: "calculé depuis redevance RIE trimestrielle × 4",
       }
     }
   }

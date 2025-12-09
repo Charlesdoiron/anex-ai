@@ -19,6 +19,7 @@ import type {
   ExtractedValue,
 } from "@/app/lib/extraction/types"
 import { exportExtractionToExcel } from "@/app/components/extraction/utils/excel-export"
+import { exportExtractionToPDF } from "@/app/components/extraction/utils/pdf-export"
 import { useCallback, useEffect, useRef, useState } from "react"
 
 /**
@@ -74,12 +75,21 @@ export default function ExtractionDetailModal({
 
   if (!extraction) return null
 
-  async function handleDownload() {
+  async function handleDownloadExcel() {
     if (!extraction) return
     try {
       await exportExtractionToExcel(extraction)
     } catch (error) {
       console.error("Error exporting to Excel:", error)
+    }
+  }
+
+  function handleDownloadPDF() {
+    if (!extraction) return
+    try {
+      exportExtractionToPDF(extraction)
+    } catch (error) {
+      console.error("Error exporting to PDF:", error)
     }
   }
 
@@ -125,8 +135,17 @@ export default function ExtractionDetailModal({
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
                 <button
-                  onClick={handleDownload}
+                  onClick={handleDownloadPDF}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+                  title="Télécharger en PDF"
+                >
+                  <FileText size={14} />
+                  <span className="hidden sm:inline">PDF</span>
+                </button>
+                <button
+                  onClick={handleDownloadExcel}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-brand-green text-white rounded-md hover:bg-brand-green/90 transition-colors"
+                  title="Télécharger en Excel"
                 >
                   <Download size={14} />
                   <span className="hidden sm:inline">Excel</span>

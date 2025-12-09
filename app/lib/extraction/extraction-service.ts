@@ -724,6 +724,7 @@ export class ExtractionService {
           propertyTaxAmount: missingValue,
           teomAmount: missingValue,
           officeTaxAmount: missingValue,
+          parkingTaxAmount: missingValue,
         }
       case "charges":
         return {
@@ -735,6 +736,9 @@ export class ExtractionService {
           annualRIEFeePerSqmExclTax: missingValue,
           managementFeesOnTenant: missingValue,
           rentManagementFeesOnTenant: missingValue,
+          managementFeesAnnualAmount: missingValue,
+          managementFeesQuarterlyAmount: missingValue,
+          managementFeesPerSqmAmount: missingValue,
         }
       case "insurance":
         return {
