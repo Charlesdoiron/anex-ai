@@ -140,21 +140,6 @@ export async function generateRentCalculationExcel(
   const baseTaxes = input.taxesHT || 0
 
   // Styles
-  const headerFill: ExcelJS.Fill = {
-    type: "pattern",
-    pattern: "solid",
-    fgColor: { argb: "FFE7E6E6" },
-  }
-  const sectionFill: ExcelJS.Fill = {
-    type: "pattern",
-    pattern: "solid",
-    fgColor: { argb: "FFF2F2F2" },
-  }
-  const yearSummaryFill: ExcelJS.Fill = {
-    type: "pattern",
-    pattern: "solid",
-    fgColor: { argb: "FFFFF2CC" },
-  }
   const thinBorder: Partial<ExcelJS.Border> = {
     style: "thin",
     color: { argb: "FF000000" },
@@ -200,9 +185,17 @@ export async function generateRentCalculationExcel(
           : `${indexType} ${referenceQuarter}`
         : indexType,
     ],
-    ["TCAM (taux d'évolution moyen de l'indice)", tcam ? round(tcam, 6) : "—"],
     ["Dépôt de garantie (en mois)", depositMonths],
     ["Franchise (en mois)", franchiseMonths],
+    [
+      "Échéance de paiement franchise",
+      "Mensuellement à compter de la date de prise d'effet",
+    ],
+    ["Autres mesures d'accompagnement", "—"],
+    [
+      "Échéance de paiement mesures d'accompagnement",
+      "Sur présentation de facture",
+    ],
     [
       "Hypothèses augmentation charges et taxes (en %)",
       `${round(chargesGrowthRate * 100, 1)}%`,
@@ -355,7 +348,6 @@ export async function generateRentCalculationExcel(
         if (ys) {
           const summaryValue = getRowValueFromYearlySummary(ys, label)
           ws.getCell(row, dataCol).value = summaryValue
-          ws.getCell(row, dataCol).fill = yearSummaryFill
           ws.getCell(row, dataCol).border = allBorders
           if (label === "Total HT") {
             ws.getCell(row, dataCol).font = { bold: true }
@@ -371,15 +363,6 @@ export async function generateRentCalculationExcel(
       ws.getCell(row, dataCol).value = value
       ws.getCell(row, dataCol).border = allBorders
 
-      // Highlight first month of year
-      if (md.month === 0 && m > 0) {
-        ws.getCell(row, dataCol).fill = {
-          type: "pattern",
-          pattern: "solid",
-          fgColor: { argb: "FFE2EFDA" },
-        }
-      }
-
       dataCol++
     }
 
@@ -388,7 +371,6 @@ export async function generateRentCalculationExcel(
     if (lastYs) {
       const summaryValue = getRowValueFromYearlySummary(lastYs, label)
       ws.getCell(row, dataCol).value = summaryValue
-      ws.getCell(row, dataCol).fill = yearSummaryFill
       ws.getCell(row, dataCol).border = allBorders
       if (label === "Total HT") {
         ws.getCell(row, dataCol).font = { bold: true }

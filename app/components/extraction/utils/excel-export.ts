@@ -31,6 +31,27 @@ function getSources(
 
 const NON_MENTIONNE = "Non mentionné"
 
+/**
+ * Clean LaTeX notation from OCR/extracted text
+ * Converts patterns like $2^{\circ}$ to 2°
+ */
+function cleanLatex(text: string): string {
+  return (
+    text
+      // Convert $N^{\circ}$ or $N^\circ$ to N°
+      .replace(/\$(\d+)\^\\?\{?\\circ\\?\}?\$/g, "$1°")
+      // Convert standalone \circ to °
+      .replace(/\\circ/g, "°")
+      // Convert $...$ wrapped content (remove the $ markers)
+      .replace(/\$([^$]+)\$/g, "$1")
+      // Clean up remaining LaTeX artifacts
+      .replace(/\^\{([^}]+)\}/g, "$1")
+      .replace(/\^(\d+)/g, "$1")
+      .replace(/\\_/g, "_")
+      .replace(/\\\s/g, " ")
+  )
+}
+
 function fmt(value: unknown, defaultValue: string = NON_MENTIONNE): string {
   if (value === null || value === undefined) return defaultValue
   if (typeof value === "boolean") return value ? "Oui" : "Non"
