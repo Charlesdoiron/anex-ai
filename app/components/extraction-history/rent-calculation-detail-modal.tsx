@@ -8,8 +8,29 @@ import {
   Coins,
   TrendingUp,
   Calendar,
+  Shield,
 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
+
+/**
+ * Clean LaTeX notation from text (e.g., $2^{\circ}$ -> 2°)
+ */
+function cleanLatex(text: string): string {
+  return (
+    text
+      // Convert $N^{\circ}$ or $N^\circ$ to N°
+      .replace(/\$(\d+)\^\\?\{?\\circ\\?\}?\$/g, "$1°")
+      // Convert standalone \circ to °
+      .replace(/\\circ/g, "°")
+      // Convert $...$ wrapped content (remove the $ markers)
+      .replace(/\$([^$]+)\$/g, "$1")
+      // Clean up remaining LaTeX artifacts
+      .replace(/\^\{([^}]+)\}/g, "$1")
+      .replace(/\^(\d+)/g, "$1")
+      .replace(/\\_/g, "_")
+      .replace(/\\\s/g, " ")
+  )
+}
 import { exportRentCalculationToExcel } from "@/app/components/extraction/utils/rent-calculation-excel-export"
 import { exportRentCalculationToPDF } from "@/app/components/extraction/utils/pdf-export"
 import type {
@@ -441,13 +462,8 @@ function RentCalculationContent({ result }: { result: RentCalculationData }) {
             }
           />
           <DataRow
-            label="Mesures d'accompagnement"
+            label="Autres mesures d'accompagnement"
             value={measuresDescription}
-          />
-          <DataRow
-            label="Dépôt de garantie montant"
-            value={extracted.securities?.securityDepositAmount?.value}
-            type="currency"
           />
 
           <div className="pt-3 pb-1 border-t border-gray-100">
@@ -470,6 +486,23 @@ function RentCalculationContent({ result }: { result: RentCalculationData }) {
           <DataRow
             label="Périodicité de l'indice"
             value={formatIndexFrequency(null)}
+          />
+        </div>
+      </SectionCard>
+
+      {/* Sûretés */}
+      <SectionCard
+        title="Sûretés"
+        icon={<Shield className="w-4 h-4" strokeWidth={1.5} />}
+      >
+        <div className="space-y-2">
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+            Dépôt de garantie
+          </div>
+          <DataRow
+            label="Montant du dépôt de garantie"
+            value={extracted.securities?.securityDepositAmount?.value}
+            type="currency"
           />
         </div>
       </SectionCard>
@@ -677,12 +710,12 @@ function DataRow({ label, value, type = "text", highlight }: DataRowProps) {
         year: "numeric",
       })
     } catch {
-      displayValue = String(value)
+      displayValue = cleanLatex(String(value))
     }
   } else if (type === "currency" && typeof value === "number") {
     displayValue = formatCurrency(value) || "—"
   } else {
-    displayValue = String(value)
+    displayValue = cleanLatex(String(value))
   }
 
   const isEmpty = displayValue === "—"
