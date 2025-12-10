@@ -17,7 +17,8 @@ function getValue<T>(field: ExtractedValue<T> | undefined | null): T | null {
 
 function getSource<T>(field: ExtractedValue<T> | undefined | null): string {
   if (!field) return ""
-  return field.source || ""
+  const source = field.source || ""
+  return cleanLatex(source)
 }
 
 function getSources(
@@ -57,12 +58,12 @@ function fmt(value: unknown, defaultValue: string = NON_MENTIONNE): string {
   if (typeof value === "boolean") return value ? "Oui" : "Non"
   if (typeof value === "number") return String(value)
   if (Array.isArray(value))
-    return value.length > 0 ? value.join(", ") : defaultValue
+    return value.length > 0 ? cleanLatex(value.join(", ")) : defaultValue
   if (typeof value === "object" && "value" in value) {
     return fmt((value as { value: unknown }).value, defaultValue)
   }
   if (typeof value === "object") return defaultValue
-  return String(value)
+  return cleanLatex(String(value))
 }
 
 function formatDate(
@@ -713,19 +714,23 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
 
   // 11. Sûretés
   rows.push(["11. Sûretés", "", ""])
+  rows.push(["11.1 Dépôt de garantie", "", ""])
   rows.push([
     "Montant du dépôt de garantie (en €)",
     formatCurrency(getValue(sec?.securityDepositAmount) as number | null),
     getSources(sec?.securityDepositDescription, sec?.securityDepositAmount),
   ])
+  rows.push(["11.2 Autres sûretés", "", ""])
   const otherSecurities = getValue(sec?.otherSecurities)
   let otherSecuritiesDisplay: string
   if (Array.isArray(otherSecurities)) {
     otherSecuritiesDisplay =
-      otherSecurities.length > 0 ? otherSecurities.join(", ") : "Non"
+      otherSecurities.length > 0
+        ? cleanLatex(otherSecurities.join(", "))
+        : "Non"
   } else if (typeof otherSecurities === "string") {
     otherSecuritiesDisplay =
-      otherSecurities.trim().length > 0 ? otherSecurities : "Non"
+      otherSecurities.trim().length > 0 ? cleanLatex(otherSecurities) : "Non"
   } else if (otherSecurities === null) {
     otherSecuritiesDisplay = NON_MENTIONNE
   } else {
@@ -832,8 +837,84 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
 
   // 16. Annexes
   rows.push(["16. Annexes", "", ""])
-  rows.push(["16.1 Annexes environnementales", "", ""])
+
+  // Collect all annexes to build summary
+  const annexesList: { name: string; present: boolean | null }[] = []
+
+  // Environmental annexes
   const hasDPE = getValue(env?.hasDPE)
+  annexesList.push({ name: "DPE", present: hasDPE })
+
+  const hasAsbestos = getValue(env?.hasAsbestosDiagnostic)
+  annexesList.push({ name: "Diagnostic amiante", present: hasAsbestos })
+
+  const hasEnvironmentalAnnex = getValue(env?.hasEnvironmentalAnnex)
+  annexesList.push({
+    name: "Annexe environnementale",
+    present: hasEnvironmentalAnnex,
+  })
+
+  const hasRiskStatement = getValue(env?.hasRiskAndPollutionStatement)
+  annexesList.push({
+    name: "Etat des risques et pollutions",
+    present: hasRiskStatement,
+  })
+
+  // Other annexes
+  const hasInternalRegulations = getValue(ann?.hasInternalRegulations)
+  annexesList.push({
+    name: "Règlement de copropriété / intérieur",
+    present: hasInternalRegulations,
+  })
+
+  const hasPremisesPlan = getValue(ann?.hasPremisesPlan)
+  annexesList.push({ name: "Plan des locaux", present: hasPremisesPlan })
+
+  const hasChargesInventory = getValue(ann?.hasChargesInventory)
+  annexesList.push({
+    name: "Inventaire des charges",
+    present: hasChargesInventory,
+  })
+
+  const hasAnnualChargesSummary = getValue(ann?.hasAnnualChargesSummary)
+  annexesList.push({
+    name: "Etat récapitulatif annuel des charges",
+    present: hasAnnualChargesSummary,
+  })
+
+  const hasThreeYearBudget = getValue(ann?.hasThreeYearWorksBudget)
+  annexesList.push({
+    name: "Budget prévisionnel des travaux",
+    present: hasThreeYearBudget,
+  })
+
+  const hasPastWorksSummary = getValue(ann?.hasPastWorksSummary)
+  annexesList.push({
+    name: "Etat récapitulatif des travaux passés",
+    present: hasPastWorksSummary,
+  })
+
+  // Summary lines for present/absent annexes
+  const presentAnnexes = annexesList
+    .filter((a) => a.present === true)
+    .map((a) => a.name)
+  const absentAnnexes = annexesList
+    .filter((a) => a.present === false)
+    .map((a) => a.name)
+
+  rows.push([
+    "Présent",
+    presentAnnexes.length > 0 ? presentAnnexes.join(", ") : "Aucune",
+    "",
+  ])
+  rows.push([
+    "Absent",
+    absentAnnexes.length > 0 ? absentAnnexes.join(", ") : "Aucune",
+    "",
+  ])
+
+  // Detailed annexes
+  rows.push(["16.1 Annexes environnementales", "", ""])
   const dpeDisplay =
     hasDPE === null
       ? NON_MENTIONNE
@@ -846,7 +927,6 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
     getSources(env?.hasDPE, env?.dpeNote),
   ])
 
-  const hasAsbestos = getValue(env?.hasAsbestosDiagnostic)
   const asbestosDisplay =
     hasAsbestos === null ? NON_MENTIONNE : hasAsbestos ? "Oui" : "Non"
   rows.push([
@@ -855,7 +935,6 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
     getSource(env?.hasAsbestosDiagnostic),
   ])
 
-  const hasEnvironmentalAnnex = getValue(env?.hasEnvironmentalAnnex)
   const environmentalAnnexDisplay =
     hasEnvironmentalAnnex === null
       ? NON_MENTIONNE
@@ -868,7 +947,6 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
     getSource(env?.hasEnvironmentalAnnex),
   ])
 
-  const hasRiskStatement = getValue(env?.hasRiskAndPollutionStatement)
   const riskDisplay =
     hasRiskStatement === null ? NON_MENTIONNE : hasRiskStatement ? "Oui" : "Non"
   rows.push([
@@ -878,7 +956,6 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
   ])
 
   rows.push(["16.2 Autres annexes", "", ""])
-  const hasInternalRegulations = getValue(ann?.hasInternalRegulations)
   const internalRegulationsDisplay =
     hasInternalRegulations === null
       ? NON_MENTIONNE
@@ -891,7 +968,6 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
     getSource(ann?.hasInternalRegulations),
   ])
 
-  const hasPremisesPlan = getValue(ann?.hasPremisesPlan)
   const premisesPlanDisplay =
     hasPremisesPlan === null ? NON_MENTIONNE : hasPremisesPlan ? "Oui" : "Non"
   rows.push([
@@ -900,7 +976,6 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
     getSource(ann?.hasPremisesPlan),
   ])
 
-  const hasChargesInventory = getValue(ann?.hasChargesInventory)
   const chargesInventoryDisplay =
     hasChargesInventory === null
       ? NON_MENTIONNE
@@ -913,7 +988,6 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
     getSource(ann?.hasChargesInventory),
   ])
 
-  const hasAnnualChargesSummary = getValue(ann?.hasAnnualChargesSummary)
   const annualChargesSummaryDisplay =
     hasAnnualChargesSummary === null
       ? NON_MENTIONNE
@@ -926,7 +1000,6 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
     getSource(ann?.hasAnnualChargesSummary),
   ])
 
-  const hasThreeYearBudget = getValue(ann?.hasThreeYearWorksBudget)
   const threeYearBudgetDisplay =
     hasThreeYearBudget === null
       ? NON_MENTIONNE
@@ -939,7 +1012,6 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
     getSource(ann?.hasThreeYearWorksBudget),
   ])
 
-  const hasPastWorksSummary = getValue(ann?.hasPastWorksSummary)
   const pastWorksSummaryDisplay =
     hasPastWorksSummary === null
       ? NON_MENTIONNE
