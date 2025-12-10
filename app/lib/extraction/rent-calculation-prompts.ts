@@ -59,6 +59,9 @@ Indices : "à compter du", "prenant effet le", "entrée en jouissance", "date d'
 Indices : "durée de NEUF années", "bail de 9 ans", "3/6/9"
 
 3. LOCAUX :
+- premises.designation : Nom de l'actif / désignation des locaux (ex: "Bureaux", "Local commercial", "Entrepôt", etc.)
+  → NE PAS utiliser le titre du document ou le nom du bail (ex: "Bail avec 1 avenant...")
+  → Extraire la description réelle de l'actif loué mentionnée dans le document
 - premises.address : Adresse des locaux loués
 - premises.surfaceArea : Surface totale en m²
 - premises.parkingSpaces : Nombre de places de parking
@@ -127,6 +130,7 @@ FORMAT DE SORTIE JSON :
     "duration": { "value": number | null, "confidence": "...", "source": "...", "rawText": "..." }
   },
   "premises": {
+    "designation": { "value": string | null, "confidence": "...", "source": "...", "rawText": "..." },
     "address": { "value": string | null, "confidence": "...", "source": "...", "rawText": "..." },
     "surfaceArea": { "value": number | null, "confidence": "...", "source": "...", "rawText": "..." },
     "parkingSpaces": { "value": number | null, "confidence": "...", "source": "...", "rawText": "..." }

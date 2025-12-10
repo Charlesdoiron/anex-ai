@@ -308,7 +308,11 @@ function RentCalculationContent({ result }: { result: RentCalculationData }) {
         <div className="space-y-2">
           <DataRow
             label="Nom de l'actif"
-            value={result.fileName?.replace(/\.pdf$/i, "") || "—"}
+            value={
+              extracted.premises?.designation?.value ||
+              result.fileName?.replace(/\.pdf$/i, "") ||
+              "—"
+            }
           />
           <DataRow
             label="Adresse du bien"

@@ -39,6 +39,7 @@ export interface RentCalculationExtractedData {
     duration: ExtractedValue<number | null>
   }
   premises?: {
+    designation: ExtractedValue<string | null>
     address: ExtractedValue<string | null>
     surfaceArea: ExtractedValue<number | null>
     parkingSpaces: ExtractedValue<number | null>
@@ -529,6 +530,7 @@ export class RentCalculationExtractionService {
         duration: parsed?.calendar?.duration ?? missing,
       },
       premises: {
+        designation: parsed?.premises?.designation ?? missing,
         address: parsed?.premises?.address ?? missing,
         surfaceArea: parsed?.premises?.surfaceArea ?? missing,
         parkingSpaces: parsed?.premises?.parkingSpaces ?? missing,
@@ -597,6 +599,7 @@ export class RentCalculationExtractionService {
         duration: missing,
       },
       premises: {
+        designation: missing,
         address: missing,
         surfaceArea: missing,
         parkingSpaces: missing,
