@@ -214,6 +214,8 @@ export function computeLeaseRentSchedule(
     const taxesAmount =
       proration > 0 ? roundCurrency(taxesBaseForYear * proration) : 0
 
+    // Franchise calculation: waive rent for specified number of months
+    // Uses base monthly rent (not prorated) to avoid rounding issues
     let franchiseHT = 0
     if (franchiseMonthsRemaining > 0 && period.monthsEquivalent > 0) {
       const monthsApplied = Math.min(
@@ -222,13 +224,10 @@ export function computeLeaseRentSchedule(
       )
       franchiseMonthsRemaining -= monthsApplied
 
-      const officePerMonth =
-        period.monthsEquivalent > 0 ? officeRent / period.monthsEquivalent : 0
-      const parkingPerMonth =
-        period.monthsEquivalent > 0 ? parkingRent / period.monthsEquivalent : 0
-      const franchiseValue =
-        (officePerMonth + parkingPerMonth) * monthsApplied || 0
-      franchiseHT = franchiseValue ? -roundCurrency(franchiseValue) : 0
+      // Use base monthly rent for consistent franchise calculation
+      const baseMonthlyRent = (officeRentHT + parkingRentHT) / monthsPerPeriod
+      const franchiseValue = baseMonthlyRent * monthsApplied
+      franchiseHT = franchiseValue > 0 ? -roundCurrency(franchiseValue) : 0
     }
 
     let incentivesHT = 0
@@ -274,14 +273,10 @@ export function computeLeaseRentSchedule(
     accumulateYearlyTotals(yearlyTotals, scheduleItem)
   }
 
+  // Deposit is based on base rent only (office + parking), not charges/taxes
+  const monthlyBaseRent = (officeRentHT + parkingRentHT) / monthsPerPeriod
   const summary: ComputeLeaseRentScheduleSummary = {
-    depositHT: roundCurrency(
-      depositMonths *
-        (officeRentHT / monthsPerPeriod +
-          parkingRentHT / monthsPerPeriod +
-          chargesHT / monthsPerPeriod +
-          taxesHT / monthsPerPeriod)
-    ),
+    depositHT: roundCurrency(depositMonths * monthlyBaseRent),
     tcam: typeof tcam === "number" ? roundDecimal(tcam, 6) : undefined,
     yearlyTotals: Array.from(yearlyTotals.values())
       .sort((a, b) => a.year - b.year)

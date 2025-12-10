@@ -20,7 +20,7 @@ export const AGENTS: Agent[] = [
     slug: "bail",
     name: "Agent Bail",
     description:
-      "Agent spécialisé dans l'extraction de données des baux commerciaux.<br/> Il possède deux modes de fonctionnement : <strong>l'extraction de données</strong> et <strong>le calcul de loyer via le barème de l'indexation</strong>.",
+      "Agent spécialisé dans l'extraction de données des baux commerciaux.<br/> Il possède deux modes de fonctionnement : <strong>l'extraction de données</strong> et <strong>le calcul de loyer avec indexation</strong>.",
     path: "/agent/bail",
 
     tools: [
@@ -33,8 +33,8 @@ export const AGENTS: Agent[] = [
       },
       {
         slug: "calcul-loyer-indexation",
-        name: "Calcul de loyer via le barème de l'indexation",
-        description: "Calcul de loyer via le barème de l'indexation.",
+        name: "Calcul de loyer avec indexation",
+        description: "Calcul de loyer avec indexation.",
         path: "/agent/bail/calcul-loyer-indexation",
         type: "calculation-rent",
       },

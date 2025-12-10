@@ -165,7 +165,7 @@ async function main() {
   process.chdir(outputDir)
 
   try {
-    exportRentCalculationToExcel(result)
+    await exportRentCalculationToExcel(result)
     console.log(
       `\n✅ Excel export saved to: ${outputDir}/test-mock-bail-echeancier.xlsx`
     )

@@ -12,32 +12,82 @@ export interface InseeRentalIndexPoint {
 }
 
 /**
+ * Retry helper for Prisma queries that may fail during cold start
+ */
+async function retryPrismaQuery<T>(
+  query: () => Promise<T>,
+  maxRetries = 3,
+  baseDelayMs = 200
+): Promise<T> {
+  let lastError: Error | null = null
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await query()
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error))
+
+      // Don't retry on the last attempt
+      if (attempt === maxRetries - 1) {
+        throw lastError
+      }
+
+      // Exponential backoff: 200ms, 400ms, 800ms
+      const delayMs = baseDelayMs * Math.pow(2, attempt)
+      await new Promise((resolve) => setTimeout(resolve, delayMs))
+    }
+  }
+
+  throw lastError || new Error("Query failed after retries")
+}
+
+/**
  * Get INSEE rental index series for a specific index type
  * Falls back to default index type if requested type has no data
+ * Includes retry logic for cold start scenarios
  */
 export async function getInseeRentalIndexSeries(
   indexType: LeaseIndexType = DEFAULT_LEASE_INDEX_TYPE
 ): Promise<InseeRentalIndexPoint[]> {
-  // Try to get data for the requested index type
-  const rows = await prisma.insee_rental_reference_index.findMany({
-    where: { indexType: indexType },
-    orderBy: [{ year: "asc" }, { quarter: "asc" }],
-  })
-
-  // If no data for requested type, fallback to default
-  if (rows.length === 0 && indexType !== DEFAULT_LEASE_INDEX_TYPE) {
-    console.warn(
-      `[INSEE] Série ${indexType} demandée mais indisponible (0 enregistrements). ` +
-        `Utilisation du fallback ${DEFAULT_LEASE_INDEX_TYPE}.`
+  try {
+    // Try to get data for the requested index type with retry
+    const rows = await retryPrismaQuery(() =>
+      prisma.insee_rental_reference_index.findMany({
+        where: { indexType: indexType },
+        orderBy: [{ year: "asc" }, { quarter: "asc" }],
+      })
     )
-    return getInseeRentalIndexSeries(DEFAULT_LEASE_INDEX_TYPE)
-  }
 
-  return rows.map((row) => ({
-    year: row.year,
-    quarter: row.quarter,
-    value: row.value,
-  }))
+    // If no data for requested type, fallback to default
+    if (rows.length === 0 && indexType !== DEFAULT_LEASE_INDEX_TYPE) {
+      console.warn(
+        `[INSEE] Série ${indexType} demandée mais indisponible (0 enregistrements). ` +
+          `Utilisation du fallback ${DEFAULT_LEASE_INDEX_TYPE}.`
+      )
+      return getInseeRentalIndexSeries(DEFAULT_LEASE_INDEX_TYPE)
+    }
+
+    if (rows.length === 0) {
+      console.error(
+        `[INSEE] Aucune donnée disponible pour le type d'index ${indexType} (y compris le fallback). ` +
+          `Vérifiez que les données INSEE ont été importées.`
+      )
+    }
+
+    return rows.map((row) => ({
+      year: row.year,
+      quarter: row.quarter,
+      value: row.value,
+    }))
+  } catch (error) {
+    console.error(
+      `[INSEE] Erreur lors de la récupération de la série ${indexType}:`,
+      error
+    )
+    // Return empty array instead of throwing to allow extraction to continue
+    // The rent schedule calculation will handle empty series gracefully
+    return []
+  }
 }
 
 /**

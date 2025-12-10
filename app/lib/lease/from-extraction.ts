@@ -16,12 +16,24 @@ import {
 export async function computeRentScheduleFromExtraction(
   extraction: LeaseExtractionResult
 ): Promise<ComputeLeaseRentScheduleResult | null> {
-  const input = await buildScheduleInputFromExtraction(extraction)
-  if (!input) {
+  try {
+    const input = await buildScheduleInputFromExtraction(extraction)
+    if (!input) {
+      console.warn(
+        "[RentSchedule] Impossible de construire l'input pour le calcul de l'échéancier. " +
+          "Vérifiez que les données nécessaires (dates, loyer, fréquence de paiement) sont présentes."
+      )
+      return null
+    }
+
+    return computeLeaseRentSchedule(input)
+  } catch (error) {
+    console.error(
+      "[RentSchedule] Erreur lors du calcul de l'échéancier:",
+      error
+    )
     return null
   }
-
-  return computeLeaseRentSchedule(input)
 }
 
 async function buildScheduleInputFromExtraction(
@@ -41,11 +53,17 @@ async function buildScheduleInputFromExtraction(
     (effectiveDate || signatureDate || extraction.extractionDate) ?? null
 
   if (!startDate) {
+    console.warn(
+      "[RentSchedule] Date de début manquante (effectiveDate, signatureDate, extractionDate)"
+    )
     return null
   }
 
   const paymentFrequency = rent?.paymentFrequency?.value
   if (paymentFrequency !== "monthly" && paymentFrequency !== "quarterly") {
+    console.warn(
+      `[RentSchedule] Fréquence de paiement invalide: ${paymentFrequency} (attendu: monthly ou quarterly)`
+    )
     return null
   }
 
@@ -55,10 +73,22 @@ async function buildScheduleInputFromExtraction(
 
   const durationYears = calendar?.duration?.value ?? 9
   const horizonYears = durationYears // Use actual lease duration instead of fixed 3 years
-  const series = await getInseeRentalIndexSeries(detectedIndexType)
+
+  // Retry fetching INSEE series in case of cold start issues
+  let series = await getInseeRentalIndexSeries(detectedIndexType)
+
+  // If series is empty, retry once after a short delay (cold start mitigation)
+  if (series.length === 0) {
+    console.warn(
+      `[RentSchedule] Série INSEE vide pour ${detectedIndexType}, retry après 500ms...`
+    )
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    series = await getInseeRentalIndexSeries(detectedIndexType)
+  }
 
   const indexStartDate = effectiveDate || signatureDate || startDate
   if (!indexStartDate) {
+    console.warn("[RentSchedule] Date de début pour l'index manquante")
     return null
   }
 
@@ -77,6 +107,10 @@ async function buildScheduleInputFromExtraction(
   )
 
   if (!baseIndexValue) {
+    console.warn(
+      `[RentSchedule] Impossible de déterminer baseIndexValue. ` +
+        `Série INSEE: ${series.length} points, date: ${indexStartDate}`
+    )
     return null
   }
 
@@ -86,6 +120,9 @@ async function buildScheduleInputFromExtraction(
   )
 
   if (!officeRentPerPeriod) {
+    console.warn(
+      "[RentSchedule] Loyer bureaux manquant (annualRentExclTaxExclCharges ou quarterlyRentExclTaxExclCharges)"
+    )
     return null
   }
 

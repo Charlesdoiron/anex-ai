@@ -14,11 +14,23 @@ import type {
  * Creates a well-designed PDF document matching the Excel export structure
  */
 
-const NON_MENTIONNE = "Non mentionné"
-const BRAND_COLOR: [number, number, number] = [34, 197, 94] // emerald-600
-const SECTION_COLOR: [number, number, number] = [243, 244, 246] // gray-100
+const NON_MENTIONNE = "Non mentionne"
+const BRAND_COLOR: [number, number, number] = [3, 58, 23] // #033a17 - brand-green
+const SECTION_COLOR: [number, number, number] = [246, 241, 231] // #f6f1e7 - brand-cream
 const TEXT_COLOR: [number, number, number] = [17, 24, 39] // gray-900
 const TEXT_SECONDARY: [number, number, number] = [107, 114, 128] // gray-500
+const BORDER_COLOR: [number, number, number] = [229, 231, 235] // gray-200
+
+function cleanTextForPDF(text: string): string {
+  return text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/œ/g, "oe")
+    .replace(/Œ/g, "OE")
+    .replace(/æ/g, "ae")
+    .replace(/Æ/g, "AE")
+    .replace(/[^\x00-\x7F]/g, "")
+}
 
 function getValue<T>(field: ExtractedValue<T> | undefined | null): T | null {
   if (!field) return null
@@ -43,14 +55,14 @@ function getSources(
 function fmt(value: unknown, defaultValue: string = NON_MENTIONNE): string {
   if (value === null || value === undefined) return defaultValue
   if (typeof value === "boolean") return value ? "Oui" : "Non"
-  if (typeof value === "number") return String(value)
+  if (typeof value === "number") return cleanTextForPDF(String(value))
   if (Array.isArray(value))
-    return value.length > 0 ? value.join(", ") : defaultValue
+    return value.length > 0 ? cleanTextForPDF(value.join(", ")) : defaultValue
   if (typeof value === "object" && "value" in value) {
     return fmt((value as { value: unknown }).value, defaultValue)
   }
   if (typeof value === "object") return defaultValue
-  return String(value)
+  return cleanTextForPDF(String(value))
 }
 
 function formatDate(
@@ -61,13 +73,14 @@ function formatDate(
   try {
     const date = new Date(isoDate)
     if (isNaN(date.getTime())) return defaultValue
-    return date.toLocaleDateString("fr-FR", {
+    const formatted = date.toLocaleDateString("fr-FR", {
       day: "numeric",
       month: "long",
       year: "numeric",
     })
+    return cleanTextForPDF(formatted)
   } catch {
-    return String(isoDate)
+    return cleanTextForPDF(String(isoDate))
   }
 }
 
@@ -77,12 +90,13 @@ function formatCurrency(
 ): string {
   if (value === null || value === undefined) return defaultValue
   if (typeof value === "string") {
-    if (value.toLowerCase().includes("inclus")) return value
+    if (value.toLowerCase().includes("inclus")) return cleanTextForPDF(value)
     const numValue = parseFloat(value.replace(/\s/g, "").replace(",", "."))
-    if (!isNaN(numValue)) return `${numValue.toLocaleString("fr-FR")} €`
-    return value
+    if (!isNaN(numValue))
+      return cleanTextForPDF(`${numValue.toLocaleString("fr-FR")} €`)
+    return cleanTextForPDF(value)
   }
-  return `${value.toLocaleString("fr-FR")} €`
+  return cleanTextForPDF(`${value.toLocaleString("fr-FR")} €`)
 }
 
 function formatSurface(
@@ -90,7 +104,7 @@ function formatSurface(
   defaultValue: string = NON_MENTIONNE
 ): string {
   if (value === null || value === undefined) return defaultValue
-  return `${value.toLocaleString("fr-FR")} m²`
+  return cleanTextForPDF(`${value.toLocaleString("fr-FR")} m2`)
 }
 
 function formatContact(
@@ -1188,7 +1202,7 @@ function addSectionToPDF(
     doc.setTextColor(...TEXT_COLOR)
     doc.setFontSize(11)
     doc.setFont("helvetica", "bold")
-    doc.text(section.title, margin + 3, y + 2)
+    doc.text(cleanTextForPDF(section.title), margin + 3, y + 2)
     y += 12
   }
 
@@ -1209,14 +1223,20 @@ function addSectionToPDF(
     doc.setTextColor(...TEXT_COLOR)
     doc.setFontSize(9)
     doc.setFont("helvetica", "normal")
-    const labelLines = doc.splitTextToSize(row.label, col1Width - 5)
+    const labelLines = doc.splitTextToSize(
+      cleanTextForPDF(row.label),
+      col1Width - 5
+    )
     doc.text(labelLines, margin + 2, y + 3)
 
     // Value
     doc.setTextColor(...TEXT_COLOR)
     doc.setFontSize(9)
     doc.setFont("helvetica", "normal")
-    const valueLines = doc.splitTextToSize(row.value, col2Width - 5)
+    const valueLines = doc.splitTextToSize(
+      cleanTextForPDF(row.value),
+      col2Width - 5
+    )
     doc.text(valueLines, margin + col1Width + 5, y + 3)
 
     // Source (if present)
@@ -1225,7 +1245,10 @@ function addSectionToPDF(
       doc.setTextColor(...TEXT_SECONDARY)
       doc.setFontSize(8)
       doc.setFont("helvetica", "italic")
-      sourceLines = doc.splitTextToSize(row.source, col3Width - 5)
+      sourceLines = doc.splitTextToSize(
+        cleanTextForPDF(row.source),
+        col3Width - 5
+      )
       doc.text(sourceLines, margin + col1Width + col2Width + 10, y + 3)
     }
 
@@ -1236,7 +1259,7 @@ function addSectionToPDF(
     const rowHeight = Math.max(labelHeight, valueHeight, sourceHeight) + 4
 
     // Draw separator line
-    doc.setDrawColor(220, 220, 220)
+    doc.setDrawColor(...BORDER_COLOR)
     doc.line(margin, y + rowHeight - 2, pageWidth - margin, y + rowHeight - 2)
 
     y += rowHeight
@@ -1263,12 +1286,12 @@ export function exportExtractionToPDF(extraction: LeaseExtractionResult): void {
   doc.setTextColor(255, 255, 255)
   doc.setFontSize(18)
   doc.setFont("helvetica", "bold")
-  doc.text("Audit Bail - Extraction", margin, 15)
+  doc.text(cleanTextForPDF("Audit Bail - Extraction"), margin, 15)
 
   doc.setFontSize(10)
   doc.setFont("helvetica", "normal")
   const fileName = extraction.fileName?.replace(/\.pdf$/i, "") || "Document"
-  doc.text(fileName, margin, 22)
+  doc.text(cleanTextForPDF(fileName), margin, 22)
 
   const extractionDate = new Date(extraction.extractionDate).toLocaleDateString(
     "fr-FR",
@@ -1278,7 +1301,7 @@ export function exportExtractionToPDF(extraction: LeaseExtractionResult): void {
       year: "numeric",
     }
   )
-  doc.text(`Extraction du ${extractionDate}`, margin, 27)
+  doc.text(cleanTextForPDF(`Extraction du ${extractionDate}`), margin, 27)
 
   y = 35
 
@@ -1319,10 +1342,10 @@ function formatCurrencyForPDF(value: number | null | undefined): string {
 }
 
 function formatFrequency(freq: string | null | undefined): string {
-  if (freq === "monthly") return "Mensuel"
-  if (freq === "quarterly") return "Trimestriel"
-  if (freq === "annual") return "Annuel"
-  return freq || "—"
+  if (freq === "monthly") return cleanTextForPDF("Mensuel")
+  if (freq === "quarterly") return cleanTextForPDF("Trimestriel")
+  if (freq === "annual") return cleanTextForPDF("Annuel")
+  return cleanTextForPDF(freq || "—")
 }
 
 export function exportRentCalculationToPDF(
@@ -1345,12 +1368,12 @@ export function exportRentCalculationToPDF(
   doc.setTextColor(255, 255, 255)
   doc.setFontSize(18)
   doc.setFont("helvetica", "bold")
-  doc.text("Calcul de loyer - Échéancier", margin, 15)
+  doc.text(cleanTextForPDF("Calcul de loyer - Echeancier"), margin, 15)
 
   doc.setFontSize(10)
   doc.setFont("helvetica", "normal")
   const fileName = result.fileName?.replace(/\.pdf$/i, "") || "Document"
-  doc.text(fileName, margin, 22)
+  doc.text(cleanTextForPDF(fileName), margin, 22)
 
   const extractionDate = new Date(result.extractionDate).toLocaleDateString(
     "fr-FR",
@@ -1360,7 +1383,7 @@ export function exportRentCalculationToPDF(
       year: "numeric",
     }
   )
-  doc.text(`Calcul du ${extractionDate}`, margin, 27)
+  doc.text(cleanTextForPDF(`Calcul du ${extractionDate}`), margin, 27)
 
   y = 35
 
@@ -1376,7 +1399,7 @@ export function exportRentCalculationToPDF(
     doc.setTextColor(...TEXT_COLOR)
     doc.setFontSize(11)
     doc.setFont("helvetica", "bold")
-    doc.text("Résumé financier", margin + 3, y + 2)
+    doc.text(cleanTextForPDF("Resume financier"), margin + 3, y + 2)
     y += 15
 
     doc.setFontSize(9)
@@ -1384,22 +1407,22 @@ export function exportRentCalculationToPDF(
 
     const summaryData = [
       {
-        label: "Total loyers HT",
+        label: cleanTextForPDF("Total loyers HT"),
         value: formatCurrencyForPDF(summary.totalBaseRentHT ?? 0),
       },
       {
-        label: "Total charges HT",
+        label: cleanTextForPDF("Total charges HT"),
         value: formatCurrencyForPDF(summary.totalChargesHT ?? 0),
       },
       {
-        label: "Total net HT",
+        label: cleanTextForPDF("Total net HT"),
         value: formatCurrencyForPDF(summary.totalNetRentHT ?? 0),
       },
     ]
 
     if (summary.depositHT > 0) {
       summaryData.push({
-        label: "Dépôt de garantie HT",
+        label: cleanTextForPDF("Depot de garantie HT"),
         value: formatCurrencyForPDF(summary.depositHT),
       })
     }
@@ -1432,7 +1455,7 @@ export function exportRentCalculationToPDF(
   doc.setTextColor(...TEXT_COLOR)
   doc.setFontSize(11)
   doc.setFont("helvetica", "bold")
-  doc.text("Données extraites", margin + 3, y + 2)
+  doc.text(cleanTextForPDF("Donnees extraites"), margin + 3, y + 2)
   y += 15
 
   doc.setFontSize(9)
@@ -1440,40 +1463,44 @@ export function exportRentCalculationToPDF(
 
   const extractedData = [
     {
-      label: "Date d'effet",
+      label: cleanTextForPDF("Date d'effet"),
       value: extracted.calendar.effectiveDate?.value
         ? formatDate(extracted.calendar.effectiveDate.value)
         : "—",
     },
     {
-      label: "Durée",
+      label: cleanTextForPDF("Duree"),
       value: extracted.calendar.duration?.value
-        ? `${extracted.calendar.duration.value} ans`
+        ? cleanTextForPDF(`${extracted.calendar.duration.value} ans`)
         : "—",
     },
     {
-      label: "Loyer annuel bureaux HT",
+      label: cleanTextForPDF("Loyer annuel bureaux HT"),
       value: formatCurrencyForPDF(
         extracted.rent.annualRentExclTaxExclCharges?.value ?? null
       ),
     },
     {
-      label: "Loyer annuel parking HT",
+      label: cleanTextForPDF("Loyer annuel parking HT"),
       value: formatCurrencyForPDF(
         extracted.rent.annualParkingRentExclCharges?.value ?? null
       ),
     },
     {
-      label: "Fréquence",
+      label: cleanTextForPDF("Frequence"),
       value: formatFrequency(extracted.rent.paymentFrequency?.value),
     },
     {
-      label: "Type d'indice",
-      value: extracted.indexation?.indexationType?.value || "—",
+      label: cleanTextForPDF("Type d'indice"),
+      value: cleanTextForPDF(
+        extracted.indexation?.indexationType?.value || "—"
+      ),
     },
     {
-      label: "Indice de référence",
-      value: extracted.indexation?.referenceQuarter?.value || "—",
+      label: cleanTextForPDF("Indice de reference"),
+      value: cleanTextForPDF(
+        extracted.indexation?.referenceQuarter?.value || "—"
+      ),
     },
   ]
 
@@ -1503,33 +1530,39 @@ export function exportRentCalculationToPDF(
     doc.setTextColor(...TEXT_COLOR)
     doc.setFontSize(11)
     doc.setFont("helvetica", "bold")
-    doc.text("Paramètres de calcul", margin + 3, y + 2)
+    doc.text(cleanTextForPDF("Parametres de calcul"), margin + 3, y + 2)
     y += 15
 
     doc.setFontSize(9)
     doc.setFont("helvetica", "normal")
 
     const inputData = [
-      { label: "Date de début", value: formatDate(input.startDate) },
-      { label: "Date de fin", value: formatDate(input.endDate) },
       {
-        label: "Indice INSEE de base",
-        value: input.baseIndexValue?.toFixed(2) || "—",
+        label: cleanTextForPDF("Date de debut"),
+        value: formatDate(input.startDate),
       },
       {
-        label: "Type d'indice",
-        value: input.indexType?.toUpperCase() || "—",
+        label: cleanTextForPDF("Date de fin"),
+        value: formatDate(input.endDate),
       },
       {
-        label: "Fréquence",
+        label: cleanTextForPDF("Indice INSEE de base"),
+        value: cleanTextForPDF(input.baseIndexValue?.toFixed(2) || "—"),
+      },
+      {
+        label: cleanTextForPDF("Type d'indice"),
+        value: cleanTextForPDF(input.indexType?.toUpperCase() || "—"),
+      },
+      {
+        label: cleanTextForPDF("Frequence"),
         value: formatFrequency(input.paymentFrequency),
       },
       {
-        label: "Loyer bureaux / période",
+        label: cleanTextForPDF("Loyer bureaux / periode"),
         value: formatCurrencyForPDF(input.officeRentHT),
       },
       {
-        label: "Loyer parking / période",
+        label: cleanTextForPDF("Loyer parking / periode"),
         value: formatCurrencyForPDF(input.parkingRentHT),
       },
     ]
@@ -1561,18 +1594,18 @@ export function exportRentCalculationToPDF(
     doc.setTextColor(...TEXT_COLOR)
     doc.setFontSize(11)
     doc.setFont("helvetica", "bold")
-    doc.text("Totaux annuels", margin + 3, y + 2)
+    doc.text(cleanTextForPDF("Totaux annuels"), margin + 3, y + 2)
     y += 15
 
     // Table header
-    doc.setFillColor(240, 240, 240)
+    doc.setFillColor(...SECTION_COLOR)
     doc.rect(margin, y - 3, pageWidth - 2 * margin, 8, "F")
     doc.setFontSize(9)
     doc.setFont("helvetica", "bold")
-    doc.text("Année", margin + 3, y + 3)
-    doc.text("Loyer base HT", margin + 35, y + 3)
-    doc.text("Charges HT", margin + 70, y + 3)
-    doc.text("Loyer net HT", margin + 105, y + 3)
+    doc.text(cleanTextForPDF("Annee"), margin + 3, y + 3)
+    doc.text(cleanTextForPDF("Loyer base HT"), margin + 35, y + 3)
+    doc.text(cleanTextForPDF("Charges HT"), margin + 70, y + 3)
+    doc.text(cleanTextForPDF("Loyer net HT"), margin + 105, y + 3)
     y += 10
 
     doc.setFont("helvetica", "normal")
@@ -1583,14 +1616,14 @@ export function exportRentCalculationToPDF(
         doc.addPage()
         y = margin + 10
         // Redraw header
-        doc.setFillColor(240, 240, 240)
+        doc.setFillColor(...SECTION_COLOR)
         doc.rect(margin, y - 3, pageWidth - 2 * margin, 8, "F")
         doc.setFontSize(9)
         doc.setFont("helvetica", "bold")
-        doc.text("Année", margin + 3, y + 3)
-        doc.text("Loyer base HT", margin + 35, y + 3)
-        doc.text("Charges HT", margin + 70, y + 3)
-        doc.text("Loyer net HT", margin + 105, y + 3)
+        doc.text(cleanTextForPDF("Annee"), margin + 3, y + 3)
+        doc.text(cleanTextForPDF("Loyer base HT"), margin + 35, y + 3)
+        doc.text(cleanTextForPDF("Charges HT"), margin + 70, y + 3)
+        doc.text(cleanTextForPDF("Loyer net HT"), margin + 105, y + 3)
         y += 10
         doc.setFont("helvetica", "normal")
         doc.setFontSize(8)
@@ -1603,7 +1636,7 @@ export function exportRentCalculationToPDF(
       doc.text(formatCurrencyForPDF(year.netRentHT), margin + 105, y)
       doc.setFont("helvetica", "normal")
 
-      doc.setDrawColor(220, 220, 220)
+      doc.setDrawColor(...BORDER_COLOR)
       doc.line(margin, y + 2, pageWidth - margin, y + 2)
       y += 7
     }
@@ -1624,22 +1657,24 @@ export function exportRentCalculationToPDF(
     doc.setFontSize(11)
     doc.setFont("helvetica", "bold")
     doc.text(
-      `Échéancier détaillé (${schedule.schedule.length} périodes - aperçu)`,
+      cleanTextForPDF(
+        `Echeancier detaille (${schedule.schedule.length} periodes - apercu)`
+      ),
       margin + 3,
       y + 2
     )
     y += 15
 
     // Table header
-    doc.setFillColor(240, 240, 240)
+    doc.setFillColor(...SECTION_COLOR)
     doc.rect(margin, y - 3, pageWidth - 2 * margin, 8, "F")
     doc.setFontSize(8)
     doc.setFont("helvetica", "bold")
-    doc.text("Période", margin + 3, y + 3)
-    doc.text("Indice", margin + 35, y + 3)
-    doc.text("Bureaux HT", margin + 55, y + 3)
-    doc.text("Parking HT", margin + 85, y + 3)
-    doc.text("Net HT", margin + 115, y + 3)
+    doc.text(cleanTextForPDF("Periode"), margin + 3, y + 3)
+    doc.text(cleanTextForPDF("Indice"), margin + 35, y + 3)
+    doc.text(cleanTextForPDF("Bureaux HT"), margin + 55, y + 3)
+    doc.text(cleanTextForPDF("Parking HT"), margin + 85, y + 3)
+    doc.text(cleanTextForPDF("Net HT"), margin + 115, y + 3)
     y += 10
 
     doc.setFont("helvetica", "normal")
@@ -1651,15 +1686,15 @@ export function exportRentCalculationToPDF(
         doc.addPage()
         y = margin + 10
         // Redraw header
-        doc.setFillColor(240, 240, 240)
+        doc.setFillColor(...SECTION_COLOR)
         doc.rect(margin, y - 3, pageWidth - 2 * margin, 8, "F")
         doc.setFontSize(8)
         doc.setFont("helvetica", "bold")
-        doc.text("Période", margin + 3, y + 3)
-        doc.text("Indice", margin + 35, y + 3)
-        doc.text("Bureaux HT", margin + 55, y + 3)
-        doc.text("Parking HT", margin + 85, y + 3)
-        doc.text("Net HT", margin + 115, y + 3)
+        doc.text(cleanTextForPDF("Periode"), margin + 3, y + 3)
+        doc.text(cleanTextForPDF("Indice"), margin + 35, y + 3)
+        doc.text(cleanTextForPDF("Bureaux HT"), margin + 55, y + 3)
+        doc.text(cleanTextForPDF("Parking HT"), margin + 85, y + 3)
+        doc.text(cleanTextForPDF("Net HT"), margin + 115, y + 3)
         y += 10
         doc.setFont("helvetica", "normal")
         doc.setFontSize(7)
@@ -1678,7 +1713,7 @@ export function exportRentCalculationToPDF(
       doc.text(formatCurrencyForPDF(period.netRentHT), margin + 115, y)
       doc.setFont("helvetica", "normal")
 
-      doc.setDrawColor(220, 220, 220)
+      doc.setDrawColor(...BORDER_COLOR)
       doc.line(margin, y + 2, pageWidth - margin, y + 2)
       y += 6
     }
@@ -1688,7 +1723,9 @@ export function exportRentCalculationToPDF(
       doc.setFontSize(8)
       doc.setTextColor(...TEXT_SECONDARY)
       doc.text(
-        `... et ${schedule.schedule.length - 12} autres périodes (voir Excel pour le détail complet)`,
+        cleanTextForPDF(
+          `... et ${schedule.schedule.length - 12} autres periodes (voir Excel pour le detail complet)`
+        ),
         margin + 3,
         y
       )

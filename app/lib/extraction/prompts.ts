@@ -114,7 +114,7 @@ EXEMPLES DE FORMAT DE SORTIE :
 {
   "value": null,
   "confidence": "missing",
-  "source": "Document entier",
+  "source": "",
   "rawText": "Non mentionné"
 }
 
@@ -224,7 +224,7 @@ EXEMPLES :
 - "Article 25 - Notifications : par email à contact@exemple.fr pour le Bailleur"
   → landlord.email: "contact@exemple.fr"
 - Email non trouvé dans le document
-  → landlord.email: { value: null, confidence: "missing", source: "Document entier", rawText: "Non mentionné" }
+  → landlord.email: { value: null, confidence: "missing", source: "", rawText: "Non mentionné" }
 - "La société @@@@@, au capital de..." (nom masqué)
   → name: { value: null, confidence: "missing", source: "...", rawText: "Non mentionné" }
 
@@ -371,11 +371,11 @@ EXEMPLES COMPLETS :
 - "À usage exclusif de bureaux, à l'exclusion de toute activité de réception du public"
   → purpose: "Usage exclusif de bureaux. Exclusion : activité de réception du public"
 - Année de construction non mentionnée dans le document
-  → buildingYear: { value: null, confidence: "missing", source: "Document entier", rawText: "Non mentionné" }
+  → buildingYear: { value: null, confidence: "missing", source: "", rawText: "Non mentionné" }
 - Étages non mentionnés
-  → floors: { value: null, confidence: "missing", source: "Document entier", rawText: "Non mentionné" }
+  → floors: { value: null, confidence: "missing", source: "", rawText: "Non mentionné" }
 - Clause d'enseigne absente
-  → signageConditions: { value: null, confidence: "missing", source: "Document entier", rawText: "Non mentionné" }
+  → signageConditions: { value: null, confidence: "missing", source: "", rawText: "Non mentionné" }
 
 Format de sortie JSON avec tous les champs ayant value, confidence, source.
 IMPORTANT : 
@@ -439,9 +439,9 @@ EXEMPLES :
 - "renouvellement pour 9 ans au loyer de marché"
   → renewalConditions: "Durée : 9 ans. Loyer : valeur locative de marché"
 - Date de signature non trouvée dans le document
-  → signatureDate: { value: null, confidence: "missing", source: "Document entier", rawText: "Non mentionné" }
+  → signatureDate: { value: null, confidence: "missing", source: "", rawText: "Non mentionné" }
 - Conditions de renouvellement absentes
-  → renewalConditions: { value: null, confidence: "missing", source: "Document entier", rawText: "Non mentionné" }
+  → renewalConditions: { value: null, confidence: "missing", source: "", rawText: "Non mentionné" }
 
 Format de sortie JSON avec dates en format ISO (YYYY-MM-DD).
 IMPORTANT : Pour les champs manquants, rawText doit être "Non mentionné" (exactement cette formulation).`
@@ -977,7 +977,7 @@ CHAMPS À EXTRAIRE :
     "hasAccessionClause": {
       "value": false,
       "confidence": "medium",
-      "source": "Document entier",
+      "source": "",
       "rawText": "Non mentionné"
     }
   }

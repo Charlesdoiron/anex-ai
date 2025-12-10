@@ -358,6 +358,9 @@ export class RentCalculationExtractionService {
       const { chargesPerPeriod, taxesPerPeriod } =
         this.deriveChargesAndTaxesPerPeriod(data, paymentFrequency)
 
+      // Default charges/taxes growth rate: 2% per year (as per client template)
+      const DEFAULT_CHARGES_GROWTH_RATE = 0.02
+
       const scheduleInput: ComputeLeaseRentScheduleInput = {
         startDate,
         endDate,
@@ -372,6 +375,7 @@ export class RentCalculationExtractionService {
         horizonYears,
         franchiseMonths: franchiseMonths > 0 ? franchiseMonths : undefined,
         depositMonths: depositMonths > 0 ? depositMonths : undefined,
+        chargesGrowthRate: DEFAULT_CHARGES_GROWTH_RATE,
       }
 
       const schedule = computeLeaseRentSchedule(scheduleInput)
