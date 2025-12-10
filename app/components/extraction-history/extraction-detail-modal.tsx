@@ -22,6 +22,26 @@ import { exportExtractionToExcel } from "@/app/components/extraction/utils/excel
 import { exportExtractionToPDF } from "@/app/components/extraction/utils/pdf-export"
 import { useCallback, useEffect, useRef, useState } from "react"
 
+/**
+ * Clean LaTeX notation from text (e.g., $2^{\circ}$ -> 2°)
+ */
+function cleanLatex(text: string): string {
+  return (
+    text
+      // Convert $N^{\circ}$ or $N^\circ$ to N°
+      .replace(/\$(\d+)\^\\?\{?\\circ\\?\}?\$/g, "$1°")
+      // Convert standalone \circ to °
+      .replace(/\\circ/g, "°")
+      // Convert $...$ wrapped content (remove the $ markers)
+      .replace(/\$([^$]+)\$/g, "$1")
+      // Clean up remaining LaTeX artifacts
+      .replace(/\^\{([^}]+)\}/g, "$1")
+      .replace(/\^(\d+)/g, "$1")
+      .replace(/\\_/g, "_")
+      .replace(/\\\s/g, " ")
+  )
+}
+
 function getValue<T>(field: ExtractedValue<T> | undefined | null): T | null {
   if (!field) return null
   if (typeof field !== "object") return field as T
@@ -185,9 +205,9 @@ function getRegimeValue(
 function formatArrayValue(value: unknown): string | null {
   if (!value) return null
   if (Array.isArray(value)) {
-    return value.length > 0 ? value.join(", ") : null
+    return value.length > 0 ? cleanLatex(value.join(", ")) : null
   }
-  return String(value)
+  return cleanLatex(String(value))
 }
 
 interface SectionCardProps {
@@ -247,14 +267,14 @@ function DataRow({ label, value, type = "text", highlight }: DataRowProps) {
         year: "numeric",
       })
     } catch {
-      displayValue = String(value)
+      displayValue = cleanLatex(String(value))
     }
   } else if (type === "currency" && typeof value === "number") {
     displayValue = `${value.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`
   } else if (typeof value === "boolean") {
     displayValue = value ? "Oui" : "Non"
   } else {
-    displayValue = String(value)
+    displayValue = cleanLatex(String(value))
   }
 
   const isEmpty = displayValue === "—"
@@ -502,13 +522,8 @@ function ExtractionContent({
             }
           />
           <DataRow
-            label="Mesures d'accompagnement"
+            label="Autres mesures d'accompagnement"
             value={measuresDescription}
-          />
-          <DataRow
-            label="Dépôt de garantie"
-            value={getValue(extraction.securities?.securityDepositAmount)}
-            type="currency"
           />
 
           <div className="pt-3 pb-1 border-t border-gray-100">
@@ -552,6 +567,39 @@ function ExtractionContent({
         </div>
       </SectionCard>
 
+      {/* Sûretés */}
+      <SectionCard
+        title="Sûretés"
+        icon={<Shield className={iconClass} strokeWidth={iconStroke} />}
+      >
+        <div className="space-y-2">
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+            Dépôt de garantie
+          </div>
+          <DataRow
+            label="Montant du dépôt de garantie"
+            value={getValue(extraction.securities?.securityDepositAmount)}
+            type="currency"
+          />
+
+          <div className="pt-3 pb-1 border-t border-gray-100">
+            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+              Autres sûretés
+            </div>
+          </div>
+          <DataRow
+            label="Autres types de sûretés"
+            value={
+              getValue(extraction.securities?.otherSecurities)
+                ? formatArrayValue(
+                    getValue(extraction.securities?.otherSecurities)
+                  )
+                : "Non"
+            }
+          />
+        </div>
+      </SectionCard>
+
       {/* Autres */}
       <SectionCard
         title="Autres"
@@ -561,20 +609,6 @@ function ExtractionContent({
           <DataRow
             label="Assurance - non-recours réciproque"
             value={getValue(extraction.insurance?.hasWaiverOfRecourse)}
-          />
-          <DataRow
-            label="Sûreté"
-            value={
-              getValue(extraction.securities?.otherSecurities)
-                ? `Oui${
-                    formatArrayValue(
-                      getValue(extraction.securities?.otherSecurities)
-                    )
-                      ? ` - ${formatArrayValue(getValue(extraction.securities?.otherSecurities))}`
-                      : ""
-                  }`
-                : "Non"
-            }
           />
         </div>
       </SectionCard>
@@ -610,18 +644,157 @@ function ExtractionContent({
         icon={<File className={iconClass} strokeWidth={iconStroke} />}
       >
         <div className="space-y-2">
-          <DataRow
-            label="Règlement intérieur"
-            value={getValue(extraction.otherAnnexes?.hasInternalRegulations)}
-          />
-          <DataRow
-            label="Plan des locaux"
-            value={getValue(extraction.otherAnnexes?.hasPremisesPlan)}
-          />
-          <DataRow
-            label="État des lieux charges"
-            value={getValue(extraction.otherAnnexes?.hasChargesInventory)}
-          />
+          {(() => {
+            // Collect all annexes
+            const annexesList: { name: string; present: boolean | null }[] = []
+
+            // Environmental annexes
+            const hasDPE = getValue(extraction.environmentalAnnexes?.hasDPE)
+            if (hasDPE !== null && hasDPE !== undefined)
+              annexesList.push({ name: "DPE", present: hasDPE as boolean })
+
+            const hasAsbestos = getValue(
+              extraction.environmentalAnnexes?.hasAsbestosDiagnostic
+            )
+            if (hasAsbestos !== null && hasAsbestos !== undefined)
+              annexesList.push({
+                name: "Diagnostic amiante",
+                present: hasAsbestos as boolean,
+              })
+
+            const hasEnvironmentalAnnex = getValue(
+              extraction.environmentalAnnexes?.hasEnvironmentalAnnex
+            )
+            if (
+              hasEnvironmentalAnnex !== null &&
+              hasEnvironmentalAnnex !== undefined
+            )
+              annexesList.push({
+                name: "Annexe environnementale",
+                present: hasEnvironmentalAnnex as boolean,
+              })
+
+            const hasRiskStatement = getValue(
+              extraction.environmentalAnnexes?.hasRiskAndPollutionStatement
+            )
+            if (hasRiskStatement !== null && hasRiskStatement !== undefined)
+              annexesList.push({
+                name: "Etat des risques et pollutions",
+                present: hasRiskStatement as boolean,
+              })
+
+            // Other annexes
+            const hasInternalRegulations = getValue(
+              extraction.otherAnnexes?.hasInternalRegulations
+            )
+            if (
+              hasInternalRegulations !== null &&
+              hasInternalRegulations !== undefined
+            )
+              annexesList.push({
+                name: "Règlement intérieur",
+                present: hasInternalRegulations as boolean,
+              })
+
+            const hasPremisesPlan = getValue(
+              extraction.otherAnnexes?.hasPremisesPlan
+            )
+            if (hasPremisesPlan !== null && hasPremisesPlan !== undefined)
+              annexesList.push({
+                name: "Plan des locaux",
+                present: hasPremisesPlan as boolean,
+              })
+
+            const hasChargesInventory = getValue(
+              extraction.otherAnnexes?.hasChargesInventory
+            )
+            if (
+              hasChargesInventory !== null &&
+              hasChargesInventory !== undefined
+            )
+              annexesList.push({
+                name: "Inventaire des charges",
+                present: hasChargesInventory as boolean,
+              })
+
+            const hasAnnualChargesSummary = getValue(
+              extraction.otherAnnexes?.hasAnnualChargesSummary
+            )
+            if (
+              hasAnnualChargesSummary !== null &&
+              hasAnnualChargesSummary !== undefined
+            )
+              annexesList.push({
+                name: "Etat récapitulatif annuel des charges",
+                present: hasAnnualChargesSummary as boolean,
+              })
+
+            const hasThreeYearBudget = getValue(
+              extraction.otherAnnexes?.hasThreeYearWorksBudget
+            )
+            if (hasThreeYearBudget !== null && hasThreeYearBudget !== undefined)
+              annexesList.push({
+                name: "Budget prévisionnel des travaux",
+                present: hasThreeYearBudget as boolean,
+              })
+
+            const hasPastWorksSummary = getValue(
+              extraction.otherAnnexes?.hasPastWorksSummary
+            )
+            if (
+              hasPastWorksSummary !== null &&
+              hasPastWorksSummary !== undefined
+            )
+              annexesList.push({
+                name: "Etat récapitulatif des travaux passés",
+                present: hasPastWorksSummary as boolean,
+              })
+
+            // Summary lines for present/absent annexes
+            const presentAnnexes = annexesList
+              .filter((a) => a.present === true)
+              .map((a) => a.name)
+            const absentAnnexes = annexesList
+              .filter((a) => a.present === false)
+              .map((a) => a.name)
+
+            return (
+              <>
+                <DataRow
+                  label="Présent"
+                  value={
+                    presentAnnexes.length > 0
+                      ? presentAnnexes.join(", ")
+                      : "Aucune"
+                  }
+                />
+                <DataRow
+                  label="Absent"
+                  value={
+                    absentAnnexes.length > 0
+                      ? absentAnnexes.join(", ")
+                      : "Aucune"
+                  }
+                />
+
+                <div className="pt-3 pb-1 border-t border-gray-100">
+                  <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                    Détails
+                  </div>
+                </div>
+
+                <DataRow
+                  label="Règlement intérieur"
+                  value={hasInternalRegulations}
+                />
+                <DataRow label="Plan des locaux" value={hasPremisesPlan} />
+                <DataRow
+                  label="État des lieux charges"
+                  value={hasChargesInventory}
+                />
+              </>
+            )
+          })()}
         </div>
       </SectionCard>
     </div>
