@@ -18,7 +18,7 @@ export default function RentCalculationResultButton({
 }: RentCalculationResultButtonProps) {
   const [showModal, setShowModal] = useState(false)
 
-  function handleDownload() {
+  async function handleDownload() {
     if (!result) {
       console.error("No result available")
       return
@@ -41,7 +41,7 @@ export default function RentCalculationResultButton({
           scheduleSuccess: !!result.rentSchedule,
         },
       }
-      exportRentCalculationToExcel(
+      await exportRentCalculationToExcel(
         exportData as Parameters<typeof exportRentCalculationToExcel>[0]
       )
     } catch (error) {

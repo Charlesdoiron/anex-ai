@@ -68,7 +68,7 @@ export default async function AgentPage({
         </div>
       </div>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16 lg:py-20">
-        <div className="w-full">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 lg:gap-12">
           {/* Tools section */}
           <div className="lg:col-span-2 space-y-4 sm:space-y-5">
             <div className="mb-6">
@@ -123,12 +123,11 @@ export default async function AgentPage({
           </div>
 
           {/* Recent activity sidebar */}
-          {/* <div className="lg:col-span-1">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">
-              Historique
-            </h2>
-            <RecentActivity agentSlug={agentSlug} maxItems={5} />
-          </div> */}
+          <div className="lg:col-span-1">
+            <div className="lg:sticky lg:top-8">
+              <RecentActivity agentSlug={agentSlug} maxItems={5} />
+            </div>
+          </div>
         </div>
       </div>
     </div>

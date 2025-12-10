@@ -81,7 +81,7 @@ export default function RentCalculationDetailModal({
 
   if (!result) return null
 
-  function handleDownloadExcel() {
+  async function handleDownloadExcel() {
     if (!result) return
     try {
       const exportData: RentCalculationResult = {
@@ -104,7 +104,7 @@ export default function RentCalculationDetailModal({
           scheduleSuccess: !!result.rentSchedule,
         },
       }
-      exportRentCalculationToExcel(exportData)
+      await exportRentCalculationToExcel(exportData)
     } catch (error) {
       console.error("Error exporting to Excel:", error)
     }

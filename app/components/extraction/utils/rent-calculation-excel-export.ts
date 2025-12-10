@@ -1,9 +1,9 @@
 /**
- * Excel export matching EXACT client template format "2511_Calcul-Loyer_Template-Livrable.xlsx"
- * Monthly breakdown with day-by-day granularity (ligne 22: # jours/mois)
+ * Excel export for rent calculation results
+ * Produces a clean, formatted spreadsheet with monthly breakdown and yearly summaries
  */
 
-import * as XLSX from "xlsx"
+import ExcelJS from "exceljs"
 import type { RentCalculationResult } from "@/app/lib/extraction/rent-calculation-service"
 
 const MONTH_NAMES_FR = [
@@ -25,7 +25,7 @@ function getDaysInMonth(year: number, monthIndex: number): number {
   return new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate()
 }
 
-function formatDateForExcel(isoDate: string | null | undefined): string {
+function formatDateFr(isoDate: string | null | undefined): string {
   if (!isoDate) return ""
   const date = new Date(isoDate)
   const day = String(date.getUTCDate()).padStart(2, "0")
@@ -42,7 +42,7 @@ function round(value: number, decimals: number = 2): number {
   return Math.round(value * Math.pow(10, decimals)) / Math.pow(10, decimals)
 }
 
-interface MonthlyBreakdownItem {
+interface MonthlyData {
   year: number
   month: number
   monthName: string
@@ -60,46 +60,53 @@ interface MonthlyBreakdownItem {
   franchiseHT: number
   incentiveHT: number
   totalHT: number
+  isFirstMonthOfYear?: boolean
+  isLastMonthOfYear?: boolean
 }
 
-export function generateRentCalculationExcel(
+interface YearlySummary {
+  year: number
+  officeRentHT: number
+  parkingRentHT: number
+  chargesHT: number
+  taxesHT: number
+  franchiseHT: number
+  incentiveHT: number
+  totalHT: number
+}
+
+export async function generateRentCalculationExcel(
   result: RentCalculationResult
-): Buffer {
+): Promise<Buffer> {
   const extracted = result.extractedData
   const schedule = result.rentSchedule?.schedule || []
   const summary = result.rentSchedule?.summary
   const input = result.scheduleInput
 
+  const workbook = new ExcelJS.Workbook()
+
   if (!schedule.length || !input) {
-    const wb = XLSX.utils.book_new()
-    const ws = XLSX.utils.aoa_to_sheet([
-      ["Aucun échéancier de loyer disponible"],
-      [""],
-      [
-        "Les données nécessaires pour calculer l'échéancier n'ont pas pu être extraites du bail.",
-      ],
-    ])
-    XLSX.utils.book_append_sheet(wb, ws, "Calcul loyer")
-    const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" })
+    const ws = workbook.addWorksheet("Calcul loyer")
+    ws.getCell("A1").value = "Aucun échéancier de loyer disponible"
+    ws.getCell("A3").value =
+      "Les données nécessaires pour calculer l'échéancier n'ont pas pu être extraites du bail."
+    const buffer = await workbook.xlsx.writeBuffer()
     return Buffer.from(buffer)
   }
 
-  const wb = XLSX.utils.book_new()
-  const wsData: any[][] = []
+  const ws = workbook.addWorksheet("Calcul loyer")
 
-  // ========== SECTION DONNÉES (Lignes 1-18) ==========
-  wsData.push([""]) // Ligne 1
-  wsData.push(["", "Données"])
-
+  // Extract input data
   const effectiveDate = getValue(extracted.calendar.effectiveDate)
   const duration = getValue(extracted.calendar.duration) || 9
   const frequency = getValue(extracted.rent.paymentFrequency)
+  const isQuarterly = frequency === "quarterly"
   const indexType = getValue(extracted.indexation?.indexationType) || "ILAT"
   const referenceQuarter = getValue(extracted.indexation?.referenceQuarter)
   const tcam = summary?.tcam || 0
   const depositMonths = input.depositMonths || 3
   const franchiseMonths = input.franchiseMonths || 0
-  const chargesGrowth = input.chargesGrowthRate || 0.02
+  const chargesGrowthRate = input.chargesGrowthRate || 0.02
 
   const startDate = effectiveDate
     ? new Date(effectiveDate)
@@ -113,7 +120,7 @@ export function generateRentCalculationExcel(
           return end
         })()
 
-  // Fin premier trimestre
+  // Calculate first quarter end
   const startQuarter = Math.floor(startDate.getUTCMonth() / 3) + 1
   const endQ1Month = startQuarter * 3 - 1
   const endQ1 = new Date(
@@ -126,190 +133,349 @@ export function generateRentCalculationExcel(
   const daysUntilEndQ1 =
     Math.floor((endQ1.getTime() - startDate.getTime()) / 86400000) + 1
 
-  wsData.push([
-    "",
-    "Date de prise d'effet du bail",
-    formatDateForExcel(effectiveDate),
-    "",
-    "par exemple",
-  ])
-  wsData.push([
-    "",
-    "Fin du premier trimestre à compter de la prise d'effet",
-    formatDateForExcel(endQ1.toISOString().split("T")[0]),
-    "",
-    `(fin T${startQuarter} ${startDate.getUTCFullYear().toString().slice(-2)})`,
-  ])
-  wsData.push([
-    "",
-    "# jours de la date de prise d'effet jusqu'à fin de trimestre",
-    daysUntilEndQ1,
-  ])
-  const endDateStr = endDateObj.toISOString().split("T")[0]
-  wsData.push([
-    "",
-    "Date de fin de bail",
-    formatDateForExcel(endDateStr || null),
-    "",
-    "(peut être directement indiquée dans le bail)",
-  ])
-  wsData.push([
-    "",
-    "Echéance de paiement",
-    frequency === "quarterly" ? "Trimestriel" : "Mensuel",
-    "",
-    "par exemple (peut être mensuel)",
-  ])
-  wsData.push([
-    "",
-    "Indice de référence",
-    referenceQuarter
-      ? referenceQuarter.includes(indexType)
-        ? referenceQuarter
-        : `${indexType} ${referenceQuarter}`
-      : `${indexType} (à déterminer)`,
-    "",
-    "par exemple (aussi possible ILC)",
-  ])
-  wsData.push([
-    "",
-    "TCAM = taux d'évolution moyen de l'indice",
-    "",
-    "",
-    "Evolution à compter du dernier indice connu",
-  ])
-  wsData.push(["", "TCAM valeur", tcam ? round(tcam, 6) : 0])
-  wsData.push(["", "Dépôt de garantie (en mois)", depositMonths])
-  wsData.push(["", "Franchise (en mois)", franchiseMonths])
-  wsData.push([
-    "",
-    "Echéance de paiement franchise",
-    "Mensuellement à compter de la date de prise d'effet",
-    "",
-    "par exemple",
-  ])
-  wsData.push(["", "Mesures d'accompagnement", "—", "", "par exemple"])
-  wsData.push([
-    "",
-    "Echéance de paiement mesures d'accompagnement",
-    "Sur présentation de facture",
-    "",
-    "par exemple",
-  ])
-  wsData.push([
-    "",
-    "Hypothèses augmentation charges et taxes",
-    chargesGrowth,
-    "",
-    "choix arbitraire",
-  ])
-  wsData.push([""]) // Ligne 17
-  wsData.push([""]) // Ligne 18
+  // Base rent per period (from input)
+  const baseOfficeRent = input.officeRentHT || 0
+  const baseParkingRent = input.parkingRentHT || 0
+  const baseCharges = input.chargesHT || 0
+  const baseTaxes = input.taxesHT || 0
 
-  // ========== CALCUL DONNÉES FINANCIÈRES (Ligne 19+) ==========
-  wsData.push([
-    "",
-    "Calcul données financières",
-    "Taux indice connu (publié sur site INSEE)",
-  ])
+  // Styles
+  const headerFill: ExcelJS.Fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: "FFE7E6E6" },
+  }
+  const sectionFill: ExcelJS.Fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: "FFF2F2F2" },
+  }
+  const yearSummaryFill: ExcelJS.Fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: "FFFFF2CC" },
+  }
+  const thinBorder: Partial<ExcelJS.Border> = {
+    style: "thin",
+    color: { argb: "FF000000" },
+  }
+  const allBorders: Partial<ExcelJS.Borders> = {
+    top: thinBorder,
+    left: thinBorder,
+    bottom: thinBorder,
+    right: thinBorder,
+  }
+
+  // ========== SECTION DONNÉES (Rows 1-17) ==========
+  let row = 1
+  ws.getCell(row, 1).value = ""
+  row++
+
+  // Title row
+  ws.getCell(row, 2).value = "Données"
+  ws.getCell(row, 2).font = { bold: true, size: 12 }
+  row++
+
+  // Data rows
+  const dataRows = [
+    ["Date de prise d'effet du bail", formatDateFr(effectiveDate)],
+    [
+      "Fin du premier trimestre à compter de la prise d'effet",
+      formatDateFr(endQ1.toISOString().split("T")[0]),
+    ],
+    [
+      "# jours de la date de prise d'effet jusqu'à fin de trimestre",
+      daysUntilEndQ1,
+    ],
+    [
+      "Date de fin de bail",
+      formatDateFr(endDateObj.toISOString().split("T")[0]),
+    ],
+    ["Échéance de paiement", isQuarterly ? "Trimestriel" : "Mensuel"],
+    [
+      "Indice de référence",
+      referenceQuarter
+        ? referenceQuarter.includes(indexType)
+          ? referenceQuarter
+          : `${indexType} ${referenceQuarter}`
+        : indexType,
+    ],
+    ["TCAM (taux d'évolution moyen de l'indice)", tcam ? round(tcam, 6) : "—"],
+    ["Dépôt de garantie (en mois)", depositMonths],
+    ["Franchise (en mois)", franchiseMonths],
+    [
+      "Hypothèses augmentation charges et taxes (en %)",
+      `${round(chargesGrowthRate * 100, 1)}%`,
+    ],
+  ]
+
+  for (const [label, value] of dataRows) {
+    ws.getCell(row, 2).value = label
+    ws.getCell(row, 3).value = value
+    ws.getCell(row, 2).border = allBorders
+    ws.getCell(row, 3).border = allBorders
+    row++
+  }
+
+  row++ // Empty row
+  row++ // Empty row
+
+  // ========== SECTION CALCUL DONNÉES FINANCIÈRES ==========
+  const calcStartRow = row
+  ws.getCell(row, 2).value = "Calcul données financières"
+  ws.getCell(row, 2).font = { bold: true, size: 12 }
+  row++
 
   // Build monthly breakdown
   const monthly = buildMonthlyBreakdown(schedule, startDate, endDateObj, input)
+  const yearlySummaries = buildYearlySummaries(monthly)
 
-  // Ligne 20-21 : Headers
-  const headerRow1: any[] = ["", "", "Base bail", ""]
-  const headerRow2: any[] = ["", "", frequency || "Trimestriel", ""]
-  const daysRow: any[] = ["", "# jours / mois", "", ""]
-  const sameDaysRow: any[] = [
+  // Column structure:
+  // Col A: empty
+  // Col B: Row labels
+  // Col C: Base bail (base values)
+  // Col D: empty separator
+  // Col E onwards: months with yearly summary columns inserted
+
+  // Build column headers with year summaries
+  const headerRow1: (string | number | null)[] = ["", "", "Base bail", ""]
+  const headerRow2: (string | number | null)[] = [
     "",
-    "# jours même indice jusqu'à fin de trimestre",
     "",
+    isQuarterly ? "Trimestriel" : "Mensuel",
     "",
   ]
-  const diffDaysRow: any[] = [
-    "",
-    "# jours indice différent jusqu'à fin de trimestre",
-    "",
-    "",
-  ]
-  const indexRow: any[] = ["", "Taux indice", input.baseIndexValue || "", ""]
 
-  // Data rows
-  const depositRow: any[] = [
-    "",
-    "Dépôt de garantie",
-    summary?.depositHT || 0,
-    "",
-  ]
-  const officeRentRow: any[] = ["", "Loyer bureaux HT HC", "", ""]
-  const parkingRentRow: any[] = ["", "Loyer parkings HT HC", "", ""]
-  const chargesRow: any[] = ["", "Charges HT", "", ""]
-  const taxesRow: any[] = ["", "Taxes HT", "", ""]
-  const franchiseRow: any[] = ["", "Franchise", "", ""]
-  const incentiveRow: any[] = ["", "Mesures d'accompagnement", "", ""]
-  const totalRow: any[] = ["", "Total HT", "", ""]
+  // Track column indices for yearly summaries
+  const yearSummaryColumns: number[] = []
+  let currentYear = monthly[0]?.year
+  let colIndex = 5 // Start from column E (1-indexed)
 
-  // Fill monthly columns
-  let lastQuarter = 0
-  for (const m of monthly) {
-    if (m.quarter !== lastQuarter) {
+  for (let i = 0; i < monthly.length; i++) {
+    const m = monthly[i]
+
+    // Check if we need to insert a year summary column
+    if (m.year !== currentYear) {
+      // Insert year summary column
+      yearSummaryColumns.push(colIndex)
+      headerRow1.push(`Total ${currentYear}`)
+      headerRow2.push("")
+      colIndex++
+      currentYear = m.year
+    }
+
+    // Add month column
+    if (m.month % 3 === 0) {
+      // First month of quarter, show quarter label
       headerRow1.push(m.quarterLabel)
-      lastQuarter = m.quarter
     } else {
       headerRow1.push("")
     }
-
     headerRow2.push(m.monthName)
-    daysRow.push(m.daysInMonth)
-    sameDaysRow.push(m.daysSameIndex || 0)
-    diffDaysRow.push(m.daysDiffIndex || 0)
-    indexRow.push(round(m.indexValue, 2))
-
-    depositRow.push("")
-    officeRentRow.push(m.officeRentHT)
-    parkingRentRow.push(m.parkingRentHT)
-    chargesRow.push(m.chargesHT)
-    taxesRow.push(m.taxesHT)
-    franchiseRow.push(m.franchiseHT)
-    incentiveRow.push(m.incentiveHT)
-    totalRow.push(m.totalHT)
+    colIndex++
   }
 
-  wsData.push(headerRow1)
-  wsData.push(headerRow2)
-  wsData.push(daysRow)
-  wsData.push(sameDaysRow)
-  wsData.push(diffDaysRow)
-  wsData.push(indexRow)
-  wsData.push([""]) // Spacer
-  wsData.push(depositRow)
-  wsData.push(officeRentRow)
-  wsData.push(parkingRentRow)
-  wsData.push(chargesRow)
-  wsData.push(taxesRow)
-  wsData.push(franchiseRow)
-  wsData.push(incentiveRow)
-  wsData.push(totalRow)
+  // Add final year summary
+  yearSummaryColumns.push(colIndex)
+  headerRow1.push(`Total ${currentYear}`)
+  headerRow2.push("")
 
-  // Create worksheet
-  const ws = XLSX.utils.aoa_to_sheet(wsData)
+  // Write header rows
+  for (let c = 0; c < headerRow1.length; c++) {
+    ws.getCell(row, c + 1).value = headerRow1[c]
+    ws.getCell(row, c + 1).font = { bold: true }
+    ws.getCell(row, c + 1).border = allBorders
+  }
+  row++
 
-  // Column widths
-  const cols: XLSX.ColInfo[] = [
-    { wch: 2 },
-    { wch: 50 },
-    { wch: 18 },
-    { wch: 3 },
+  for (let c = 0; c < headerRow2.length; c++) {
+    ws.getCell(row, c + 1).value = headerRow2[c]
+    ws.getCell(row, c + 1).border = allBorders
+  }
+  row++
+
+  // Data rows
+  const rowLabels = [
+    "# jours / mois",
+    "# jours même indice",
+    "# jours indice différent",
+    "Taux indice",
+    "", // Empty spacer
+    "Dépôt de garantie",
+    "Loyer bureaux HT HC",
+    "Loyer parkings HT HC",
+    "Charges HT",
+    "Taxes HT",
+    "Franchise",
+    "Mesures d'accompagnement",
+    "Total HT",
   ]
-  for (let i = 0; i < monthly.length; i++) {
-    cols.push({ wch: 12 })
+
+  // Base values column
+  const baseValues: (number | string | null)[] = [
+    null, // days
+    null, // same index days
+    null, // diff index days
+    input.baseIndexValue || null, // index
+    null, // spacer
+    summary?.depositHT || null, // deposit
+    baseOfficeRent, // office rent base
+    baseParkingRent, // parking rent base
+    baseCharges, // charges base
+    baseTaxes, // taxes base
+    null, // franchise
+    null, // incentive
+    null, // total
+  ]
+
+  for (let r = 0; r < rowLabels.length; r++) {
+    const label = rowLabels[r]
+    ws.getCell(row, 2).value = label
+    ws.getCell(row, 3).value = baseValues[r]
+    ws.getCell(row, 2).border = allBorders
+    ws.getCell(row, 3).border = allBorders
+
+    // Special formatting for Total row
+    if (label === "Total HT") {
+      ws.getCell(row, 2).font = { bold: true }
+    }
+
+    // Build data columns
+    let dataCol = 5
+    let yearIndex = 0
+    let summaryColIdx = 0
+
+    for (let m = 0; m < monthly.length; m++) {
+      const md = monthly[m]
+
+      // Check if we need a year summary column before this month
+      if (m > 0 && monthly[m].year !== monthly[m - 1].year) {
+        // Insert year summary
+        const ys = yearlySummaries[yearIndex]
+        if (ys) {
+          const summaryValue = getRowValueFromYearlySummary(ys, label)
+          ws.getCell(row, dataCol).value = summaryValue
+          ws.getCell(row, dataCol).fill = yearSummaryFill
+          ws.getCell(row, dataCol).border = allBorders
+          if (label === "Total HT") {
+            ws.getCell(row, dataCol).font = { bold: true }
+          }
+        }
+        dataCol++
+        yearIndex++
+        summaryColIdx++
+      }
+
+      // Add month value
+      const value = getRowValueFromMonthly(md, label)
+      ws.getCell(row, dataCol).value = value
+      ws.getCell(row, dataCol).border = allBorders
+
+      // Highlight first month of year
+      if (md.month === 0 && m > 0) {
+        ws.getCell(row, dataCol).fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "FFE2EFDA" },
+        }
+      }
+
+      dataCol++
+    }
+
+    // Final year summary
+    const lastYs = yearlySummaries[yearlySummaries.length - 1]
+    if (lastYs) {
+      const summaryValue = getRowValueFromYearlySummary(lastYs, label)
+      ws.getCell(row, dataCol).value = summaryValue
+      ws.getCell(row, dataCol).fill = yearSummaryFill
+      ws.getCell(row, dataCol).border = allBorders
+      if (label === "Total HT") {
+        ws.getCell(row, dataCol).font = { bold: true }
+      }
+    }
+
+    row++
   }
-  ws["!cols"] = cols
 
-  XLSX.utils.book_append_sheet(wb, ws, "Calcul loyer")
+  // Set column widths
+  ws.getColumn(1).width = 3
+  ws.getColumn(2).width = 45
+  ws.getColumn(3).width = 15
+  ws.getColumn(4).width = 3
+  for (let c = 5; c <= ws.columnCount; c++) {
+    ws.getColumn(c).width = 12
+  }
 
-  const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" })
+  // Freeze header rows
+  ws.views = [{ state: "frozen", ySplit: calcStartRow + 2 }]
+
+  const buffer = await workbook.xlsx.writeBuffer()
   return Buffer.from(buffer)
+}
+
+function getRowValueFromMonthly(
+  m: MonthlyData,
+  label: string
+): number | string | null {
+  switch (label) {
+    case "# jours / mois":
+      return m.daysInMonth
+    case "# jours même indice":
+      return m.daysSameIndex
+    case "# jours indice différent":
+      return m.daysDiffIndex
+    case "Taux indice":
+      return round(m.indexValue, 2)
+    case "Dépôt de garantie":
+      return null // Only shown once
+    case "Loyer bureaux HT HC":
+      return m.officeRentHT
+    case "Loyer parkings HT HC":
+      return m.parkingRentHT
+    case "Charges HT":
+      return m.chargesHT
+    case "Taxes HT":
+      return m.taxesHT
+    case "Franchise":
+      return m.franchiseHT !== 0 ? m.franchiseHT : null
+    case "Mesures d'accompagnement":
+      return m.incentiveHT !== 0 ? m.incentiveHT : null
+    case "Total HT":
+      return m.totalHT
+    default:
+      return null
+  }
+}
+
+function getRowValueFromYearlySummary(
+  ys: YearlySummary,
+  label: string
+): number | string | null {
+  switch (label) {
+    case "# jours / mois":
+    case "# jours même indice":
+    case "# jours indice différent":
+    case "Taux indice":
+    case "Dépôt de garantie":
+      return null
+    case "Loyer bureaux HT HC":
+      return round(ys.officeRentHT)
+    case "Loyer parkings HT HC":
+      return round(ys.parkingRentHT)
+    case "Charges HT":
+      return round(ys.chargesHT)
+    case "Taxes HT":
+      return round(ys.taxesHT)
+    case "Franchise":
+      return ys.franchiseHT !== 0 ? round(ys.franchiseHT) : null
+    case "Mesures d'accompagnement":
+      return ys.incentiveHT !== 0 ? round(ys.incentiveHT) : null
+    case "Total HT":
+      return round(ys.totalHT)
+    default:
+      return null
+  }
 }
 
 function buildMonthlyBreakdown(
@@ -317,8 +483,8 @@ function buildMonthlyBreakdown(
   startDate: Date,
   endDate: Date,
   input: any
-): MonthlyBreakdownItem[] {
-  const monthly: MonthlyBreakdownItem[] = []
+): MonthlyData[] {
+  const monthly: MonthlyData[] = []
   let currentDate = new Date(
     Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth(), 1)
   )
@@ -327,6 +493,20 @@ function buildMonthlyBreakdown(
   const endMonth = endDate.getUTCMonth()
   const anniversaryDay = startDate.getUTCDate()
   const anniversaryMonth = startDate.getUTCMonth()
+
+  const paymentFrequency = input.paymentFrequency || "quarterly"
+  const isQuarterlyPayment = paymentFrequency === "quarterly"
+  const baseIndex = input.baseIndexValue || 0
+  const chargesGrowthRate = input.chargesGrowthRate || 0
+  const franchiseMonths = input.franchiseMonths || 0
+
+  const knownIndexPoints = (input.knownIndexPoints || []) as Array<{
+    effectiveDate: string
+    indexValue: number
+  }>
+
+  let franchiseMonthsRemaining = franchiseMonths
+  let incentiveBalance = input.incentiveAmount || 0
 
   while (
     currentDate.getUTCFullYear() < endYear ||
@@ -353,7 +533,7 @@ function buildMonthlyBreakdown(
           ) + 1
         : 0
 
-    // Anniversary detection
+    // Anniversary detection for index change
     const isAnniversaryMonth =
       month === anniversaryMonth && year > startDate.getUTCFullYear()
     let daysSameIndex = daysInBail
@@ -371,57 +551,16 @@ function buildMonthlyBreakdown(
       }
     }
 
-    // Find overlapping periods
-    const overlappingPeriods = schedule.filter((p: any) => {
-      const pStart = new Date(p.periodStart)
-      const pEnd = new Date(p.periodEnd)
-      return pStart <= monthEnd && pEnd >= monthStart
-    })
-
-    // Check if this is the last month of a quarter (for quarterly payments)
-    const paymentFrequency = input.paymentFrequency || "quarterly"
-    const isQuarterlyPayment = paymentFrequency === "quarterly"
-
-    // Determine if this month is the last month of a quarter
-    // Quarters: Jan-Mar (ends Mar=2), Apr-Jun (ends Jun=5), Jul-Sep (ends Sep=8), Oct-Dec (ends Dec=11)
-    // Last month of quarter: month % 3 === 2 (March, June, September, December)
-    const isLastMonthOfQuarter = month % 3 === 2
-
-    let officeRent = 0
-    let parkingRent = 0
-    let charges = 0
-    let taxes = 0
-    let franchise = 0
-    const baseIndex = input.baseIndexValue || 0
-    let indexValue = baseIndex
-
-    // Calculate how many full years (anniversaries) have passed
-    // The index changes on the MONTH of the anniversary (not the exact day)
-    // Example: if lease starts Dec 19, 2016 (anniversary month = December):
-    //   - Before December 2017: 0 anniversaries passed -> use base index
-    //   - December 2017 onward: 1 anniversary passed -> use index from 1st anniversary
-    //   - December 2018 onward: 2 anniversaries passed -> use index from 2nd anniversary
-
+    // Calculate index value
     let anniversariesPassed = 0
-
-    // Count how many anniversary months have been reached
-    // Anniversary month is when the new index takes effect
     for (let y = startDate.getUTCFullYear() + 1; y <= year; y++) {
-      // Check if we've reached or passed the anniversary month in year y
       if (y < year || (y === year && month >= anniversaryMonth)) {
         anniversariesPassed++
       }
     }
 
-    // Find the corresponding index value from the schedule
-    // The schedule has index values that apply after each anniversary
-    const knownIndexPoints = (input.knownIndexPoints || []) as Array<{
-      effectiveDate: string
-      indexValue: number
-    }>
-
+    let indexValue = baseIndex
     if (anniversariesPassed > 0 && knownIndexPoints.length > 0) {
-      // Use the index from the last passed anniversary
       const pointIndex = Math.min(
         anniversariesPassed - 1,
         knownIndexPoints.length - 1
@@ -429,41 +568,51 @@ function buildMonthlyBreakdown(
       indexValue = knownIndexPoints[pointIndex]?.indexValue || baseIndex
     }
 
+    // Note: charges and taxes growth is already applied in the schedule
+    // by the rent-schedule-calculator, so we use values directly
+
+    // Find overlapping periods for rent calculation
+    const overlappingPeriods = schedule.filter((p: any) => {
+      const pStart = new Date(p.periodStart)
+      const pEnd = new Date(p.periodEnd)
+      return pStart <= monthEnd && pEnd >= monthStart
+    })
+
+    const isLastMonthOfQuarter = month % 3 === 2
+
+    let officeRent = 0
+    let parkingRent = 0
+    let charges = 0
+    let taxes = 0
+    let franchise = 0
+    let incentive = 0
+
     for (const p of overlappingPeriods) {
       const pStart = new Date(p.periodStart)
       const pEnd = new Date(p.periodEnd)
 
-      // For quarterly payments, only show rent on the last month of the quarter
-      // Check if this period ends in this month (last month of quarter)
       const periodEndMonth = pEnd.getUTCMonth()
       const periodEndYear = pEnd.getUTCFullYear()
       const isPeriodEndingThisMonth =
         periodEndMonth === month && periodEndYear === year
 
-      // For quarterly payments: only show rent if:
-      // 1. This is the last month of a quarter (March, June, September, December), OR
-      // 2. A period ends in this month (for prorated first/last periods)
+      // For quarterly payments: only show rent on last month of quarter
       if (
         isQuarterlyPayment &&
         !isLastMonthOfQuarter &&
         !isPeriodEndingThisMonth
       ) {
-        // Skip rent calculation for non-quarter-end months in quarterly leases
         continue
       }
 
       const overlapStart = pStart > monthStart ? pStart : monthStart
       const overlapEnd = pEnd < monthEnd ? pEnd : monthEnd
-
       const daysOverlap =
         Math.floor((overlapEnd.getTime() - overlapStart.getTime()) / 86400000) +
         1
-
       const periodTotalDays =
         Math.floor((pEnd.getTime() - pStart.getTime()) / 86400000) + 1
 
-      // For quarterly payments on quarter-end month, use full period rent
-      // For monthly payments or prorated periods, use ratio
       const ratio =
         isQuarterlyPayment && isLastMonthOfQuarter && isPeriodEndingThisMonth
           ? 1
@@ -471,11 +620,24 @@ function buildMonthlyBreakdown(
 
       officeRent += (p.officeRentHT || 0) * ratio
       parkingRent += (p.parkingRentHT || 0) * ratio
+
+      // Charges and taxes from schedule already include growth rate application
       charges += (p.chargesHT || 0) * ratio
       taxes += (p.taxesHT || 0) * ratio
+
+      // Franchise from schedule (already calculated correctly there)
       franchise += (p.franchiseHT || 0) * ratio
-      // Index value is already determined by anniversariesPassed above
     }
+
+    // Handle incentives (only apply once in first period)
+    if (incentiveBalance > 0 && monthly.length === 0) {
+      incentive = -incentiveBalance
+      incentiveBalance = 0
+    }
+
+    const totalHT = round(
+      officeRent + parkingRent + charges + taxes + franchise + incentive
+    )
 
     monthly.push({
       year,
@@ -493,22 +655,53 @@ function buildMonthlyBreakdown(
       chargesHT: round(charges),
       taxesHT: round(taxes),
       franchiseHT: round(franchise),
-      incentiveHT: 0,
-      totalHT: round(officeRent + parkingRent + charges + taxes + franchise),
+      incentiveHT: round(incentive),
+      totalHT,
+      isFirstMonthOfYear: month === 0,
+      isLastMonthOfYear: month === 11,
     })
 
     currentDate = new Date(Date.UTC(year, month + 1, 1))
 
-    if (monthly.length > 120) break
+    if (monthly.length > 150) break
   }
 
   return monthly
 }
 
-export function exportRentCalculationToExcel(
+function buildYearlySummaries(monthly: MonthlyData[]): YearlySummary[] {
+  const summaries = new Map<number, YearlySummary>()
+
+  for (const m of monthly) {
+    const existing = summaries.get(m.year) || {
+      year: m.year,
+      officeRentHT: 0,
+      parkingRentHT: 0,
+      chargesHT: 0,
+      taxesHT: 0,
+      franchiseHT: 0,
+      incentiveHT: 0,
+      totalHT: 0,
+    }
+
+    existing.officeRentHT += m.officeRentHT
+    existing.parkingRentHT += m.parkingRentHT
+    existing.chargesHT += m.chargesHT
+    existing.taxesHT += m.taxesHT
+    existing.franchiseHT += m.franchiseHT
+    existing.incentiveHT += m.incentiveHT
+    existing.totalHT += m.totalHT
+
+    summaries.set(m.year, existing)
+  }
+
+  return Array.from(summaries.values()).sort((a, b) => a.year - b.year)
+}
+
+export async function exportRentCalculationToExcel(
   result: RentCalculationResult
-): void {
-  const buffer = generateRentCalculationExcel(result)
+): Promise<void> {
+  const buffer = await generateRentCalculationExcel(result)
   const uint8Array = new Uint8Array(buffer)
   const blob = new Blob([uint8Array], {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

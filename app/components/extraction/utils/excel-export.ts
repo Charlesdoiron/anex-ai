@@ -636,32 +636,25 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
     getSource(ch?.managementFeesOnTenant),
   ])
   rows.push([
-    "Montant annuel des honoraires de gestion (en € et HT)",
+    "Montant annuel des honoraires de gestion locative et technique (en € et HT)",
     formatCurrency(getValue(ch?.managementFeesAnnualAmount) as number | null),
     getSource(ch?.managementFeesAnnualAmount),
   ])
   rows.push([
-    "Montant trimestriel des honoraires de gestion (en € et HT)",
+    "Montant trimestriel des honoraires de gestion locative et technique (en € et HT)",
     formatCurrency(
       getValue(ch?.managementFeesQuarterlyAmount) as number | null
     ),
     getSource(ch?.managementFeesQuarterlyAmount),
   ])
   rows.push([
-    "Montant des honoraires de gestion au m² (en € et HT)",
+    "Montant des honoraires de gestion locative et technique au m² (en € et HT)",
     formatCurrency(getValue(ch?.managementFeesPerSqmAmount) as number | null),
     getSource(ch?.managementFeesPerSqmAmount),
   ])
 
   // 10. Assurances et recours
   rows.push(["10. Assurances et recours", "", ""])
-  rows.push([
-    "Montant annuel des assurances (en € et HT)",
-    formatCurrency(
-      getValue(ins?.annualInsuranceAmountExclTax) as number | null
-    ),
-    getSource(ins?.annualInsuranceAmountExclTax),
-  ])
   const insurancePremiumRebilled = getValue(ins?.insurancePremiumRebilled)
   const insurancePremiumRebilledDisplay =
     insurancePremiumRebilled === null
@@ -670,7 +663,7 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
         ? "Oui"
         : "Non"
   rows.push([
-    "Refacturation des primes d'assurance au preneur",
+    "Refacturation des primes d'assurance immeuble au preneur",
     insurancePremiumRebilledDisplay,
     getSource(ins?.insurancePremiumRebilled),
   ])
@@ -683,7 +676,7 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
         ? "Oui"
         : "Non"
   rows.push([
-    "Attestation d'assurance annexée au bail",
+    "Attestation d'assurance du preneur annexée au bail (responsabilité civile)",
     insuranceCertificateDisplay,
     getSource(ins?.insuranceCertificateAnnexed),
   ])
@@ -692,7 +685,7 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
   const waiverDisplay =
     waiverOfRecourse === null ? NON_MENTIONNE : waiverOfRecourse ? "Oui" : "Non"
   rows.push([
-    "Clause de renonciation réciproque à recours",
+    "Clause de renonciation à recours réciproque",
     waiverDisplay,
     getSource(ins?.hasWaiverOfRecourse),
   ])
@@ -858,7 +851,7 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
   const riskDisplay =
     hasRiskStatement === null ? NON_MENTIONNE : hasRiskStatement ? "Oui" : "Non"
   rows.push([
-    "Etat des risques et pollutions (daté de moins de 6 mois)",
+    "Etat des risques et pollutions",
     riskDisplay,
     getSource(env?.hasRiskAndPollutionStatement),
   ])
@@ -872,7 +865,7 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
         ? "Oui"
         : "Non"
   rows.push([
-    "Règlement intérieur",
+    "Règlement de copropriété / intérieur",
     internalRegulationsDisplay,
     getSource(ann?.hasInternalRegulations),
   ])
@@ -940,18 +933,6 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
 
   // 17. Autres
   rows.push(["17. Autres", "", ""])
-  const isSignedAndInitialed = getValue(other?.isSignedAndInitialed)
-  const signedDisplay =
-    isSignedAndInitialed === null
-      ? NON_MENTIONNE
-      : isSignedAndInitialed
-        ? "Oui"
-        : "Non"
-  rows.push([
-    "Bail signé et paraphé par les parties",
-    signedDisplay,
-    getSource(other?.isSignedAndInitialed),
-  ])
   const civilCodeDerogations = getValue(other?.civilCodeDerogations)
   let civilCodeDisplay: string
   if (Array.isArray(civilCodeDerogations)) {

@@ -65,6 +65,7 @@ export class DatabaseStorageAdapter implements StorageAdapter {
       fileName: meta.fileName,
       pageCount: meta.pageCount ?? undefined,
       extractionDate: meta.extractionDate.toISOString(),
+      toolType: meta.toolType,
       extractionMetadata: {
         totalFields: meta.totalFields,
         extractedFields: meta.extractedFields,
@@ -74,7 +75,7 @@ export class DatabaseStorageAdapter implements StorageAdapter {
         processingTimeMs: meta.processingTimeMs,
         retries: meta.retries,
       },
-    } as Omit<LeaseExtractionResult, "rawText">
+    } as unknown as Omit<LeaseExtractionResult, "rawText">
   }
 
   async saveRawText(documentId: string, rawText: string): Promise<void> {

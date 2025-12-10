@@ -9,9 +9,16 @@ import {
   ChevronRight,
   Activity,
   ArrowRight,
+  Calculator,
+  AlertCircle,
+  RefreshCw,
 } from "lucide-react"
 import type { LeaseExtractionResult } from "@/app/lib/extraction/types"
 import { exportExtractionToExcel } from "@/app/components/extraction/utils/excel-export"
+import {
+  exportRentCalculationToExcel,
+  isRentCalculationResult,
+} from "@/app/components/extraction/utils/rent-calculation-excel-export"
 import FilterBar from "./filter-bar"
 import {
   type ExtractionFilters,
@@ -22,6 +29,11 @@ import { useExtractions } from "@/app/lib/hooks/use-extractions"
 
 const ExtractionDetailModal = lazy(
   () => import("@/app/components/extraction-history/extraction-detail-modal")
+)
+
+const RentCalculationDetailModal = lazy(
+  () =>
+    import("@/app/components/extraction-history/rent-calculation-detail-modal")
 )
 
 interface RecentActivityProps {
@@ -35,10 +47,14 @@ export default function RecentActivity({
   maxItems = 5,
   showFilters = false,
 }: RecentActivityProps) {
-  const { extractions, isLoading: loading } = useExtractions()
+  const { extractions, isLoading: loading, error, mutate } = useExtractions()
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
   const [selectedExtraction, setSelectedExtraction] =
     useState<LeaseExtractionResult | null>(null)
+  const [selectedRentCalculation, setSelectedRentCalculation] = useState<Record<
+    string,
+    unknown
+  > | null>(null)
   const [filters, setFilters] = useState<ExtractionFilters>(EMPTY_FILTERS)
 
   const filteredExtractions = useMemo(() => {
@@ -71,40 +87,53 @@ export default function RecentActivity({
 
   async function handleDownload(extractionId: string, e: React.MouseEvent) {
     e.stopPropagation()
+    if (!extractionId) return
     setDownloadingId(extractionId)
     try {
       const response = await fetch(`/api/extractions/${extractionId}`)
-      if (response.ok) {
-        const json = await response.json()
-        const extraction = json.extraction || json.data
-        if (extraction) {
+      if (!response.ok) throw new Error(`Erreur ${response.status}`)
+      const json = await response.json()
+      const extraction = json.extraction || json.data
+      if (extraction) {
+        if (isRentCalculationResult(extraction)) {
+          await exportRentCalculationToExcel(extraction)
+        } else {
           await exportExtractionToExcel(extraction)
         }
       }
-    } catch (error) {
-      console.error("Error downloading extraction:", error)
+    } catch (err) {
+      console.error("Download error:", err)
     } finally {
       setDownloadingId(null)
     }
   }
 
   async function handleView(extractionId: string) {
+    if (!extractionId) return
     try {
       const response = await fetch(`/api/extractions/${extractionId}`)
-      if (response.ok) {
-        const json = await response.json()
-        const extraction = json.extraction || json.data
-        if (extraction) {
+      if (!response.ok) throw new Error(`Erreur ${response.status}`)
+      const json = await response.json()
+      const extraction = json.extraction || json.data
+      if (extraction) {
+        if (isRentCalculationResult(extraction)) {
+          setSelectedRentCalculation(
+            extraction as unknown as Record<string, unknown>
+          )
+          setSelectedExtraction(null)
+        } else {
           setSelectedExtraction(extraction)
+          setSelectedRentCalculation(null)
         }
       }
-    } catch (error) {
-      console.error("Error fetching extraction:", error)
+    } catch (err) {
+      console.error("View error:", err)
     }
   }
 
   const handleCloseModal = useCallback(() => {
     setSelectedExtraction(null)
+    setSelectedRentCalculation(null)
   }, [])
 
   if (loading) {
@@ -121,6 +150,30 @@ export default function RecentActivity({
           {[1, 2, 3].map((i) => (
             <div key={i} className="h-14 bg-gray-50 rounded-md animate-pulse" />
           ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center">
+            <AlertCircle className="w-5 h-5 text-red-500" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-gray-900">
+              Impossible de charger l&apos;historique
+            </p>
+          </div>
+          <button
+            onClick={() => mutate()}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-brand-green hover:bg-brand-green/5 rounded-md transition-colors"
+          >
+            <RefreshCw size={12} />
+            Réessayer
+          </button>
         </div>
       </div>
     )
@@ -278,6 +331,19 @@ export default function RecentActivity({
         <Suspense fallback={null}>
           <ExtractionDetailModal
             extraction={selectedExtraction}
+            onClose={handleCloseModal}
+          />
+        </Suspense>
+      )}
+
+      {selectedRentCalculation && (
+        <Suspense fallback={null}>
+          <RentCalculationDetailModal
+            result={
+              selectedRentCalculation as unknown as Parameters<
+                typeof RentCalculationDetailModal
+              >[0]["result"]
+            }
             onClose={handleCloseModal}
           />
         </Suspense>

@@ -400,9 +400,19 @@ export class ExtractionService {
         await this.ensureNotCancelled()
         const schedule =
           await computeRentScheduleFromExtraction(processedResult)
+        if (!schedule) {
+          console.warn(
+            "[Extraction] Calcul de l'échéancier retourné null. " +
+              "Vérifiez les logs précédents pour plus de détails."
+          )
+        }
         rentSchedule = schedule ?? undefined
       } catch (error) {
-        console.error("Rent schedule computation failed:", error)
+        console.error(
+          "[Extraction] Erreur lors du calcul de l'échéancier:",
+          error instanceof Error ? error.message : String(error),
+          error instanceof Error ? error.stack : undefined
+        )
         rentSchedule = undefined
       }
 
@@ -628,7 +638,7 @@ export class ExtractionService {
     const missingValue = {
       value: null,
       confidence: "missing" as const,
-      source: "Document entier",
+      source: "",
       rawText: "Non mentionné",
     }
 

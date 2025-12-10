@@ -71,7 +71,7 @@ function normalizeRegimeField(
       regime: {
         value: "unknown",
         confidence: "missing",
-        source: "Document entier",
+        source: "",
         rawText: "Non mentionné",
       },
     }
@@ -415,7 +415,7 @@ function computeCalendarFields(
       calendar.endDate = {
         value: endDate,
         confidence: sourceConfidence,
-        source: "calculé depuis effectiveDate + duration",
+        source: "Calculé à partir de la date d'effet et de la durée du bail",
       }
     }
   }
@@ -434,7 +434,8 @@ function computeCalendarFields(
         calendar.nextTriennialDate = {
           value: nextTriennial,
           confidence: calendar.effectiveDate.confidence,
-          source: "calculé depuis effectiveDate (échéance triennale)",
+          source:
+            "Calculé : prochaine échéance triennale à partir de la date d'effet",
         }
       }
     }
@@ -461,7 +462,7 @@ function computeRentFields(
       rent.quarterlyRentExclTaxExclCharges = {
         value: roundCurrency(annualRent / 4),
         confidence: rent.annualRentExclTaxExclCharges.confidence,
-        source: "calculé depuis loyer annuel / 4",
+        source: "Calculé à partir du loyer annuel (÷ 4)",
       }
     }
   }
@@ -484,7 +485,7 @@ function computeRentFields(
       rent.annualRentPerSqmExclTaxExclCharges = {
         value: roundCurrency(annualRent / surfaceArea),
         confidence: sourceConfidence,
-        source: "calculé depuis loyer annuel / surface",
+        source: "Calculé à partir du loyer annuel et de la surface",
       }
     }
   }
@@ -500,7 +501,7 @@ function computeRentFields(
       rent.quarterlyParkingRentExclCharges = {
         value: roundCurrency(annualParking / 4),
         confidence: rent.annualParkingRentExclCharges.confidence,
-        source: "calculé depuis loyer parking annuel / 4",
+        source: "Calculé à partir du loyer parking annuel (÷ 4)",
       }
     }
   }
@@ -523,7 +524,7 @@ function computeRentFields(
       rent.annualParkingRentPerUnitExclCharges = {
         value: roundCurrency(annualParking / parkingSpaces),
         confidence: sourceConfidence,
-        source: "calculé depuis loyer parking / nombre de places",
+        source: "Calculé à partir du loyer parking et du nombre de places",
       }
     }
   }
@@ -555,7 +556,7 @@ function computeChargesFields(
       charges.annualChargesProvisionExclTax = {
         value: roundCurrency(chargesPerSqm * surfaceArea),
         confidence: sourceConfidence,
-        source: "calculé depuis charges/m² × surface",
+        source: "Calculé à partir des charges au m² et de la surface",
       }
     }
   }
@@ -571,7 +572,7 @@ function computeChargesFields(
       charges.annualChargesProvisionExclTax = {
         value: roundCurrency(quarterlyCharges * 4),
         confidence: charges.quarterlyChargesProvisionExclTax.confidence,
-        source: "calculé depuis charges trimestrielles × 4",
+        source: "Calculé à partir des charges trimestrielles (× 4)",
       }
     }
   }
@@ -587,7 +588,7 @@ function computeChargesFields(
       charges.quarterlyChargesProvisionExclTax = {
         value: roundCurrency(annualCharges / 4),
         confidence: charges.annualChargesProvisionExclTax.confidence,
-        source: "calculé depuis charges annuelles / 4",
+        source: "Calculé à partir des charges annuelles (÷ 4)",
       }
     }
   }
@@ -610,7 +611,7 @@ function computeChargesFields(
       charges.annualChargesProvisionPerSqmExclTax = {
         value: roundCurrency(annualCharges / surfaceArea),
         confidence: sourceConfidence,
-        source: "calculé depuis charges annuelles / surface",
+        source: "Calculé à partir des charges annuelles et de la surface",
       }
     }
   }
@@ -633,7 +634,7 @@ function computeChargesFields(
       charges.annualRIEFeeExclTax = {
         value: roundCurrency(riePerSqm * surfaceArea),
         confidence: sourceConfidence,
-        source: "calculé depuis RIE/m² × surface",
+        source: "Calculé à partir de la redevance RIE au m² et de la surface",
       }
     }
   }
@@ -649,7 +650,7 @@ function computeChargesFields(
       charges.annualRIEFeeExclTax = {
         value: roundCurrency(quarterlyRIE * 4),
         confidence: charges.quarterlyRIEFeeExclTax.confidence,
-        source: "calculé depuis redevance RIE trimestrielle × 4",
+        source: "Calculé à partir de la redevance RIE trimestrielle (× 4)",
       }
     }
   }
@@ -665,7 +666,7 @@ function computeChargesFields(
       charges.quarterlyRIEFeeExclTax = {
         value: roundCurrency(annualRIE / 4),
         confidence: charges.annualRIEFeeExclTax.confidence,
-        source: "calculé depuis redevance RIE annuelle / 4",
+        source: "Calculé à partir de la redevance RIE annuelle (÷ 4)",
       }
     }
   }
@@ -688,7 +689,8 @@ function computeChargesFields(
       charges.annualRIEFeePerSqmExclTax = {
         value: roundCurrency(annualRIE / surfaceArea),
         confidence: sourceConfidence,
-        source: "calculé depuis redevance RIE / surface",
+        source:
+          "Calculé à partir de la redevance RIE annuelle et de la surface",
       }
     }
   }
@@ -725,7 +727,7 @@ function computeSupportMeasuresFields(
       support.rentFreePeriodAmount = {
         value: roundCurrency(months * monthlyRent),
         confidence: sourceConfidence,
-        source: "calculé depuis mois de franchise × loyer mensuel",
+        source: "Calculé à partir de la durée de franchise et du loyer mensuel",
       }
     }
   }
@@ -775,7 +777,7 @@ function computeSecuritiesFields(
           securities.securityDepositAmount = {
             value: roundCurrency(months * monthlyRent),
             confidence: sourceConfidence,
-            source: `calculé depuis ${months} mois × loyer mensuel`,
+            source: `Calculé à partir du dépôt de garantie (${months} mois de loyer)`,
           }
         }
       }

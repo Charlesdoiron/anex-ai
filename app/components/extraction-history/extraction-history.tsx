@@ -16,6 +16,7 @@ import {
   History,
   Calculator,
   AlertCircle,
+  RefreshCw,
 } from "lucide-react"
 import type { LeaseExtractionResult } from "@/app/lib/extraction/types"
 import { PageLoader } from "@/app/components/ui/page-loader"
@@ -83,6 +84,7 @@ const ExtractionHistory = forwardRef<
     []
   )
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
   const [viewingId, setViewingId] = useState<string | null>(null)
   const [filters, setFilters] = useState<ExtractionFilters>(EMPTY_FILTERS)
@@ -94,20 +96,27 @@ const ExtractionHistory = forwardRef<
   const fetchExtractions = useCallback(async () => {
     try {
       setLoading(true)
+      setError(null)
       const url = toolType
         ? `/api/extractions?toolType=${toolType}`
         : "/api/extractions"
       const response = await fetch(url)
-      if (response.ok) {
-        const data = await response.json()
-        const list =
-          (Array.isArray(data.extractions) && data.extractions) ||
-          (Array.isArray(data.data) && data.data) ||
-          []
-        setExtractions(list.filter(Boolean))
+      if (!response.ok) {
+        throw new Error(`Erreur ${response.status}`)
       }
-    } catch (error) {
-      console.error("Error fetching extractions:", error)
+      const data = await response.json()
+      const list =
+        (Array.isArray(data.extractions) && data.extractions) ||
+        (Array.isArray(data.data) && data.data) ||
+        []
+      setExtractions(list.filter(Boolean))
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Impossible de charger l'historique"
+      )
+      setExtractions([])
     } finally {
       setLoading(false)
     }
@@ -175,41 +184,44 @@ const ExtractionHistory = forwardRef<
 
   async function handleDownload(extractionId: string, e: React.MouseEvent) {
     e.stopPropagation()
+    if (!extractionId) return
     setDownloadingId(extractionId)
     try {
       const response = await fetch(`/api/extractions/${extractionId}`)
-      if (response.ok) {
-        const json = await response.json()
-        const extraction = json.extraction || json.data
-        if (extraction) {
-          if (isRentCalculationResult(extraction)) {
-            await exportRentCalculationToExcel(extraction)
-          } else {
-            await exportExtractionToExcel(extraction)
-          }
+      if (!response.ok) {
+        throw new Error(`Erreur ${response.status}`)
+      }
+      const json = await response.json()
+      const extraction = json.extraction || json.data
+      if (extraction) {
+        if (isRentCalculationResult(extraction)) {
+          await exportRentCalculationToExcel(extraction)
+        } else {
+          await exportExtractionToExcel(extraction)
         }
       }
-    } catch (error) {
-      console.error("Error downloading extraction:", error)
+    } catch (err) {
+      console.error("Download error:", err)
     } finally {
       setDownloadingId(null)
     }
   }
 
   async function handleView(extractionId: string) {
-    if (!onViewExtraction) return
+    if (!onViewExtraction || !extractionId) return
     setViewingId(extractionId)
     try {
       const response = await fetch(`/api/extractions/${extractionId}`)
-      if (response.ok) {
-        const json = await response.json()
-        const extraction = json.extraction || json.data
-        if (extraction) {
-          onViewExtraction(extraction)
-        }
+      if (!response.ok) {
+        throw new Error(`Erreur ${response.status}`)
       }
-    } catch (error) {
-      console.error("Error fetching extraction:", error)
+      const json = await response.json()
+      const extraction = json.extraction || json.data
+      if (extraction) {
+        onViewExtraction(extraction)
+      }
+    } catch (err) {
+      console.error("View error:", err)
     } finally {
       setViewingId(null)
     }
@@ -399,7 +411,32 @@ const ExtractionHistory = forwardRef<
   if (loading) {
     return (
       <div className="rounded-lg p-6 bg-white border border-gray-200">
-        <PageLoader message="Chargement..." size="sm" />
+        <PageLoader message="Chargement de l'historique..." size="sm" />
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-lg p-6 bg-white border border-gray-200">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center">
+            <AlertCircle className="w-5 h-5 text-red-500" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-gray-900">
+              Impossible de charger l&apos;historique
+            </p>
+            <p className="text-xs text-gray-500 mt-1">{error}</p>
+          </div>
+          <button
+            onClick={() => fetchExtractions()}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-brand-green hover:bg-brand-green/5 rounded-md transition-colors"
+          >
+            <RefreshCw size={12} />
+            Réessayer
+          </button>
+        </div>
       </div>
     )
   }
