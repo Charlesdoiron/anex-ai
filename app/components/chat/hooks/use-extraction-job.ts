@@ -117,16 +117,22 @@ export function useExtractionJob(
 
         if (data.status === "completed") {
           clearActiveJob()
-          // Fetch result only when completed
-          const resultResponse = await fetch(
-            `/api/extraction-jobs/${id}?includeResult=true`
-          )
-          const resultData = await resultResponse.json()
+
+          const inlineResult = data.result as LeaseExtractionResult | undefined
+          let finalResult = inlineResult ?? null
+
+          if (!finalResult) {
+            const resultResponse = await fetch(
+              `/api/extraction-jobs/${id}?includeResult=true`
+            )
+            const resultData = await resultResponse.json()
+            finalResult = resultData.result ?? null
+          }
 
           setIsProcessing(false)
-          if (resultData.result) {
-            setResult(resultData.result)
-            onComplete?.(resultData.result)
+          if (finalResult) {
+            setResult(finalResult)
+            onComplete?.(finalResult)
           }
           cancelPolling()
           return
