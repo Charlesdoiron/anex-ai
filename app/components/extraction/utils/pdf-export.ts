@@ -1463,6 +1463,14 @@ export function exportRentCalculationToPDF(
 
   const extractedData = [
     {
+      label: cleanTextForPDF("Nom de l'actif"),
+      value: cleanTextForPDF(
+        extracted.premises?.designation?.value ||
+          result.fileName?.replace(/\.pdf$/i, "") ||
+          "—"
+      ),
+    },
+    {
       label: cleanTextForPDF("Date d'effet"),
       value: extracted.calendar.effectiveDate?.value
         ? formatDate(extracted.calendar.effectiveDate.value)
