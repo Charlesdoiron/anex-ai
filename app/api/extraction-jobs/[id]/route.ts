@@ -35,10 +35,13 @@ export async function GET(
       )
     }
 
-    let result = null
-    if (includeResult && status.status === "completed") {
-      result = await extractionJobService.getJobResult(jobId)
-    }
+    const shouldIncludeResult =
+      includeResult || status.status === "completed" || false
+
+    const result =
+      shouldIncludeResult && status.status === "completed"
+        ? await extractionJobService.getJobResult(jobId)
+        : null
 
     return NextResponse.json({
       success: true,

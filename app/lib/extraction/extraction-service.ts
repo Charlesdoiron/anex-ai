@@ -38,7 +38,7 @@ const EXTRACTION_CONCURRENCY = Math.max(
 )
 const SECTIONS_PER_CALL = Math.max(
   1,
-  Number(process.env.EXTRACTION_SECTIONS_PER_CALL || "2")
+  Number(process.env.EXTRACTION_SECTIONS_PER_CALL || "4")
 )
 
 // Max text per LLM call - gpt-5-mini has 400k token context window
@@ -144,6 +144,7 @@ export class ExtractionService {
     fileName: string
   ): Promise<LeaseExtractionResult> {
     await this.ensureNotCancelled()
+    const promptLoadPromise = this.ensurePromptsLoaded()
     const startTime = Date.now()
     const stageTimings: ExtractionStageDurations = {
       pdfProcessingMs: 0,
@@ -166,6 +167,8 @@ export class ExtractionService {
       10
     )
 
+    await promptLoadPromise
+
     return this.processParsedDocument(
       pdfData,
       fileName,
@@ -178,12 +181,15 @@ export class ExtractionService {
     parsedDocument: PdfExtractionResult,
     fileName: string
   ): Promise<LeaseExtractionResult> {
+    const promptLoadPromise = this.ensurePromptsLoaded()
     const startTime = Date.now()
     const stageTimings: ExtractionStageDurations = {
       pdfProcessingMs: 0,
       extractionMs: 0,
       ingestionMs: 0,
     }
+
+    await promptLoadPromise
 
     return this.processParsedDocument(
       parsedDocument,

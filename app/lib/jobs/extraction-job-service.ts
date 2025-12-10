@@ -40,6 +40,8 @@ interface CancellationToken {
 
 class ExtractionJobService {
   private readonly cancellationTokens = new Map<string, CancellationToken>()
+  private readonly lastProgressUpdate = new Map<string, number>()
+  private readonly lastPartialUpdate = new Map<string, number>()
 
   /**
    * Check if a similar job is already in progress for this user.
@@ -246,6 +248,8 @@ class ExtractionJobService {
       await this.handleJobError(jobId, error)
     } finally {
       this.cancellationTokens.delete(jobId)
+      this.lastProgressUpdate.delete(jobId)
+      this.lastPartialUpdate.delete(jobId)
     }
   }
 
@@ -267,6 +271,11 @@ class ExtractionJobService {
       if (this.isJobCancelled(jobId)) {
         return
       }
+
+      if (this.shouldThrottleProgress(jobId)) {
+        return
+      }
+
       await this.updateJob(jobId, {
         progress: progress.progress,
         stage: progress.stage ?? null,
@@ -280,6 +289,10 @@ class ExtractionJobService {
       partial: Partial<LeaseExtractionResult>
     ) => {
       if (this.isJobCancelled(jobId)) {
+        return
+      }
+
+      if (this.shouldThrottlePartial(jobId)) {
         return
       }
       await this.updateJob(jobId, {
@@ -550,6 +563,26 @@ class ExtractionJobService {
     const token = this.cancellationTokens.get(jobId) ?? { cancelled: false }
     token.cancelled = true
     this.cancellationTokens.set(jobId, token)
+  }
+
+  private shouldThrottleProgress(jobId: string): boolean {
+    const now = Date.now()
+    const lastUpdate = this.lastProgressUpdate.get(jobId) ?? 0
+    if (now - lastUpdate < 800) {
+      return true
+    }
+    this.lastProgressUpdate.set(jobId, now)
+    return false
+  }
+
+  private shouldThrottlePartial(jobId: string): boolean {
+    const now = Date.now()
+    const lastUpdate = this.lastPartialUpdate.get(jobId) ?? 0
+    if (now - lastUpdate < 800) {
+      return true
+    }
+    this.lastPartialUpdate.set(jobId, now)
+    return false
   }
 
   private isJobCancelled(jobId: string): boolean {
