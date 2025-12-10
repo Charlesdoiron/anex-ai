@@ -1,21 +1,23 @@
 /**
  * API route for listing and searching extractions
  * GET /api/extractions
- * Supports filtering by toolType via ?toolType=extraction-lease|calculation-rent
+ * Supports:
+ * - ?toolType=extraction-lease|calculation-rent (filter by tool type)
+ * - ?limit=50 (default 50, max 200)
+ * - ?offset=0 (for pagination)
+ * - ?q=search (search in file names)
  */
 
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/app/lib/auth"
 import { prisma } from "@/app/lib/prisma"
-import { extractionStorage } from "@/app/lib/extraction/storage-service"
-import type {
-  LeaseExtractionResult,
-  LeaseRegime,
-} from "@/app/lib/extraction/types"
+import type { LeaseRegime } from "@/app/lib/extraction/types"
 import { normalizePurpose } from "@/app/components/recent-activity/filter-utils"
 import type { toolType } from "@/app/static-data/agent"
 
 const VALID_TOOL_TYPES: toolType[] = ["extraction-lease", "calculation-rent"]
+const DEFAULT_LIMIT = 50
+const MAX_LIMIT = 200
 
 interface FilterableExtractionSummary {
   id: string
@@ -32,41 +34,6 @@ interface FilterableExtractionSummary {
   annualRent: number | null
   purpose: string | null
   averageConfidence: number | null
-}
-
-function summarizeExtraction(
-  result: LeaseExtractionResult,
-  extractionToolType: toolType = "extraction-lease"
-): FilterableExtractionSummary {
-  // Handle both possible regime structures (nested LeaseRegimeData or flat ExtractedValue)
-  const regimeData = result.regime as unknown as
-    | { regime?: { value?: LeaseRegime }; value?: LeaseRegime }
-    | undefined
-  const regime = regimeData?.regime?.value ?? regimeData?.value ?? null
-
-  const duration = result.calendar?.duration?.value ?? null
-  const surfaceArea = result.premises?.surfaceArea?.value ?? null
-  const annualRent = result.rent?.annualRentExclTaxExclCharges?.value ?? null
-  const rawPurpose = result.premises?.purpose?.value ?? null
-  const purpose = normalizePurpose(rawPurpose)
-  const averageConfidence = result.extractionMetadata?.averageConfidence ?? null
-
-  return {
-    id: result.documentId,
-    documentId: result.documentId,
-    fileName: result.fileName || "Document",
-    fileSize: null,
-    pageCount: result.pageCount || null,
-    pipelineId: null,
-    toolType: extractionToolType,
-    createdAt: result.extractionDate,
-    regime,
-    duration,
-    surfaceArea,
-    annualRent,
-    purpose,
-    averageConfidence,
-  }
 }
 
 export async function GET(request: NextRequest) {
@@ -87,18 +54,43 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url)
-    const query = searchParams.get("q")
+    const query = searchParams.get("q")?.trim()
     const toolTypeParam = searchParams.get("toolType")
+    const limitParam = parseInt(searchParams.get("limit") || "", 10)
+    const offsetParam = parseInt(searchParams.get("offset") || "", 10)
+
+    const limit = Math.min(
+      Math.max(1, isNaN(limitParam) ? DEFAULT_LIMIT : limitParam),
+      MAX_LIMIT
+    )
+    const offset = Math.max(0, isNaN(offsetParam) ? 0 : offsetParam)
+
     const filterToolType =
       toolTypeParam && VALID_TOOL_TYPES.includes(toolTypeParam as toolType)
         ? (toolTypeParam as toolType)
         : undefined
 
-    // Use database directly when filtering by toolType for efficiency
+    // Build where clause
+    const where: {
+      toolType?: string
+      fileName?: { contains: string; mode: "insensitive" }
+    } = {}
+
     if (filterToolType) {
-      const extractions = await prisma.extraction.findMany({
-        where: { toolType: filterToolType },
+      where.toolType = filterToolType
+    }
+
+    if (query) {
+      where.fileName = { contains: query, mode: "insensitive" }
+    }
+
+    // Always use database directly (no filesystem fallback)
+    const [extractions, total] = await Promise.all([
+      prisma.extraction.findMany({
+        where,
         orderBy: { createdAt: "desc" },
+        take: limit,
+        skip: offset,
         select: {
           documentId: true,
           fileName: true,
@@ -110,87 +102,49 @@ export async function GET(request: NextRequest) {
           structuredData: true,
           averageConfidence: true,
         },
-      })
+      }),
+      prisma.extraction.count({ where }),
+    ])
 
-      const summaries: FilterableExtractionSummary[] = extractions.map(
-        (ext) => {
-          const data = ext.structuredData as Record<string, unknown>
-          return {
-            id: ext.documentId,
-            documentId: ext.documentId,
-            fileName: ext.fileName || "Document",
-            fileSize: ext.fileSize,
-            pageCount: ext.pageCount,
-            pipelineId: ext.pipelineId,
-            toolType: ext.toolType as toolType,
-            createdAt: ext.createdAt.toISOString(),
-            regime: extractNestedValue(
-              data,
-              "regime",
-              "regime",
-              "value"
-            ) as LeaseRegime | null,
-            duration: extractNestedValue(
-              data,
-              "calendar",
-              "duration",
-              "value"
-            ) as number | null,
-            surfaceArea: extractNestedValue(
-              data,
-              "premises",
-              "surfaceArea",
-              "value"
-            ) as number | null,
-            annualRent: extractNestedValue(
-              data,
-              "rent",
-              "annualRentExclTaxExclCharges",
-              "value"
-            ) as number | null,
-            purpose: normalizePurpose(
-              extractNestedValue(data, "premises", "purpose", "value") as
-                | string
-                | null
-            ),
-            averageConfidence: ext.averageConfidence,
-          }
-        }
-      )
-
-      return NextResponse.json(
-        { success: true, extractions: summaries, count: summaries.length },
-        {
-          headers: {
-            "Cache-Control": "private, max-age=0, stale-while-revalidate=30",
-          },
-        }
-      )
-    }
-
-    if (query) {
-      const results = await extractionStorage.searchExtractions(query)
-      const summaries = results.map((e) => summarizeExtraction(e))
-      return NextResponse.json({
-        success: true,
-        extractions: summaries,
-        count: summaries.length,
-      })
-    }
-
-    const documentIds = await extractionStorage.listExtractions()
-    const extractionPromises = documentIds.map((id) =>
-      extractionStorage.getExtraction(id).catch(() => null)
-    )
-    const results = await Promise.all(extractionPromises)
-    const summaries = results
-      .filter(Boolean)
-      .map((extraction) => summarizeExtraction(extraction!))
-
-    summaries.sort((a, b) => {
-      const dateA = new Date(a.createdAt || 0).getTime()
-      const dateB = new Date(b.createdAt || 0).getTime()
-      return dateB - dateA
+    const summaries: FilterableExtractionSummary[] = extractions.map((ext) => {
+      const data = ext.structuredData as Record<string, unknown>
+      return {
+        id: ext.documentId,
+        documentId: ext.documentId,
+        fileName: ext.fileName || "Document",
+        fileSize: ext.fileSize,
+        pageCount: ext.pageCount,
+        pipelineId: ext.pipelineId,
+        toolType: ext.toolType as toolType,
+        createdAt: ext.createdAt.toISOString(),
+        regime: extractNestedValue(
+          data,
+          "regime",
+          "regime",
+          "value"
+        ) as LeaseRegime | null,
+        duration: extractNestedValue(data, "calendar", "duration", "value") as
+          | number
+          | null,
+        surfaceArea: extractNestedValue(
+          data,
+          "premises",
+          "surfaceArea",
+          "value"
+        ) as number | null,
+        annualRent: extractNestedValue(
+          data,
+          "rent",
+          "annualRentExclTaxExclCharges",
+          "value"
+        ) as number | null,
+        purpose: normalizePurpose(
+          extractNestedValue(data, "premises", "purpose", "value") as
+            | string
+            | null
+        ),
+        averageConfidence: ext.averageConfidence,
+      }
     })
 
     return NextResponse.json(
@@ -198,6 +152,10 @@ export async function GET(request: NextRequest) {
         success: true,
         extractions: summaries,
         count: summaries.length,
+        total,
+        limit,
+        offset,
+        hasMore: offset + summaries.length < total,
       },
       {
         headers: {

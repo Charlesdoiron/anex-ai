@@ -5,7 +5,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/app/lib/auth"
-import { extractionStorage } from "@/app/lib/extraction/storage-service"
+import { prisma } from "@/app/lib/prisma"
 
 export async function GET(
   request: NextRequest,
@@ -44,13 +44,36 @@ export async function GET(
       )
     }
 
-    const result = await extractionStorage.getExtraction(id, false)
+    // Use database directly for production reliability
+    const extraction = await prisma.extraction.findUnique({
+      where: { documentId: id },
+    })
 
-    if (!result) {
+    if (!extraction) {
       return NextResponse.json(
         { error: "Not found", message: "Extraction result not found" },
         { status: 404 }
       )
+    }
+
+    const { structuredData, ...meta } = extraction
+
+    const result = {
+      ...(structuredData as object),
+      documentId: meta.documentId,
+      fileName: meta.fileName,
+      pageCount: meta.pageCount ?? undefined,
+      extractionDate: meta.extractionDate.toISOString(),
+      toolType: meta.toolType,
+      extractionMetadata: {
+        totalFields: meta.totalFields,
+        extractedFields: meta.extractedFields,
+        missingFields: meta.missingFields,
+        lowConfidenceFields: meta.lowConfidenceFields,
+        averageConfidence: meta.averageConfidence,
+        processingTimeMs: meta.processingTimeMs,
+        retries: meta.retries,
+      },
     }
 
     return NextResponse.json({
@@ -106,7 +129,11 @@ export async function DELETE(
       )
     }
 
-    await extractionStorage.deleteExtraction(id)
+    // Use database directly for production reliability
+    await prisma.$transaction([
+      prisma.rawText.deleteMany({ where: { documentId: id } }),
+      prisma.extraction.deleteMany({ where: { documentId: id } }),
+    ])
 
     return NextResponse.json({
       success: true,
