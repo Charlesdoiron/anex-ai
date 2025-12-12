@@ -835,83 +835,24 @@ function buildExportData(extraction: LeaseExtractionResult): RowData[] {
     getSource(trans?.divisionPossible),
   ])
 
-  // 16. Annexes
-  rows.push(["16. Annexes", "", ""])
-
-  // Collect all annexes to build summary
-  const annexesList: { name: string; present: boolean | null }[] = []
+  // 16. Annexes listées
+  rows.push(["16. Annexes listées", "", ""])
 
   // Environmental annexes
   const hasDPE = getValue(env?.hasDPE)
-  annexesList.push({ name: "DPE", present: hasDPE })
-
   const hasAsbestos = getValue(env?.hasAsbestosDiagnostic)
-  annexesList.push({ name: "Diagnostic amiante", present: hasAsbestos })
-
   const hasEnvironmentalAnnex = getValue(env?.hasEnvironmentalAnnex)
-  annexesList.push({
-    name: "Annexe environnementale",
-    present: hasEnvironmentalAnnex,
-  })
-
   const hasRiskStatement = getValue(env?.hasRiskAndPollutionStatement)
-  annexesList.push({
-    name: "Etat des risques et pollutions",
-    present: hasRiskStatement,
-  })
 
   // Other annexes
   const hasInternalRegulations = getValue(ann?.hasInternalRegulations)
-  annexesList.push({
-    name: "Règlement de copropriété / intérieur",
-    present: hasInternalRegulations,
-  })
-
   const hasPremisesPlan = getValue(ann?.hasPremisesPlan)
-  annexesList.push({ name: "Plan des locaux", present: hasPremisesPlan })
-
   const hasChargesInventory = getValue(ann?.hasChargesInventory)
-  annexesList.push({
-    name: "Inventaire des charges",
-    present: hasChargesInventory,
-  })
-
   const hasAnnualChargesSummary = getValue(ann?.hasAnnualChargesSummary)
-  annexesList.push({
-    name: "Etat récapitulatif annuel des charges",
-    present: hasAnnualChargesSummary,
-  })
-
   const hasThreeYearBudget = getValue(ann?.hasThreeYearWorksBudget)
-  annexesList.push({
-    name: "Budget prévisionnel des travaux",
-    present: hasThreeYearBudget,
-  })
-
   const hasPastWorksSummary = getValue(ann?.hasPastWorksSummary)
-  annexesList.push({
-    name: "Etat récapitulatif des travaux passés",
-    present: hasPastWorksSummary,
-  })
 
-  // Summary lines for present/absent annexes
-  const presentAnnexes = annexesList
-    .filter((a) => a.present === true)
-    .map((a) => a.name)
-  const absentAnnexes = annexesList
-    .filter((a) => a.present === false)
-    .map((a) => a.name)
-
-  rows.push([
-    "Présent",
-    presentAnnexes.length > 0 ? presentAnnexes.join(", ") : "Aucune",
-    "",
-  ])
-  rows.push([
-    "Absent",
-    absentAnnexes.length > 0 ? absentAnnexes.join(", ") : "Aucune",
-    "",
-  ])
+  // Note: "Présent" and "Absent" summary rows only shown in modal, not in Excel export
 
   // Detailed annexes
   rows.push(["16.1 Annexes environnementales", "", ""])
@@ -1118,7 +1059,8 @@ async function createWorkbook(
     const excelRow = worksheet.getRow(rowIndex + 1)
     const firstCellValue = String(row[0] ?? "")
     const isHeaderRow = rowIndex === 0
-    const isSectionHeader = /^\d+\.\s/.test(firstCellValue)
+    const isSectionHeader = /^\d+\.\s[A-Za-zÀ-ÿ]/.test(firstCellValue)
+    const isSubsectionHeader = /^\d+\.\d+\s/.test(firstCellValue)
 
     // Set row-level properties
     if (isHeaderRow) {
@@ -1146,6 +1088,19 @@ async function createWorkbook(
         type: "pattern",
         pattern: "solid",
         fgColor: { argb: "FFF2F2F2" },
+      }
+    } else if (isSubsectionHeader) {
+      excelRow.height = 18
+      excelRow.font = { bold: true, size: 10 }
+      excelRow.alignment = {
+        vertical: "middle",
+        horizontal: "left",
+        wrapText: true,
+      }
+      excelRow.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FFFAFAFA" },
       }
     } else {
       excelRow.height = 18

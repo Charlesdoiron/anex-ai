@@ -638,9 +638,9 @@ function ExtractionContent({
         </div>
       </SectionCard>
 
-      {/* Annexes */}
+      {/* Annexes listées */}
       <SectionCard
-        title="Annexes"
+        title="Annexes listées"
         icon={<File className={iconClass} strokeWidth={iconStroke} />}
       >
         <div className="space-y-2">
@@ -775,22 +775,6 @@ function ExtractionContent({
                       ? absentAnnexes.join(", ")
                       : "Aucune"
                   }
-                />
-
-                <div className="pt-3 pb-1 border-t border-gray-100">
-                  <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                    Détails
-                  </div>
-                </div>
-
-                <DataRow
-                  label="Règlement intérieur"
-                  value={hasInternalRegulations}
-                />
-                <DataRow label="Plan des locaux" value={hasPremisesPlan} />
-                <DataRow
-                  label="État des lieux charges"
-                  value={hasChargesInventory}
                 />
               </>
             )
