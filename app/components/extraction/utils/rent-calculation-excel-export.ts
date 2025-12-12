@@ -156,9 +156,15 @@ export async function generateRentCalculationExcel(
   ws.getCell(row, 1).value = ""
   row++
 
-  // Title row
+  // Title row with gray background
   ws.getCell(row, 2).value = "Données"
   ws.getCell(row, 2).font = { bold: true, size: 12 }
+  ws.getCell(row, 2).fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: "FFE7E6E6" },
+  }
+  ws.getCell(row, 2).border = allBorders
   row++
 
   // Data rows
@@ -217,6 +223,12 @@ export async function generateRentCalculationExcel(
   const calcStartRow = row
   ws.getCell(row, 2).value = "Calcul données financières"
   ws.getCell(row, 2).font = { bold: true, size: 12 }
+  ws.getCell(row, 2).fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: "FFE7E6E6" },
+  }
+  ws.getCell(row, 2).border = allBorders
   row++
 
   // Build monthly breakdown
@@ -231,13 +243,9 @@ export async function generateRentCalculationExcel(
   // Col E onwards: months with yearly summary columns inserted
 
   // Build column headers with year summaries
-  const headerRow1: (string | number | null)[] = ["", "", "Base bail", ""]
-  const headerRow2: (string | number | null)[] = [
-    "",
-    "",
-    isQuarterly ? "Trimestriel" : "Mensuel",
-    "",
-  ]
+  const periodLabel = isQuarterly ? "(trimestriel)" : "(mensuel)"
+  const headerRow1: (string | number | null)[] = ["", "", "Valeur initiale", ""]
+  const headerRow2: (string | number | null)[] = ["", "", "", ""]
 
   // Track column indices for yearly summaries
   const yearSummaryColumns: number[] = []
@@ -273,21 +281,41 @@ export async function generateRentCalculationExcel(
   headerRow1.push(`Total ${currentYear}`)
   headerRow2.push("")
 
-  // Write header rows
+  // Write header rows with highlighting for year summary columns
   for (let c = 0; c < headerRow1.length; c++) {
-    ws.getCell(row, c + 1).value = headerRow1[c]
-    ws.getCell(row, c + 1).font = { bold: true }
-    ws.getCell(row, c + 1).border = allBorders
+    const cell = ws.getCell(row, c + 1)
+    cell.value = headerRow1[c]
+    cell.font = { bold: true }
+    cell.border = allBorders
+    // Highlight year total columns
+    const headerValue = String(headerRow1[c] || "")
+    if (headerValue.startsWith("Total ")) {
+      cell.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FFF2F2F2" },
+      }
+    }
   }
   row++
 
   for (let c = 0; c < headerRow2.length; c++) {
-    ws.getCell(row, c + 1).value = headerRow2[c]
-    ws.getCell(row, c + 1).border = allBorders
+    const cell = ws.getCell(row, c + 1)
+    cell.value = headerRow2[c]
+    cell.border = allBorders
+    // Also highlight year total column in second header row
+    const headerAbove = String(headerRow1[c] || "")
+    if (headerAbove.startsWith("Total ")) {
+      cell.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FFF2F2F2" },
+      }
+    }
   }
   row++
 
-  // Data rows
+  // Data rows - periodLabel indicates monthly or quarterly
   const rowLabels = [
     "# jours / mois",
     "# jours même indice",
@@ -295,10 +323,10 @@ export async function generateRentCalculationExcel(
     "Taux indice",
     "", // Empty spacer
     "Dépôt de garantie",
-    "Loyer bureaux HT HC",
-    "Loyer parkings HT HC",
-    "Charges HT",
-    "Taxes HT",
+    `Loyer bureaux HT HC ${periodLabel}`,
+    `Loyer parkings HT HC ${periodLabel}`,
+    `Charges HT ${periodLabel}`,
+    `Taxes HT ${periodLabel}`,
     "Franchise",
     "Mesures d'accompagnement",
     "Total HT",
@@ -343,14 +371,20 @@ export async function generateRentCalculationExcel(
 
       // Check if we need a year summary column before this month
       if (m > 0 && monthly[m].year !== monthly[m - 1].year) {
-        // Insert year summary
+        // Insert year summary with highlighting
         const ys = yearlySummaries[yearIndex]
         if (ys) {
           const summaryValue = getRowValueFromYearlySummary(ys, label)
-          ws.getCell(row, dataCol).value = summaryValue
-          ws.getCell(row, dataCol).border = allBorders
+          const cell = ws.getCell(row, dataCol)
+          cell.value = summaryValue
+          cell.border = allBorders
+          cell.fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: "FFF2F2F2" },
+          }
           if (label === "Total HT") {
-            ws.getCell(row, dataCol).font = { bold: true }
+            cell.font = { bold: true }
           }
         }
         dataCol++
@@ -366,14 +400,20 @@ export async function generateRentCalculationExcel(
       dataCol++
     }
 
-    // Final year summary
+    // Final year summary with highlighting
     const lastYs = yearlySummaries[yearlySummaries.length - 1]
     if (lastYs) {
       const summaryValue = getRowValueFromYearlySummary(lastYs, label)
-      ws.getCell(row, dataCol).value = summaryValue
-      ws.getCell(row, dataCol).border = allBorders
+      const cell = ws.getCell(row, dataCol)
+      cell.value = summaryValue
+      cell.border = allBorders
+      cell.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FFF2F2F2" },
+      }
       if (label === "Total HT") {
-        ws.getCell(row, dataCol).font = { bold: true }
+        cell.font = { bold: true }
       }
     }
 
@@ -400,64 +440,44 @@ function getRowValueFromMonthly(
   m: MonthlyData,
   label: string
 ): number | string | null {
-  switch (label) {
-    case "# jours / mois":
-      return m.daysInMonth
-    case "# jours même indice":
-      return m.daysSameIndex
-    case "# jours indice différent":
-      return m.daysDiffIndex
-    case "Taux indice":
-      return round(m.indexValue, 2)
-    case "Dépôt de garantie":
-      return null // Only shown once
-    case "Loyer bureaux HT HC":
-      return m.officeRentHT
-    case "Loyer parkings HT HC":
-      return m.parkingRentHT
-    case "Charges HT":
-      return m.chargesHT
-    case "Taxes HT":
-      return m.taxesHT
-    case "Franchise":
-      return m.franchiseHT !== 0 ? m.franchiseHT : null
-    case "Mesures d'accompagnement":
-      return m.incentiveHT !== 0 ? m.incentiveHT : null
-    case "Total HT":
-      return m.totalHT
-    default:
-      return null
-  }
+  if (label === "# jours / mois") return m.daysInMonth
+  if (label === "# jours même indice") return m.daysSameIndex
+  if (label === "# jours indice différent") return m.daysDiffIndex
+  if (label === "Taux indice") return round(m.indexValue, 2)
+  if (label === "Dépôt de garantie") return null
+  if (label.startsWith("Loyer bureaux HT HC")) return m.officeRentHT
+  if (label.startsWith("Loyer parkings HT HC")) return m.parkingRentHT
+  if (label.startsWith("Charges HT")) return m.chargesHT
+  if (label.startsWith("Taxes HT")) return m.taxesHT
+  if (label === "Franchise") return m.franchiseHT !== 0 ? m.franchiseHT : null
+  if (label === "Mesures d'accompagnement")
+    return m.incentiveHT !== 0 ? m.incentiveHT : null
+  if (label === "Total HT") return m.totalHT
+  return null
 }
 
 function getRowValueFromYearlySummary(
   ys: YearlySummary,
   label: string
 ): number | string | null {
-  switch (label) {
-    case "# jours / mois":
-    case "# jours même indice":
-    case "# jours indice différent":
-    case "Taux indice":
-    case "Dépôt de garantie":
-      return null
-    case "Loyer bureaux HT HC":
-      return round(ys.officeRentHT)
-    case "Loyer parkings HT HC":
-      return round(ys.parkingRentHT)
-    case "Charges HT":
-      return round(ys.chargesHT)
-    case "Taxes HT":
-      return round(ys.taxesHT)
-    case "Franchise":
-      return ys.franchiseHT !== 0 ? round(ys.franchiseHT) : null
-    case "Mesures d'accompagnement":
-      return ys.incentiveHT !== 0 ? round(ys.incentiveHT) : null
-    case "Total HT":
-      return round(ys.totalHT)
-    default:
-      return null
-  }
+  if (
+    label === "# jours / mois" ||
+    label === "# jours même indice" ||
+    label === "# jours indice différent" ||
+    label === "Taux indice" ||
+    label === "Dépôt de garantie"
+  )
+    return null
+  if (label.startsWith("Loyer bureaux HT HC")) return round(ys.officeRentHT)
+  if (label.startsWith("Loyer parkings HT HC")) return round(ys.parkingRentHT)
+  if (label.startsWith("Charges HT")) return round(ys.chargesHT)
+  if (label.startsWith("Taxes HT")) return round(ys.taxesHT)
+  if (label === "Franchise")
+    return ys.franchiseHT !== 0 ? round(ys.franchiseHT) : null
+  if (label === "Mesures d'accompagnement")
+    return ys.incentiveHT !== 0 ? round(ys.incentiveHT) : null
+  if (label === "Total HT") return round(ys.totalHT)
+  return null
 }
 
 function buildMonthlyBreakdown(

@@ -258,11 +258,18 @@ export const PREMISES_PROMPT = `Extraire la description détaillée des locaux l
 CHAMPS À EXTRAIRE :
 
 1. DÉSIGNATION ET DESTINATION :
-- designation : Description générale des locaux loués
-  - Format : "[Type de local] et [éléments annexes]"
-  - Ex: "Local mixte activités/bureaux et 4 places de parking (n°1,2,3,4)"
-  - Inclure les éléments loués : bâtiments, parkings, caves, etc.
-  - Chercher dans l'article "DÉSIGNATION" ou "DÉFINITION DES LOCAUX"
+- designation : Nom de l'actif immobilier / désignation des locaux loués
+  ⚠️ PRIORITÉ : Extraire le NOM DE L'ACTIF IMMOBILIER si mentionné (ex: "Immeuble Le Parc", "Centre Commercial Les Halles", "Bâtiment A", "Résidence Les Jardins")
+  - Si le nom de l'actif n'est pas mentionné, utiliser la description des locaux
+  - Format attendu : "[Nom de l'actif]" ou "[Type de local] et [éléments annexes]"
+  - Exemples de noms d'actifs : "Immeuble Le Parc", "Centre Commercial Les Halles", "Bâtiment A", "Résidence Les Jardins"
+  - Exemples de descriptions : "Local mixte activités/bureaux et 4 places de parking (n°1,2,3,4)"
+  - OÙ CHERCHER :
+    * En-tête du document ou préambule : "bail portant sur l'immeuble X", "bâtiment Y", "centre commercial Z"
+    * Article "DÉSIGNATION" ou "DÉFINITION DES LOCAUX" : chercher le nom propre de l'actif AVANT la description des locaux
+    * Références dans le texte : "ledit immeuble", "le bâtiment", "le centre commercial" suivi d'un nom
+  - ⚠️ NE PAS utiliser : le titre du document (ex: "Bail avec 1 avenant..."), le nom du bailleur/preneur, les références génériques sans nom propre
+  - Si aucun nom d'actif n'est trouvé, utiliser la description des locaux comme fallback
   
 - purpose (destination) : Usage autorisé des locaux
   - ⚠️ TOUJOURS commencer par "Usage exclusif de" ou "Usage de" si mentionné comme tel
@@ -365,9 +372,14 @@ CHAMPS À EXTRAIRE :
 - totalBuildingShare : Tantièmes sur l'ensemble de l'immeuble
 
 EXEMPLES COMPLETS :
-- "Local mixte activités/bureaux d'une surface de 218 m² et 4 places de parking"
+- "BAIL COMMERCIAL portant sur l'immeuble 'Le Parc', local mixte activités/bureaux d'une surface de 218 m²"
+  → designation: "Immeuble Le Parc"
+  → surfaceArea: 218, parkingSpaces: 4
+- "Local mixte activités/bureaux d'une surface de 218 m² et 4 places de parking" (sans nom d'actif)
   → designation: "Local mixte activités/bureaux et 4 places de parking (n°1,2,3,4)"
   → surfaceArea: 218, parkingSpaces: 4
+- "Centre Commercial Les Halles, local commercial au rez-de-chaussée"
+  → designation: "Centre Commercial Les Halles"
 - "À usage exclusif de bureaux, à l'exclusion de toute activité de réception du public"
   → purpose: "Usage exclusif de bureaux. Exclusion : activité de réception du public"
 - Année de construction non mentionnée dans le document

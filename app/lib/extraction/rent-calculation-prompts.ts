@@ -59,9 +59,15 @@ Indices : "à compter du", "prenant effet le", "entrée en jouissance", "date d'
 Indices : "durée de NEUF années", "bail de 9 ans", "3/6/9"
 
 3. LOCAUX :
-- premises.designation : Nom de l'actif / désignation des locaux (ex: "Bureaux", "Local commercial", "Entrepôt", etc.)
-  → NE PAS utiliser le titre du document ou le nom du bail (ex: "Bail avec 1 avenant...")
-  → Extraire la description réelle de l'actif loué mentionnée dans le document
+- premises.designation : Nom de l'actif immobilier / désignation des locaux
+  ⚠️ PRIORITÉ : Extraire le NOM DE L'ACTIF IMMOBILIER si mentionné (ex: "Immeuble Le Parc", "Centre Commercial Les Halles", "Bâtiment A")
+  - Si le nom de l'actif n'est pas mentionné, utiliser la description des locaux (ex: "Bureaux", "Local commercial", "Entrepôt")
+  - OÙ CHERCHER :
+    * En-tête/préambule : "bail portant sur l'immeuble X", "bâtiment Y", "centre commercial Z"
+    * Article "DÉSIGNATION" : chercher le nom propre de l'actif AVANT la description des locaux
+    * Références : "ledit immeuble", "le bâtiment" suivi d'un nom propre
+  - ⚠️ NE PAS utiliser : le titre du document (ex: "Bail avec 1 avenant..."), le nom du bailleur/preneur, les références génériques sans nom propre
+  - Si aucun nom d'actif n'est trouvé, utiliser la description des locaux comme fallback
 - premises.address : Adresse des locaux loués
 - premises.surfaceArea : Surface totale en m²
 - premises.parkingSpaces : Nombre de places de parking

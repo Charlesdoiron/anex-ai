@@ -952,7 +952,7 @@ function buildSections(extraction: LeaseExtractionResult): PDFSection[] {
     ],
   })
 
-  // 16. Annexes
+  // 16. Annexes listées
   const hasDPE = getValue(env?.hasDPE)
   const dpeDisplay =
     hasDPE === null
@@ -978,7 +978,7 @@ function buildSections(extraction: LeaseExtractionResult): PDFSection[] {
     hasRiskStatement === null ? NON_MENTIONNE : hasRiskStatement ? "Oui" : "Non"
 
   sections.push({
-    title: "16. Annexes",
+    title: "16. Annexes listées",
     rows: [
       {
         label: "16.1 Annexes environnementales",
@@ -1098,14 +1098,6 @@ function buildSections(extraction: LeaseExtractionResult): PDFSection[] {
   })
 
   // 17. Autres
-  const isSignedAndInitialed = getValue(other?.isSignedAndInitialed)
-  const signedDisplay =
-    isSignedAndInitialed === null
-      ? NON_MENTIONNE
-      : isSignedAndInitialed
-        ? "Oui"
-        : "Non"
-
   const civilCodeDerogations = getValue(other?.civilCodeDerogations)
   let civilCodeDisplay: string
   if (Array.isArray(civilCodeDerogations)) {
@@ -1155,11 +1147,6 @@ function buildSections(extraction: LeaseExtractionResult): PDFSection[] {
   sections.push({
     title: "17. Autres",
     rows: [
-      {
-        label: "Bail signé et paraphé par les parties",
-        value: signedDisplay,
-        source: getSource(other?.isSignedAndInitialed),
-      },
       {
         label: "Liste des dérogations au code civil",
         value: civilCodeDisplay,
@@ -1360,6 +1347,7 @@ export function exportRentCalculationToPDF(
   const pageWidth = doc.internal.pageSize.getWidth()
   const pageHeight = doc.internal.pageSize.getHeight()
   const margin = 15
+  const contentWidth = pageWidth - 2 * margin
   let y = margin
 
   // Header
@@ -1368,7 +1356,7 @@ export function exportRentCalculationToPDF(
   doc.setTextColor(255, 255, 255)
   doc.setFontSize(18)
   doc.setFont("helvetica", "bold")
-  doc.text(cleanTextForPDF("Calcul de loyer - Echeancier"), margin, 15)
+  doc.text(cleanTextForPDF("Calcul de loyer"), margin, 15)
 
   doc.setFontSize(10)
   doc.setFont("helvetica", "normal")
@@ -1377,367 +1365,402 @@ export function exportRentCalculationToPDF(
 
   const extractionDate = new Date(result.extractionDate).toLocaleDateString(
     "fr-FR",
-    {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    }
+    { day: "numeric", month: "long", year: "numeric" }
   )
   doc.text(cleanTextForPDF(`Calcul du ${extractionDate}`), margin, 27)
 
-  y = 35
+  y = 40
 
   const extracted = result.extractedData
   const schedule = result.rentSchedule
-  const summary = schedule?.summary
-  const input = result.scheduleInput
+  const hasSchedule =
+    schedule && schedule.schedule && schedule.schedule.length > 0
 
-  // Summary section
-  if (summary) {
-    doc.setFillColor(...SECTION_COLOR)
-    doc.rect(margin, y - 5, pageWidth - 2 * margin, 8, "F")
-    doc.setTextColor(...TEXT_COLOR)
-    doc.setFontSize(11)
+  // Calculate cumulative amounts
+  const today = new Date()
+  const todayStr = today.toISOString().split("T")[0]
+  const pastPeriods = hasSchedule
+    ? schedule.schedule.filter(
+        (p: RentSchedulePeriod) => p.periodEnd < todayStr
+      )
+    : []
+
+  const totalOfficeRentHT = hasSchedule
+    ? schedule.schedule.reduce(
+        (sum: number, p: RentSchedulePeriod) => sum + p.officeRentHT,
+        0
+      )
+    : 0
+  const totalParkingRentHT = hasSchedule
+    ? schedule.schedule.reduce(
+        (sum: number, p: RentSchedulePeriod) => sum + p.parkingRentHT,
+        0
+      )
+    : 0
+  const paidOfficeRentHT = pastPeriods.reduce(
+    (sum: number, p: RentSchedulePeriod) => sum + p.officeRentHT,
+    0
+  )
+  const paidParkingRentHT = pastPeriods.reduce(
+    (sum: number, p: RentSchedulePeriod) => sum + p.parkingRentHT,
+    0
+  )
+  const remainingOfficeRentHT = totalOfficeRentHT - paidOfficeRentHT
+  const remainingParkingRentHT = totalParkingRentHT - paidParkingRentHT
+
+  // Franchise data
+  const franchiseMonths =
+    extracted.supportMeasures?.rentFreePeriodMonths?.value ?? 0
+  const franchiseAmount =
+    extracted.supportMeasures?.rentFreePeriodAmount?.value ?? 0
+  const measuresDescription =
+    extracted.supportMeasures?.otherMeasuresDescription?.value
+
+  // Helper to add a section header
+  function addSectionHeader(title: string, highlight = false) {
+    if (y > 260) {
+      doc.addPage()
+      y = margin + 10
+    }
+    doc.setFillColor(...(highlight ? BRAND_COLOR : SECTION_COLOR))
+    doc.rect(margin, y - 4, contentWidth, 7, "F")
+    doc.setTextColor(
+      highlight ? 255 : TEXT_COLOR[0],
+      highlight ? 255 : TEXT_COLOR[1],
+      highlight ? 255 : TEXT_COLOR[2]
+    )
+    doc.setFontSize(10)
     doc.setFont("helvetica", "bold")
-    doc.text(cleanTextForPDF("Resume financier"), margin + 3, y + 2)
-    y += 15
+    doc.text(cleanTextForPDF(title), margin + 2, y + 1)
+    y += 10
+  }
 
+  // Helper to add a data row
+  function addDataRow(
+    label: string,
+    value: string | number | null | undefined,
+    highlight = false
+  ) {
+    if (y > 275) {
+      doc.addPage()
+      y = margin + 10
+    }
+    doc.setTextColor(...TEXT_COLOR)
     doc.setFontSize(9)
     doc.setFont("helvetica", "normal")
+    doc.text(cleanTextForPDF(label), margin + 2, y)
 
-    const summaryData = [
-      {
-        label: cleanTextForPDF("Total loyers HT"),
-        value: formatCurrencyForPDF(summary.totalBaseRentHT ?? 0),
-      },
-      {
-        label: cleanTextForPDF("Total charges HT"),
-        value: formatCurrencyForPDF(summary.totalChargesHT ?? 0),
-      },
-      {
-        label: cleanTextForPDF("Total net HT"),
-        value: formatCurrencyForPDF(summary.totalNetRentHT ?? 0),
-      },
-    ]
-
-    if (summary.depositHT > 0) {
-      summaryData.push({
-        label: cleanTextForPDF("Depot de garantie HT"),
-        value: formatCurrencyForPDF(summary.depositHT),
-      })
-    }
-
-    for (const item of summaryData) {
-      if (y > 270) {
-        doc.addPage()
-        y = margin + 10
-      }
-
-      doc.setTextColor(...TEXT_COLOR)
-      doc.text(item.label, margin + 5, y)
+    const displayValue =
+      value === null || value === undefined || value === ""
+        ? "—"
+        : String(value)
+    if (highlight) {
       doc.setFont("helvetica", "bold")
-      doc.text(item.value, pageWidth - margin - 50, y)
-      doc.setFont("helvetica", "normal")
-      y += 7
     }
-
-    y += 5
+    doc.text(cleanTextForPDF(displayValue), pageWidth - margin - 2, y, {
+      align: "right",
+    })
+    doc.setFont("helvetica", "normal")
+    y += 6
   }
 
-  // Extracted data section
-  if (y > 250) {
-    doc.addPage()
-    y = margin + 10
-  }
-
-  doc.setFillColor(...SECTION_COLOR)
-  doc.rect(margin, y - 5, pageWidth - 2 * margin, 8, "F")
-  doc.setTextColor(...TEXT_COLOR)
-  doc.setFontSize(11)
-  doc.setFont("helvetica", "bold")
-  doc.text(cleanTextForPDF("Donnees extraites"), margin + 3, y + 2)
-  y += 15
-
-  doc.setFontSize(9)
-  doc.setFont("helvetica", "normal")
-
-  const extractedData = [
-    {
-      label: cleanTextForPDF("Nom de l'actif"),
-      value: cleanTextForPDF(
-        extracted.premises?.designation?.value ||
-          result.fileName?.replace(/\.pdf$/i, "") ||
-          "—"
-      ),
-    },
-    {
-      label: cleanTextForPDF("Date d'effet"),
-      value: extracted.calendar.effectiveDate?.value
-        ? formatDate(extracted.calendar.effectiveDate.value)
-        : "—",
-    },
-    {
-      label: cleanTextForPDF("Duree"),
-      value: extracted.calendar.duration?.value
-        ? cleanTextForPDF(`${extracted.calendar.duration.value} ans`)
-        : "—",
-    },
-    {
-      label: cleanTextForPDF("Loyer annuel bureaux HT"),
-      value: formatCurrencyForPDF(
-        extracted.rent.annualRentExclTaxExclCharges?.value ?? null
-      ),
-    },
-    {
-      label: cleanTextForPDF("Loyer annuel parking HT"),
-      value: formatCurrencyForPDF(
-        extracted.rent.annualParkingRentExclCharges?.value ?? null
-      ),
-    },
-    {
-      label: cleanTextForPDF("Frequence"),
-      value: formatFrequency(extracted.rent.paymentFrequency?.value),
-    },
-    {
-      label: cleanTextForPDF("Type d'indice"),
-      value: cleanTextForPDF(
-        extracted.indexation?.indexationType?.value || "—"
-      ),
-    },
-    {
-      label: cleanTextForPDF("Indice de reference"),
-      value: cleanTextForPDF(
-        extracted.indexation?.referenceQuarter?.value || "—"
-      ),
-    },
-  ]
-
-  for (const item of extractedData) {
+  // Helper to add a subsection label
+  function addSubsectionLabel(label: string) {
     if (y > 270) {
       doc.addPage()
       y = margin + 10
     }
-
-    doc.setTextColor(...TEXT_COLOR)
-    doc.text(item.label, margin + 5, y)
-    doc.text(item.value, pageWidth - margin - 50, y)
-    y += 7
+    doc.setTextColor(...TEXT_SECONDARY)
+    doc.setFontSize(8)
+    doc.setFont("helvetica", "bold")
+    doc.text(cleanTextForPDF(label.toUpperCase()), margin + 2, y)
+    y += 6
   }
 
-  y += 5
+  // 1. Donnees bail
+  addSectionHeader("Donnees bail")
+  addDataRow(
+    "Nom de l'actif",
+    extracted.premises?.designation?.value ||
+      result.fileName?.replace(/\.pdf$/i, "") ||
+      "—"
+  )
+  addDataRow("Adresse du bien", extracted.premises?.address?.value)
+  addDataRow(
+    "Date d'effet",
+    extracted.calendar.effectiveDate?.value
+      ? formatDate(extracted.calendar.effectiveDate.value)
+      : null
+  )
+  addDataRow(
+    "Duree du bail",
+    extracted.calendar.duration?.value
+      ? `${extracted.calendar.duration.value} annees`
+      : null
+  )
+  addDataRow(
+    "Surface",
+    extracted.premises?.surfaceArea?.value
+      ? `${extracted.premises.surfaceArea.value} m2`
+      : null
+  )
+  addDataRow(
+    "Places de parking",
+    extracted.premises?.parkingSpaces?.value
+      ? `${extracted.premises.parkingSpaces.value} unites`
+      : null
+  )
+  y += 3
 
-  // Schedule input parameters
-  if (input) {
+  // 2. Donnees financieres
+  addSectionHeader("Donnees financieres", true)
+  addDataRow(
+    "Frequence de paiement",
+    formatFrequency(extracted.rent.paymentFrequency?.value)
+  )
+
+  y += 2
+  addSubsectionLabel("Loyers bureaux")
+  addDataRow(
+    "Loyer de base annuel HTHC",
+    formatCurrencyForPDF(
+      extracted.rent.annualRentExclTaxExclCharges?.value ?? null
+    )
+  )
+  addDataRow(
+    "Loyer de base trimestriel HTHC",
+    formatCurrencyForPDF(
+      extracted.rent.quarterlyRentExclTaxExclCharges?.value ?? null
+    )
+  )
+  addDataRow(
+    "Loyer HTHC / m2 / an",
+    formatCurrencyForPDF(
+      extracted.rent.annualRentPerSqmExclTaxExclCharges?.value ?? null
+    )
+  )
+
+  y += 2
+  addSubsectionLabel("Loyers parking")
+  addDataRow(
+    "Loyer de base parking annuel HTHC",
+    formatCurrencyForPDF(
+      extracted.rent.annualParkingRentExclCharges?.value ?? null
+    )
+  )
+  addDataRow(
+    "Loyer de base parking trimestriel HTHC",
+    formatCurrencyForPDF(
+      extracted.rent.quarterlyParkingRentExclCharges?.value ?? null
+    )
+  )
+  addDataRow(
+    "Loyer parking HTHC / unite / an",
+    formatCurrencyForPDF(
+      extracted.rent.annualParkingRentPerUnitExclCharges?.value ?? null
+    )
+  )
+
+  y += 2
+  addSubsectionLabel("Charges et taxes")
+  addDataRow(
+    "Provisions pour charges annuelles HT",
+    formatCurrencyForPDF(
+      extracted.charges?.annualChargesProvisionExclTax?.value ?? null
+    )
+  )
+  addDataRow(
+    "Provisions pour charges trimestrielles HT",
+    formatCurrencyForPDF(
+      extracted.charges?.quarterlyChargesProvisionExclTax?.value ?? null
+    )
+  )
+  addDataRow(
+    "Provision pour charges HT / m2 / an",
+    formatCurrencyForPDF(
+      extracted.charges?.annualChargesProvisionPerSqmExclTax?.value ?? null
+    )
+  )
+  addDataRow(
+    "Provisions pour taxes annuelles",
+    formatCurrencyForPDF(extracted.taxes?.propertyTaxAmount?.value ?? null)
+  )
+  const taxQuarterly = extracted.taxes?.propertyTaxAmount?.value
+    ? extracted.taxes.propertyTaxAmount.value / 4
+    : null
+  addDataRow(
+    "Provisions pour taxes trimestrielles",
+    formatCurrencyForPDF(taxQuarterly)
+  )
+  const taxPerSqm =
+    extracted.taxes?.propertyTaxAmount?.value &&
+    extracted.premises?.surfaceArea?.value
+      ? extracted.taxes.propertyTaxAmount.value /
+        extracted.premises.surfaceArea.value
+      : null
+  addDataRow(
+    "Provision pour taxes HT / m2 / an",
+    formatCurrencyForPDF(taxPerSqm)
+  )
+
+  y += 2
+  addSubsectionLabel("Mesures d'accompagnement")
+  const franchiseDisplay =
+    franchiseMonths > 0
+      ? `${franchiseMonths} mois${franchiseAmount > 0 ? ` + ${formatCurrencyForPDF(franchiseAmount)}` : ""}`
+      : null
+  addDataRow("Franchise accordee", franchiseDisplay)
+  addDataRow("Autres mesures d'accompagnement", measuresDescription)
+
+  y += 2
+  addSubsectionLabel("Indexation")
+  const indexDisplay = extracted.indexation?.indexationType?.value
+    ? `${extracted.indexation.indexationType.value}${
+        extracted.indexation.referenceQuarter?.value
+          ? ` - ${extracted.indexation.referenceQuarter.value}`
+          : ""
+      }`
+    : null
+  addDataRow("Indice", indexDisplay)
+  addDataRow("Periodicite de l'indice", "—")
+  y += 3
+
+  // 3. Suretes
+  addSectionHeader("Suretes")
+  addDataRow(
+    "Montant du depot de garantie",
+    formatCurrencyForPDF(
+      extracted.securities?.securityDepositAmount?.value ?? null
+    )
+  )
+  y += 3
+
+  // 4. Loyers cumules et previsionnels (if schedule exists)
+  if (hasSchedule) {
+    addSectionHeader("Loyers cumules et previsionnels", true)
+
+    addSubsectionLabel("Sur la duree totale du bail")
+    addDataRow(
+      "Loyers cumules HTHC sur la duree du bail",
+      formatCurrencyForPDF(totalOfficeRentHT),
+      true
+    )
+    addDataRow(
+      "Loyers parking cumules HTHC sur la duree du bail",
+      formatCurrencyForPDF(totalParkingRentHT),
+      true
+    )
+
+    y += 2
+    addSubsectionLabel("Periodes passees")
+    addDataRow(
+      "Loyers cumules HTHC payes",
+      formatCurrencyForPDF(paidOfficeRentHT)
+    )
+    addDataRow(
+      "Loyers parking cumules HTHC payes",
+      formatCurrencyForPDF(paidParkingRentHT)
+    )
+
+    y += 2
+    addSubsectionLabel("Periodes futures")
+    addDataRow(
+      "Loyers previsionnel HTHC restant du",
+      formatCurrencyForPDF(remainingOfficeRentHT)
+    )
+    addDataRow(
+      "Loyers parking previsionnel HTHC restant du",
+      formatCurrencyForPDF(remainingParkingRentHT)
+    )
+    y += 3
+  }
+
+  // 5. Echeancier des periodes passees (if any)
+  if (pastPeriods.length > 0) {
+    addSectionHeader(
+      `Echeancier des periodes passees (${pastPeriods.length} periodes)`
+    )
+
+    // Table header
     if (y > 250) {
       doc.addPage()
       y = margin + 10
     }
-
     doc.setFillColor(...SECTION_COLOR)
-    doc.rect(margin, y - 5, pageWidth - 2 * margin, 8, "F")
-    doc.setTextColor(...TEXT_COLOR)
-    doc.setFontSize(11)
-    doc.setFont("helvetica", "bold")
-    doc.text(cleanTextForPDF("Parametres de calcul"), margin + 3, y + 2)
-    y += 15
-
-    doc.setFontSize(9)
-    doc.setFont("helvetica", "normal")
-
-    const inputData = [
-      {
-        label: cleanTextForPDF("Date de debut"),
-        value: formatDate(input.startDate),
-      },
-      {
-        label: cleanTextForPDF("Date de fin"),
-        value: formatDate(input.endDate),
-      },
-      {
-        label: cleanTextForPDF("Indice INSEE de base"),
-        value: cleanTextForPDF(input.baseIndexValue?.toFixed(2) || "—"),
-      },
-      {
-        label: cleanTextForPDF("Type d'indice"),
-        value: cleanTextForPDF(input.indexType?.toUpperCase() || "—"),
-      },
-      {
-        label: cleanTextForPDF("Frequence"),
-        value: formatFrequency(input.paymentFrequency),
-      },
-      {
-        label: cleanTextForPDF("Loyer bureaux / periode"),
-        value: formatCurrencyForPDF(input.officeRentHT),
-      },
-      {
-        label: cleanTextForPDF("Loyer parking / periode"),
-        value: formatCurrencyForPDF(input.parkingRentHT),
-      },
-    ]
-
-    for (const item of inputData) {
-      if (y > 270) {
-        doc.addPage()
-        y = margin + 10
-      }
-
-      doc.setTextColor(...TEXT_COLOR)
-      doc.text(item.label, margin + 5, y)
-      doc.text(item.value, pageWidth - margin - 50, y)
-      y += 7
-    }
-
-    y += 5
-  }
-
-  // Yearly totals table
-  if (summary && summary.yearlyTotals.length > 0) {
-    if (y > 220) {
-      doc.addPage()
-      y = margin + 10
-    }
-
-    doc.setFillColor(...SECTION_COLOR)
-    doc.rect(margin, y - 5, pageWidth - 2 * margin, 8, "F")
-    doc.setTextColor(...TEXT_COLOR)
-    doc.setFontSize(11)
-    doc.setFont("helvetica", "bold")
-    doc.text(cleanTextForPDF("Totaux annuels"), margin + 3, y + 2)
-    y += 15
-
-    // Table header
-    doc.setFillColor(...SECTION_COLOR)
-    doc.rect(margin, y - 3, pageWidth - 2 * margin, 8, "F")
-    doc.setFontSize(9)
-    doc.setFont("helvetica", "bold")
-    doc.text(cleanTextForPDF("Annee"), margin + 3, y + 3)
-    doc.text(cleanTextForPDF("Loyer base HT"), margin + 35, y + 3)
-    doc.text(cleanTextForPDF("Charges HT"), margin + 70, y + 3)
-    doc.text(cleanTextForPDF("Loyer net HT"), margin + 105, y + 3)
-    y += 10
-
-    doc.setFont("helvetica", "normal")
-    doc.setFontSize(8)
-
-    for (const year of summary.yearlyTotals) {
-      if (y > 270) {
-        doc.addPage()
-        y = margin + 10
-        // Redraw header
-        doc.setFillColor(...SECTION_COLOR)
-        doc.rect(margin, y - 3, pageWidth - 2 * margin, 8, "F")
-        doc.setFontSize(9)
-        doc.setFont("helvetica", "bold")
-        doc.text(cleanTextForPDF("Annee"), margin + 3, y + 3)
-        doc.text(cleanTextForPDF("Loyer base HT"), margin + 35, y + 3)
-        doc.text(cleanTextForPDF("Charges HT"), margin + 70, y + 3)
-        doc.text(cleanTextForPDF("Loyer net HT"), margin + 105, y + 3)
-        y += 10
-        doc.setFont("helvetica", "normal")
-        doc.setFontSize(8)
-      }
-
-      doc.text(String(year.year), margin + 3, y)
-      doc.text(formatCurrencyForPDF(year.baseRentHT), margin + 35, y)
-      doc.text(formatCurrencyForPDF(year.chargesHT), margin + 70, y)
-      doc.setFont("helvetica", "bold")
-      doc.text(formatCurrencyForPDF(year.netRentHT), margin + 105, y)
-      doc.setFont("helvetica", "normal")
-
-      doc.setDrawColor(...BORDER_COLOR)
-      doc.line(margin, y + 2, pageWidth - margin, y + 2)
-      y += 7
-    }
-
-    y += 5
-  }
-
-  // Schedule preview (first 12 periods)
-  if (schedule && schedule.schedule.length > 0) {
-    if (y > 200) {
-      doc.addPage()
-      y = margin + 10
-    }
-
-    doc.setFillColor(...SECTION_COLOR)
-    doc.rect(margin, y - 5, pageWidth - 2 * margin, 8, "F")
-    doc.setTextColor(...TEXT_COLOR)
-    doc.setFontSize(11)
-    doc.setFont("helvetica", "bold")
-    doc.text(
-      cleanTextForPDF(
-        `Echeancier detaille (${schedule.schedule.length} periodes - apercu)`
-      ),
-      margin + 3,
-      y + 2
-    )
-    y += 15
-
-    // Table header
-    doc.setFillColor(...SECTION_COLOR)
-    doc.rect(margin, y - 3, pageWidth - 2 * margin, 8, "F")
+    doc.rect(margin, y - 3, contentWidth, 7, "F")
     doc.setFontSize(8)
     doc.setFont("helvetica", "bold")
-    doc.text(cleanTextForPDF("Periode"), margin + 3, y + 3)
-    doc.text(cleanTextForPDF("Indice"), margin + 35, y + 3)
-    doc.text(cleanTextForPDF("Bureaux HT"), margin + 55, y + 3)
-    doc.text(cleanTextForPDF("Parking HT"), margin + 85, y + 3)
-    doc.text(cleanTextForPDF("Net HT"), margin + 115, y + 3)
-    y += 10
+    doc.setTextColor(...TEXT_COLOR)
+    doc.text(cleanTextForPDF("Periode"), margin + 2, y + 2)
+    doc.text(cleanTextForPDF("Loyers HTHC"), margin + 45, y + 2)
+    doc.text(cleanTextForPDF("Parking HTHC"), margin + 85, y + 2)
+    doc.text(cleanTextForPDF("Total HTHC"), margin + 125, y + 2)
+    y += 8
 
     doc.setFont("helvetica", "normal")
     doc.setFontSize(7)
 
-    const previewPeriods = schedule.schedule.slice(0, 12)
-    for (const period of previewPeriods) {
-      if (y > 270) {
+    // Show first 20 past periods
+    const displayPeriods = pastPeriods.slice(0, 20)
+    for (const period of displayPeriods) {
+      if (y > 275) {
         doc.addPage()
         y = margin + 10
-        // Redraw header
-        doc.setFillColor(...SECTION_COLOR)
-        doc.rect(margin, y - 3, pageWidth - 2 * margin, 8, "F")
-        doc.setFontSize(8)
-        doc.setFont("helvetica", "bold")
-        doc.text(cleanTextForPDF("Periode"), margin + 3, y + 3)
-        doc.text(cleanTextForPDF("Indice"), margin + 35, y + 3)
-        doc.text(cleanTextForPDF("Bureaux HT"), margin + 55, y + 3)
-        doc.text(cleanTextForPDF("Parking HT"), margin + 85, y + 3)
-        doc.text(cleanTextForPDF("Net HT"), margin + 115, y + 3)
-        y += 10
-        doc.setFont("helvetica", "normal")
-        doc.setFontSize(7)
       }
 
       const periodLabel =
         period.periodType === "month"
           ? `${period.year}-${String(period.month).padStart(2, "0")}`
-          : `${period.year} T${period.quarter}`
+          : `T${period.quarter} ${period.year}`
 
-      doc.text(periodLabel, margin + 3, y)
-      doc.text(period.indexValue.toFixed(2), margin + 35, y)
-      doc.text(formatCurrencyForPDF(period.officeRentHT), margin + 55, y)
+      const totalRent = period.officeRentHT + period.parkingRentHT
+
+      doc.setTextColor(...TEXT_COLOR)
+      doc.text(periodLabel, margin + 2, y)
+      doc.text(formatCurrencyForPDF(period.officeRentHT), margin + 45, y)
       doc.text(formatCurrencyForPDF(period.parkingRentHT), margin + 85, y)
       doc.setFont("helvetica", "bold")
-      doc.text(formatCurrencyForPDF(period.netRentHT), margin + 115, y)
+      doc.text(formatCurrencyForPDF(totalRent), margin + 125, y)
       doc.setFont("helvetica", "normal")
 
       doc.setDrawColor(...BORDER_COLOR)
       doc.line(margin, y + 2, pageWidth - margin, y + 2)
-      y += 6
+      y += 5
     }
 
-    if (schedule.schedule.length > 12) {
-      y += 3
-      doc.setFontSize(8)
+    // Totals row
+    y += 2
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(8)
+    doc.text(cleanTextForPDF("Total"), margin + 2, y)
+    doc.text(formatCurrencyForPDF(paidOfficeRentHT), margin + 45, y)
+    doc.text(formatCurrencyForPDF(paidParkingRentHT), margin + 85, y)
+    doc.text(
+      formatCurrencyForPDF(paidOfficeRentHT + paidParkingRentHT),
+      margin + 125,
+      y
+    )
+    doc.setFont("helvetica", "normal")
+
+    if (pastPeriods.length > 20) {
+      y += 6
+      doc.setFontSize(7)
       doc.setTextColor(...TEXT_SECONDARY)
       doc.text(
-        cleanTextForPDF(
-          `... et ${schedule.schedule.length - 12} autres periodes (voir Excel pour le detail complet)`
-        ),
-        margin + 3,
+        cleanTextForPDF(`... et ${pastPeriods.length - 20} autres periodes`),
+        margin + 2,
         y
       )
     }
+  } else if (hasSchedule) {
+    y += 3
+    doc.setFontSize(9)
+    doc.setTextColor(...TEXT_SECONDARY)
+    doc.text(
+      cleanTextForPDF("Aucune periode passee. Le bail commence dans le futur."),
+      margin + 2,
+      y
+    )
   }
 
   // Footer on each page
