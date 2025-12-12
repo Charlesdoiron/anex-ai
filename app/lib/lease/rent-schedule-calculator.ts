@@ -138,6 +138,9 @@ export function computeLeaseRentSchedule(
       otherCosts = proration > 0 ? roundCurrency(otherCostsHT * proration) : 0
     } else if (anniversaryInPeriod) {
       // Anniversary falls within this period - split calculation
+      // Use billableDays as denominator to ensure prorations sum to 1.0
+      const totalBillableDays = period.billableDays
+
       const daysBeforeAnniversary = differenceInDaysInclusive(
         period.billableStart,
         addDays(anniversaryInPeriod.date, -1)
@@ -148,8 +151,9 @@ export function computeLeaseRentSchedule(
         : input.baseIndexValue
       const factorBeforeAnniversary =
         indexBeforeAnniversary / input.baseIndexValue
-      const prorationBeforeAnniversary =
-        daysBeforeAnniversary / averageDaysPerPeriod
+      // Proration within this period based on actual days
+      const prorationBeforeWithinPeriod =
+        daysBeforeAnniversary / totalBillableDays
 
       const daysFromAnniversary = differenceInDaysInclusive(
         anniversaryInPeriod.date,
@@ -157,21 +161,30 @@ export function computeLeaseRentSchedule(
       )
       const indexFromAnniversary = anniversaryInPeriod.indexValue
       const factorFromAnniversary = indexFromAnniversary / input.baseIndexValue
-      const prorationFromAnniversary =
-        daysFromAnniversary / averageDaysPerPeriod
+      const prorationAfterWithinPeriod = daysFromAnniversary / totalBillableDays
 
-      // Calculate rent for both periods
+      // Apply overall proration for partial periods (e.g., first/last month)
+      // proration = billableDays / averageDaysPerPeriod (already calculated above)
+      const overallProration = proration
+
+      // Calculate rent for both index periods, then apply overall proration
       officeRent = roundCurrency(
-        officeRentHT * prorationBeforeAnniversary * factorBeforeAnniversary +
-          officeRentHT * prorationFromAnniversary * factorFromAnniversary
+        officeRentHT *
+          overallProration *
+          (prorationBeforeWithinPeriod * factorBeforeAnniversary +
+            prorationAfterWithinPeriod * factorFromAnniversary)
       )
       parkingRent = roundCurrency(
-        parkingRentHT * prorationBeforeAnniversary * factorBeforeAnniversary +
-          parkingRentHT * prorationFromAnniversary * factorFromAnniversary
+        parkingRentHT *
+          overallProration *
+          (prorationBeforeWithinPeriod * factorBeforeAnniversary +
+            prorationAfterWithinPeriod * factorFromAnniversary)
       )
       otherCosts = roundCurrency(
-        otherCostsHT * prorationBeforeAnniversary * factorBeforeAnniversary +
-          otherCostsHT * prorationFromAnniversary * factorFromAnniversary
+        otherCostsHT *
+          overallProration *
+          (prorationBeforeWithinPeriod * factorBeforeAnniversary +
+            prorationAfterWithinPeriod * factorFromAnniversary)
       )
 
       // Display the new index value for this period
