@@ -285,13 +285,8 @@ export class RentCalculationExtractionService {
         }
       }
 
-      // Fallback to quarterly if not found (most common for French commercial leases)
-      const DEFAULT_PAYMENT_FREQUENCY = "quarterly" as const
-      const extractedFrequency = data.rent.paymentFrequency.value
-      const paymentFrequency: "monthly" | "quarterly" =
-        extractedFrequency === "monthly" || extractedFrequency === "quarterly"
-          ? extractedFrequency
-          : DEFAULT_PAYMENT_FREQUENCY
+      // Infer payment frequency using contextual signals
+      const paymentFrequency = this.inferPaymentFrequency(data)
 
       const indexType =
         toLeaseIndexType(data.indexation?.indexationType?.value) ??
@@ -654,6 +649,108 @@ export class RentCalculationExtractionService {
 
   private delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms))
+  }
+
+  /**
+   * Infer payment frequency using multiple contextual signals.
+   * More reliable than a rigid fallback.
+   */
+  private inferPaymentFrequency(
+    data: RentCalculationExtractedData
+  ): "monthly" | "quarterly" {
+    const extracted = data.rent.paymentFrequency.value
+    const rawText = data.rent.paymentFrequency.rawText?.toLowerCase() || ""
+
+    // 1. Explicit value from extraction
+    if (extracted === "monthly" || extracted === "quarterly") {
+      return extracted
+    }
+
+    // 2. Analyze rawText for frequency indicators
+    const quarterlyIndicators = [
+      "trimestriel",
+      "trimestre",
+      "terme",
+      "à terme",
+      "terme échu",
+      "par trimestre",
+      "chaque trimestre",
+    ]
+    const monthlyIndicators = [
+      "mensuel",
+      "mois",
+      "par mois",
+      "chaque mois",
+      "mensuellement",
+    ]
+
+    const hasQuarterlyHint = quarterlyIndicators.some((ind) =>
+      rawText.includes(ind)
+    )
+    const hasMonthlyHint = monthlyIndicators.some((ind) =>
+      rawText.includes(ind)
+    )
+
+    if (hasQuarterlyHint && !hasMonthlyHint) return "quarterly"
+    if (hasMonthlyHint && !hasQuarterlyHint) return "monthly"
+
+    // 3. Check if quarterly rent was explicitly provided (strong signal)
+    const hasQuarterlyRent =
+      typeof data.rent.quarterlyRentExclTaxExclCharges.value === "number"
+    const hasAnnualRent =
+      typeof data.rent.annualRentExclTaxExclCharges.value === "number"
+
+    if (hasQuarterlyRent) {
+      return "quarterly"
+    }
+
+    // 4. Check if deposit is 3 months (common for quarterly payments)
+    const depositAmount = data.securities?.securityDepositAmount?.value
+    const annualRent = data.rent.annualRentExclTaxExclCharges.value
+    if (
+      typeof depositAmount === "number" &&
+      typeof annualRent === "number" &&
+      annualRent > 0
+    ) {
+      const monthlyRent = annualRent / 12
+      const depositMonths = Math.round(depositAmount / monthlyRent)
+      // 3 months deposit is very common for quarterly commercial leases
+      if (depositMonths === 3) {
+        return "quarterly"
+      }
+    }
+
+    // 5. Check if annual rent / 4 gives a round number (suggests quarterly)
+    if (hasAnnualRent && annualRent) {
+      const quarterlyRent = annualRent / 4
+      const monthlyRent = annualRent / 12
+
+      // A "round" number has fewer decimals
+      const quarterlyDecimals = this.countSignificantDecimals(quarterlyRent)
+      const monthlyDecimals = this.countSignificantDecimals(monthlyRent)
+
+      if (quarterlyDecimals < monthlyDecimals) {
+        return "quarterly"
+      } else if (monthlyDecimals < quarterlyDecimals) {
+        return "monthly"
+      }
+    }
+
+    // 6. Default: French commercial leases are predominantly quarterly
+    // This is the weakest signal, only used when nothing else is available
+    return "quarterly"
+  }
+
+  /**
+   * Count significant decimal places in a number (ignoring trailing zeros)
+   */
+  private countSignificantDecimals(value: number): number {
+    const str = value.toFixed(4)
+    const parts = str.split(".")
+    if (parts.length < 2) return 0
+
+    const decimals = parts[1].replace(/0+$/, "")
+    return decimals.length
   }
 
   private parseReferenceQuarter(
