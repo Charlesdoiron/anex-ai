@@ -1373,6 +1373,7 @@ export function exportRentCalculationToPDF(
 
   const extracted = result.extractedData
   const schedule = result.rentSchedule
+  const input = result.scheduleInput
   const hasSchedule =
     schedule && schedule.schedule && schedule.schedule.length > 0
 
@@ -1516,7 +1517,9 @@ export function exportRentCalculationToPDF(
   addSectionHeader("Donnees financieres", true)
   addDataRow(
     "Frequence de paiement",
-    formatFrequency(extracted.rent.paymentFrequency?.value)
+    formatFrequency(
+      input?.paymentFrequency || extracted.rent.paymentFrequency?.value
+    )
   )
 
   y += 2
@@ -1614,9 +1617,11 @@ export function exportRentCalculationToPDF(
 
   y += 2
   addSubsectionLabel("Indexation")
-  const indexDisplay = extracted.indexation?.indexationType?.value
-    ? `${extracted.indexation.indexationType.value}${
-        extracted.indexation.referenceQuarter?.value
+  const indexTypeValue =
+    input?.indexType || extracted.indexation?.indexationType?.value
+  const indexDisplay = indexTypeValue
+    ? `${indexTypeValue}${
+        extracted.indexation?.referenceQuarter?.value
           ? ` - ${extracted.indexation.referenceQuarter.value}`
           : ""
       }`

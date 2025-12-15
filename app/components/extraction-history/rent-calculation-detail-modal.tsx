@@ -359,7 +359,9 @@ function RentCalculationContent({ result }: { result: RentCalculationData }) {
         <div className="space-y-2">
           <DataRow
             label="Fréquence de paiement"
-            value={formatFrequency(extracted.rent.paymentFrequency?.value)}
+            value={formatFrequency(
+              input?.paymentFrequency || extracted.rent.paymentFrequency?.value
+            )}
           />
 
           <div className="pt-3 pb-1 border-t border-gray-100">
@@ -478,9 +480,9 @@ function RentCalculationContent({ result }: { result: RentCalculationData }) {
           <DataRow
             label="Indice"
             value={
-              extracted.indexation?.indexationType?.value
-                ? `${extracted.indexation.indexationType.value}${
-                    extracted.indexation.referenceQuarter?.value
+              input?.indexType || extracted.indexation?.indexationType?.value
+                ? `${input?.indexType || extracted.indexation?.indexationType?.value}${
+                    extracted.indexation?.referenceQuarter?.value
                       ? ` - ${extracted.indexation.referenceQuarter.value}`
                       : ""
                   }`

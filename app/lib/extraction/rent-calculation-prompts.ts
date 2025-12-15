@@ -94,25 +94,54 @@ Indices : "durée de NEUF années", "bail de 9 ans", "3/6/9"
 
 4. FRÉQUENCE DE PAIEMENT :
 - paymentFrequency : "monthly" | "quarterly"
-  ⚠️ CHAMP OBLIGATOIRE - Chercher dans TOUT le document
+  ⚠️ CHAMP CRITIQUE - Ce champ est OBLIGATOIRE pour le calcul. Chercher ACTIVEMENT dans TOUT le document.
   
-  OÙ CHERCHER (PRIORITAIRE) :
-  - TITRE II - Section "MODALITÉS DE PAIEMENT" ou article sur le loyer
-  - TITRE I - Article "LOYER" ou "PAIEMENT"
-  - Mentions : "payable par trimestre", "exigible trimestriellement", "à terme échu"
+  STRATÉGIE DE RECHERCHE (par ordre de priorité) :
   
-  INDICES POUR "quarterly" (TRIMESTRIEL) :
-  - "trimestriel", "trimestriellement", "par trimestre"
-  - "exigible le premier jour de chaque trimestre civil"
-  - "à terme échu" (souvent trimestriel)
-  - "terme", "échéance trimestrielle"
+  A. SECTIONS EXPLICITES À CHERCHER EN PRIORITÉ :
+     - TITRE II - Article "LOYER" ou "MODALITÉS DE PAIEMENT" ou "PAIEMENT DU LOYER"
+     - TITRE I - Article "LOYER" (généralement Article 4 ou 5)
+     - Tableau récapitulatif en début/fin de document
+     - Conditions particulières (TITRE II) qui modifient le TITRE I
   
-  INDICES POUR "monthly" (MENSUEL) :
-  - "mensuel", "mensuellement", "par mois", "chaque mois"
-  - "exigible le premier de chaque mois"
+  B. MOTS-CLÉS ET EXPRESSIONS À IDENTIFIER :
   
-  ⚠️ IMPORTANT : La plupart des baux commerciaux sont trimestriels.
-  Si le bail mentionne "terme" ou "à terme échu" sans précision, c'est généralement trimestriel.
+     POUR "quarterly" (TRIMESTRIEL) - Chercher ces expressions :
+     - "payable trimestriellement" / "payable par trimestre"
+     - "exigible trimestriellement" / "exigible par trimestre"
+     - "à terme échu" (CONVENTION : dans les baux commerciaux FR, "terme" = trimestre)
+     - "le premier jour de chaque trimestre civil"
+     - "échéance trimestrielle"
+     - "terme" (sans précision = généralement trimestriel en baux commerciaux)
+     - "par avance" + mention de trimestre
+     - "trimestre" dans le contexte du paiement du loyer
+  
+     POUR "monthly" (MENSUEL) - Chercher ces expressions :
+     - "payable mensuellement" / "payable par mois"
+     - "exigible mensuellement" / "exigible chaque mois"
+     - "le premier jour de chaque mois"
+     - "échéance mensuelle"
+     - "mensuel" dans le contexte du paiement du loyer
+  
+  C. INDICES CONTEXTUELS (si pas d'indication explicite) :
+     - Si le bail mentionne un "loyer trimestriel" explicite → quarterly
+     - Si le bail mentionne un "loyer mensuel" explicite → monthly
+     - Si le dépôt de garantie = "3 mois de loyer" → suggère quarterly (mais vérifier)
+     - Si mention "terme" sans précision dans un bail commercial → quarterly (convention FR)
+  
+  D. EXEMPLES CONCRETS DE TEXTES À RECONNAÎTRE :
+     ✅ "Le loyer est payable trimestriellement et d'avance" → quarterly
+     ✅ "Le loyer est exigible le premier jour de chaque trimestre civil" → quarterly
+     ✅ "Le loyer est payable à terme échu" → quarterly (terme = trimestre)
+     ✅ "Le loyer est payable mensuellement" → monthly
+     ✅ "Le loyer est exigible le premier de chaque mois" → monthly
+     ✅ "Modalités de paiement : par trimestre" → quarterly
+  
+  ⚠️ RÈGLE IMPORTANTE :
+  - Si tu trouves UNE SEULE mention de fréquence (même implicite), utilise-la.
+  - Si le bail dit "terme" ou "à terme échu" sans précision → quarterly (convention baux commerciaux FR)
+  - Ne retourne "Non mentionné" QUE si tu as vraiment cherché partout et trouvé RIEN.
+  - En cas de doute entre monthly/quarterly, privilégier quarterly pour les baux commerciaux français.
 
 5. LOYER BUREAUX (HORS TAXES, HORS CHARGES) :
 - annualRentExclTaxExclCharges : Loyer annuel HTHC (en euros, nombre sans symbole)
@@ -171,12 +200,26 @@ Indices : "loyer annuel", "€ HT/an", "HTHC", "hors taxes et hors charges"
 Indices pour indexationType : "indexé sur l'ILC", "révision selon l'ILAT", "indice ICC", "ILAT", "ILC"
 Indices pour referenceQuarter : "indice de base", "indice du Xème trimestre", "indice de référence", valeur numérique entre parenthèses
 
-EXEMPLES :
-- "Bail de 9 ans à compter du 1er avril 2023, loyer de 120.000 € HT/an, payable trimestriellement"
-  → effectiveDate: "2023-04-01", duration: 9, annualRent: 120000, paymentFrequency: "quarterly"
+EXEMPLES CONCRETS :
 
-- "Loyer trimestriel : 30.000 € HTHC, exigible le 1er de chaque trimestre"
-  → quarterlyRent: 30000, paymentFrequency: "quarterly"
+1. FRÉQUENCE DE PAIEMENT EXPLICITE :
+   - "Bail de 9 ans à compter du 1er avril 2023, loyer de 120.000 € HT/an, payable trimestriellement"
+     → paymentFrequency: { "value": "quarterly", "confidence": "high", "source": "TITRE II - Article LOYER", "rawText": "payable trimestriellement" }
+   
+   - "Le loyer est exigible mensuellement, le premier de chaque mois"
+     → paymentFrequency: { "value": "monthly", "confidence": "high", "source": "TITRE I - Article 4", "rawText": "exigible mensuellement, le premier de chaque mois" }
+
+2. FRÉQUENCE DE PAIEMENT IMPLICITE (terme échu) :
+   - "Le loyer est payable à terme échu"
+     → paymentFrequency: { "value": "quarterly", "confidence": "medium", "source": "TITRE I - Article LOYER", "rawText": "payable à terme échu" }
+     ⚠️ Note : "terme" = trimestre dans les baux commerciaux français
+   
+   - "Le loyer est payable par avance, à terme"
+     → paymentFrequency: { "value": "quarterly", "confidence": "medium", "source": "TITRE I - Article 4", "rawText": "payable par avance, à terme" }
+
+3. LOYER AVEC FRÉQUENCE :
+   - "Loyer trimestriel : 30.000 € HTHC, exigible le 1er de chaque trimestre"
+     → quarterlyRent: 30000, paymentFrequency: { "value": "quarterly", "confidence": "high", "source": "TITRE II - Article LOYER", "rawText": "Loyer trimestriel : 30.000 € HTHC, exigible le 1er de chaque trimestre" }
 
 FORMAT DE SORTIE JSON :
 {

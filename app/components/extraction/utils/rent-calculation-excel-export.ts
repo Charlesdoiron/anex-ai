@@ -96,12 +96,13 @@ export async function generateRentCalculationExcel(
 
   const ws = workbook.addWorksheet("Calcul loyer")
 
-  // Extract input data
+  // Extract input data - use scheduleInput values (with fallbacks) for accuracy
   const effectiveDate = getValue(extracted.calendar.effectiveDate)
   const duration = getValue(extracted.calendar.duration) || 9
-  const frequency = getValue(extracted.rent.paymentFrequency)
-  const isQuarterly = frequency === "quarterly"
-  const indexType = getValue(extracted.indexation?.indexationType) || "ILAT"
+  // Use input.paymentFrequency which has the fallback applied
+  const isQuarterly = input.paymentFrequency === "quarterly"
+  // Use input.indexType which has the fallback applied
+  const indexType = input.indexType || "ILAT"
   const referenceQuarter = getValue(extracted.indexation?.referenceQuarter)
   const tcam = summary?.tcam || 0
   const depositMonths = input.depositMonths || 3
