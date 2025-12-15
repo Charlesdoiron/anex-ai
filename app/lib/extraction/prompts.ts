@@ -85,18 +85,34 @@ Certains champs seront calculés automatiquement après l'extraction :
 - NE PAS calculer toi-même ces valeurs, le système s'en charge.
 
 BAUX AVEC CONDITIONS GÉNÉRALES ET CONDITIONS PARTICULIÈRES :
-Certains baux sont structurés en deux parties :
-- TITRE I / CONDITIONS GÉNÉRALES : clauses types et mécanismes (ex: "Article LOYER", "Article INDEXATION")
-- TITRE II / CONDITIONS PARTICULIÈRES : valeurs concrètes (ex: "Loyer annuel : 105 525€", "Indice: ILAT 3T2015")
-⚠️ TOUJOURS PRIORISER les CONDITIONS PARTICULIÈRES pour les valeurs chiffrées.
-Les mentions dans l'exposé préalable/préambule sont souvent HISTORIQUES (ancien bail résilié).
+Certains baux sont structurés en deux parties distinctes :
+- TITRE I / CONDITIONS GÉNÉRALES : clauses types, mécanismes généraux, règles par défaut
+- TITRE II / CONDITIONS PARTICULIÈRES : valeurs concrètes, montants, dates, dérogations
+
+⚠️⚠️⚠️ RÈGLE CRITIQUE DE PRIORITÉ ⚠️⚠️⚠️
+Les CONDITIONS PARTICULIÈRES (Titre II) DÉROGENT TOUJOURS aux CONDITIONS GÉNÉRALES (Titre I).
+- Si le Titre II modifie un article du Titre I, c'est la version du Titre II qui s'applique.
+- Exemple : Si Titre I article 12 dit "trois mois" et Titre II article 10.8 dit "quatre mois", 
+  la valeur correcte est "quatre mois" (Titre II prévaut).
+- Formulation type : "Par dérogation à l'article X du Titre I..." ou "L'article X est modifié comme suit..."
+- TOUJOURS chercher d'abord dans le Titre II avant de citer le Titre I.
+
+Les mentions dans l'exposé préalable/préambule sont souvent HISTORIQUES (ancien bail résilié) - ne pas les utiliser comme valeurs actuelles.
+
+FORMAT DES SOURCES - OBLIGATOIRE :
+Pour le champ "source", TOUJOURS préciser si l'article provient du Titre I ou du Titre II :
+- ✅ BON : "TITRE II - Article 10.8 (modifiant l'article 12 du Titre I)"
+- ✅ BON : "TITRE I - Article 12"
+- ✅ BON : "TITRE II - CONDITIONS PARTICULIÈRES 6. LOYER"
+- ❌ MAUVAIS : "Article 12" (sans préciser Titre I ou II)
+- ❌ MAUVAIS : "page 15" (trop vague si des articles sont identifiables)
 
 FORMAT DE SORTIE :
 Pour chaque champ extrait :
 {
   "value": <valeur extraite ou null>,
   "confidence": "high" | "medium" | "low" | "missing",
-  "source": "page X" ou "section Y" (localisation dans le document),
+  "source": "TITRE I/II - Article X" (TOUJOURS préciser le titre),
   "rawText": "extrait du texte original supportant la valeur" (optionnel mais recommandé)
 }
 
@@ -400,8 +416,14 @@ CHAMPS À EXTRAIRE :
 
 1. DATES CLÉS :
 - signatureDate : Date de signature du bail (format ISO : YYYY-MM-DD)
-  - Se trouve généralement en fin de bail, avant les annexes, avec "Fait à..."
-  - Si non trouvée : "Non mentionné"
+  ⚠️ OÙ CHERCHER (OBLIGATOIRE - parcourir tout le document) :
+  - EN FIN DE DOCUMENT : formule "Fait à [Ville], le [date]" ou "Signé le [date]"
+  - APRÈS LES SIGNATURES : date manuscrite ou imprimée près des paraphes/signatures
+  - PAGE DE SIGNATURE : souvent la dernière page avant les annexes
+  - PROTOCOLE ou AVENANT : "signé le [date]", "en date du [date]"
+  - PRÉAMBULE/EN-TÊTE : parfois mentionnée en haut du document
+  ⚠️ NE PAS confondre avec la date d'effet (effectiveDate) qui est différente !
+  - Si vraiment non trouvée après recherche exhaustive : "Non mentionné"
 - effectiveDate : Date de prise d'effet / entrée en jouissance
 - earlyAccessDate : Date de mise à disposition anticipée (si différente de effectiveDate)
 - endDate : Date de fin du bail
@@ -483,27 +505,39 @@ CHAMPS À EXTRAIRE :
 2. AUTRES MESURES D'ACCOMPAGNEMENT :
 - hasOtherMeasures : Présence d'autres mesures d'accompagnement (true/false)
 - otherMeasuresDescription : Description des autres mesures
-  ⚠️ FORMAT PRÉFÉRÉ : Résumer puis renvoyer à l'article du bail
-  - Ex: "Divers aménagements à la charge du bailleur (installation de stores, création d'un second espace vitré, création d'une salle de réunion, câblage électrique et informatique, etc.). Pour plus de précision, cf. article 8 du bail."
-  - ❌ ÉVITER : Liste exhaustive de tous les travaux
   
-  Types de mesures à rechercher :
-  - Contribution aux travaux d'aménagement du preneur (avec montant si indiqué)
-  - Aménagements réalisés par le bailleur (résumer les principaux + renvoyer à l'article)
+  ⚠️⚠️⚠️ DÉFINITION STRICTE - NE PAS CONFONDRE ⚠️⚠️⚠️
+  Les mesures d'accompagnement sont des AVANTAGES INITIAUX accordés au preneur à la SIGNATURE du bail :
+  ✅ CE QUI EST une mesure d'accompagnement :
+  - Travaux d'aménagement réalisés par le bailleur AVANT ou AU MOMENT de l'entrée dans les lieux
+  - Contribution financière du bailleur aux travaux d'aménagement du preneur
   - Prise en charge de frais de déménagement
   - Réduction temporaire de loyer (paliers progressifs)
+  - Franchise de loyer (déjà traitée ci-dessus)
+  
+  ❌ CE QUI N'EST PAS une mesure d'accompagnement :
+  - Les travaux à la charge du bailleur EN COURS DE BAIL (entretien, remplacement, mise aux normes)
+  - Les obligations légales du bailleur (article 606 du Code civil)
+  - La prise en charge de la vétusté des équipements (c'est de l'entretien courant)
+  - Le remplacement des installations (chauffage, ascenseurs, etc.) → C'est la section "Travaux bailleur"
+  
+  ⚠️ FORMAT PRÉFÉRÉ : Résumer puis renvoyer à l'article du bail
+  - Ex: "Contribution de 50 000 €HT aux travaux d'aménagement du preneur (cf. TITRE II - article 10.2)"
+  - Ex: "Aménagements réalisés par le bailleur avant entrée (installation de stores, câblage). Cf. TITRE II - 8."
+  - ❌ NE PAS inclure les travaux d'entretien ou de remplacement en cours de bail
   
 INDICES À RECHERCHER :
 - "franchise de loyer", "exemption de loyer", "gratuité de loyer"
 - "mesures d'accompagnement", "avantages consentis"
 - Article ou sous-article "mesures d'accompagnement" dans la section loyer
-- "participation aux travaux", "contribution du bailleur", "à la charge du bailleur"
+- "participation aux travaux d'aménagement", "contribution du bailleur"
 - "paliers de loyer", "loyer progressif"
+- "avant l'entrée dans les lieux", "préalablement à la prise d'effet"
 
 OÙ CHERCHER :
-- Article "Loyer" et ses sous-articles
-- Article dédié "Mesures d'accompagnement"
-- Article "Travaux" (pour les aménagements bailleur)
+- Article "Loyer" et ses sous-articles (section "franchise" ou "mesures d'accompagnement")
+- Article dédié "Mesures d'accompagnement" ou "Avantages consentis"
+- Article "Travaux" UNIQUEMENT pour les travaux d'aménagement initiaux (pas l'entretien en cours de bail)
 
 EXEMPLES :
 - "Franchise de 6 mois à compter de la date d'effet soit 56 235 € + 4 mois à compter du 36ème mois"
@@ -579,7 +613,22 @@ CHAMPS À EXTRAIRE :
   - Ex: "Taux d'intérêt légal majoré de 300 points de base, exigible 15 jours après mise en demeure"
   - ❌ MAUVAIS : "Taux légal majoré de 300 points. Taux légal majoré de 300 points exigible après..."
   - ✅ BON : "Taux d'intérêt légal majoré de 300 points de base, exigible 15 jours après mise en demeure restée sans effet"
+  
 - latePaymentPenaltyAmount : Montant ou taux des pénalités (valeur uniquement, sans la description)
+  ⚠️⚠️⚠️ ATTENTION - NE PAS CONFONDRE POINTS DE BASE ET EUROS ⚠️⚠️⚠️
+  - "300 points de base" = 300 POINTS (pas 300 €) → retourner "300 points de base" ou "3%"
+  - "majoré de 300 points" = majoration de 3% → retourner "300 points de base" ou "3%"
+  - "10% des sommes dues" = 10% → retourner "10%"
+  - "indemnité de 500 €" = montant fixe → retourner "500 €"
+  
+  ⚠️ 1 point de base = 0,01% = 0,0001
+  - 100 points de base = 1%
+  - 300 points de base = 3%
+  
+  FORMAT DE RÉPONSE :
+  - Pour un taux en points de base : "X points de base" ou "X%" (ex: "300 points de base" ou "3%")
+  - Pour un montant fixe : "X €" (ex: "500 €")
+  - ❌ NE JAMAIS mettre "300 €" quand le texte dit "300 points de base"
 
 INDICES COURANTS :
 - "Le loyer annuel est fixé à...", "soit un loyer de X € HT/an"
@@ -625,15 +674,17 @@ CHAMPS À EXTRAIRE :
   - "ICC" : Indice du Coût de la Construction (ancien)
 
 2. RÉFÉRENCES ET FRÉQUENCE :
-- referenceQuarter : Trimestre de référence avec indice type
-  ⚠️ FORMAT OBLIGATOIRE : "[ACRONYME] T[1-4] [ANNÉE 2 CHIFFRES]"
-  - Format exact : "ILAT T2 23" ou "ILC T4 15" ou "ICC T1 20"
+- referenceQuarter : Trimestre de référence AVEC la valeur de l'indice
+  ⚠️ FORMAT OBLIGATOIRE : "[ACRONYME] T[1-4] [ANNÉE 2 CHIFFRES] ([VALEUR])"
+  - Format exact avec valeur : "ILAT T3 15 (107,98)" ou "ILC T4 11 (104,60)"
+  - Si la valeur n'est pas mentionnée : "ILAT T3 15" (sans parenthèses)
   - Acronyme : ILC, ILAT, ou ICC
   - Trimestre : T1, T2, T3, ou T4 (1er, 2ème, 3ème, 4ème trimestre)
   - Année : deux derniers chiffres (ex: 23 pour 2023, 15 pour 2015)
-  - ❌ NE PAS inclure : la valeur de l'indice, "référence au", "trimestre", descriptions supplémentaires
+  - Valeur : nombre décimal entre parenthèses si mentionné (ex: 107,98)
   - Chercher SPÉCIFIQUEMENT dans CONDITIONS PARTICULIÈRES : "Indice de référence: ..."
-  - Chercher : "indice de base", "indice de référence", trimestre et année
+  - La valeur de l'indice est souvent entre parenthèses après le trimestre
+  - Chercher : "indice de base", "indice de référence", trimestre et année, valeur numérique
   
 - firstIndexationDate : Date RÉCURRENTE de l'indexation (pas une date unique)
   ⚠️ FORMAT OBLIGATOIRE : "Le [jour] [mois] de chaque année"
@@ -652,13 +703,16 @@ EXEMPLES :
   → firstIndexationDate: "Le 19 décembre de chaque année" (si prise d'effet le 19/12)
   → indexationFrequency: "Annuellement"
   
-- "indice du 2ème trimestre 2016 (indice de base)" ou "ILAT 2T2016" ou "ILAT référence au 2ème trimestre 2016 (104,60)"
-  → referenceQuarter: "ILAT T2 16"
+- "ILAT référence au 3ème trimestre 2015 (107,98)"
+  → referenceQuarter: "ILAT T3 15 (107,98)"
+  
+- "indice du 2ème trimestre 2016 (indice de base)" ou "ILAT 2T2016 valeur 104,60"
+  → referenceQuarter: "ILAT T2 16 (104,60)"
   
 - "ILC du 4ème trimestre 2011 à 104,60"
-  → referenceQuarter: "ILC T4 11"
+  → referenceQuarter: "ILC T4 11 (104,60)"
   
-- "Indice de référence: ILAT 3T2015"
+- "Indice de référence: ILAT 3T2015" (sans valeur mentionnée)
   → referenceQuarter: "ILAT T3 15"
 
 Format de sortie JSON conforme à IndexationData.`
@@ -694,13 +748,22 @@ CHAMPS À EXTRAIRE :
   - "ordures ménagères" (forme abrégée)
   - "enlèvement des ordures ménagères"
   
+  ⚠️⚠️⚠️ CAS PARTICULIER - TEOM INCLUSE DANS LA TAXE FONCIÈRE ⚠️⚠️⚠️
+  La TEOM est souvent INCLUSE dans le montant de la taxe foncière et non mentionnée séparément.
+  - Si le bail mentionne "taxe foncière" SANS montant séparé pour la TEOM :
+    → rawText = "TEOM incluse dans la taxe foncière (voir propertyTaxAmount)"
+    → value = null (car pas de montant séparé)
+    → confidence = "medium"
+  - Si le bail mentionne un montant séparé pour la TEOM :
+    → value = le montant mentionné
+  
   INDICES À RECHERCHER :
   - Chercher les termes EXACTS ci-dessus dans TOUT le document
   - Chercher dans CONDITIONS PARTICULIÈRES articles numérotés (ex: article 8.2, IV.3, etc.)
   - Chercher dans sections "CHARGES", "TAXES", "IMPOTS"
   - Les montants peuvent être dans un tableau ou une liste de provisions
   - Format possible : "TEOM : provision annuelle de X €" ou "taxe d'enlèvement... : X €"
-  - Retourner null si pas de montant indiqué
+  - Si pas de montant séparé mais taxe foncière mentionnée : indiquer "incluse dans taxe foncière"
   
 - officeTaxAmount : Provision annuelle pour taxe bureaux/TSB (en euros, valeur numérique)
   ⚠️ Aussi appelée : "taxe sur les bureaux", "TSB", "taxe annuelle sur les locaux à usage de bureaux"
@@ -800,7 +863,20 @@ CHAMPS À EXTRAIRE :
 - hasWaiverOfRecourse : Renonciation à recours entre parties (true/false)
   - Clause très courante dans les baux commerciaux
   - Termes : "renonciation réciproque à recours", "abandon de recours"
-- insuranceCertificateAnnexed : Attestation d'assurance en annexe (true/false)
+  
+- insuranceCertificateAnnexed : Attestation d'assurance EFFECTIVEMENT ANNEXÉE au bail (true/false)
+  ⚠️⚠️⚠️ DISTINCTION CRITIQUE ⚠️⚠️⚠️
+  - true UNIQUEMENT si l'attestation est RÉELLEMENT ANNEXÉE au moment de la signature
+    - Termes : "attestation annexée aux présentes", "ci-joint", "en annexe"
+    - Mention dans la liste des annexes
+  - false si l'attestation doit être FOURNIE SUR DEMANDE ou ULTÉRIEUREMENT
+    - Termes : "devra justifier", "devra présenter", "à première demande"
+    - "le preneur devra fournir annuellement" = false (obligation future, pas annexé)
+  
+  ⚠️ NE PAS CONFONDRE :
+  - "obligation de souscrire une assurance" = false (pas d'annexe)
+  - "devra remettre l'attestation au bailleur" = false (pas annexé, à fournir plus tard)
+  - "attestation d'assurance est annexée" = true (réellement annexée)
 
 INDICES À RECHERCHER :
 - "assurance multirisque", "police d'assurance"
@@ -810,7 +886,9 @@ INDICES À RECHERCHER :
 
 EXEMPLES :
 - "Le preneur devra justifier annuellement d'une assurance multirisque et fournir l'attestation au bailleur"
-  → insuranceCertificateAnnexed: true (à fournir)
+  → insuranceCertificateAnnexed: false (obligation de fournir, pas annexé)
+- "Une attestation d'assurance est annexée aux présentes (Annexe 5)"
+  → insuranceCertificateAnnexed: true (réellement annexée)
 - "Les parties renoncent réciproquement à tout recours l'une contre l'autre et contre leurs assureurs respectifs"
   → hasWaiverOfRecourse: true
 
@@ -889,8 +967,17 @@ CHAMPS À EXTRAIRE :
 - entryInventoryConditions : Conditions et modalités (description complète)
   - Mode d'établissement : contradictoire, par huissier/commissaire de justice
   - Répartition des frais : partagés, à charge du preneur/bailleur
-  - Référence à un état des lieux antérieur si applicable
-  - Ex: "État des lieux établi contradictoirement entre les Parties ou à défaut par huissier; frais partagés"
+  
+  ⚠️ CAS PARTICULIER - RÉFÉRENCE À UN ÉTAT DES LIEUX ANTÉRIEUR :
+  Si le bail fait référence à un état des lieux antérieur comme SEULE RÉFÉRENCE :
+  - Mentionner explicitement la date de l'état des lieux de référence
+  - Préciser que c'est le SEUL état des lieux à prendre en considération
+  - Ex: "L'état des lieux du 08 février 2001 constitue le seul état des lieux à prendre en considération (Annexe 8)"
+  - Chercher : "état des lieux annexé en date du", "état des lieux de référence"
+  
+  FORMAT ATTENDU :
+  - Si EDL antérieur est la seule référence : "L'état des lieux du [date] constitue le seul état des lieux à prendre en considération ; [conditions de modification si mentionnées]"
+  - Si nouvel EDL : "État des lieux établi contradictoirement entre les Parties ou à défaut par huissier; frais partagés"
 
 2. ÉTAT DES LIEUX DE PRÉ-SORTIE :
 - hasPreExitInventory : Existence d'un pré-état des lieux
@@ -940,9 +1027,24 @@ CHAMPS À EXTRAIRE :
 
 2. RÉPARTITION DES TRAVAUX :
 - landlordWorksList : Travaux à la charge du bailleur (tableau CONCIS)
-  ⚠️ FORMAT ATTENDU : ["Travaux et grosses réparations définis à l'article 606 du Code civil"]
-  - Si article 606 mentionné, c'est souvent la seule ligne nécessaire
+  ⚠️ FORMAT ATTENDU : Liste des catégories de travaux bailleur
+  - Inclure : "Travaux et grosses réparations définis à l'article 606 du Code civil"
   - Ajouter ravalement de façade si explicitement mentionné
+  
+  ⚠️⚠️⚠️ TITRE II - DÉROGATIONS IMPORTANTES ⚠️⚠️⚠️
+  Le TITRE II (CONDITIONS PARTICULIÈRES) peut ÉTENDRE les travaux à la charge du bailleur.
+  Chercher SPÉCIFIQUEMENT dans le Titre II les mentions :
+  - "prise en charge par le bailleur du remplacement complet"
+  - "mises en conformité et de la vétusté" à la charge du bailleur
+  - Équipements concernés : chauffage, climatisation, ascenseurs, portes automatiques, GTB/GTC, huisseries, canalisations
+  - Article type : 10.10, 10.11 du Titre II
+  
+  FORMAT ATTENDU avec Titre II :
+  [
+    "Travaux et grosses réparations définis à l'article 606 du Code civil (TITRE I)",
+    "Ravalement de façade (TITRE I - Article 16.3)",
+    "Prise en charge du remplacement complet, mises en conformité et vétusté des équipements (chauffage, climatisation, ascenseurs, portes automatiques, GTB/GTC, huisseries, canalisations) - cf. TITRE II - articles 10.10 et 10.11"
+  ]
   
 - tenantWorksList : Travaux à la charge du preneur (tableau structuré)
   ⚠️ FORMAT ATTENDU : 2-3 grandes catégories extraites du bail, pas une liste exhaustive
@@ -1012,38 +1114,53 @@ Format de sortie JSON conforme à MaintenanceData.`
 
 export const RESTITUTION_PROMPT = `Extraire les conditions de restitution des locaux.
 
+⚠️⚠️⚠️ RÈGLE CRITIQUE - PRIORITÉ TITRE II ⚠️⚠️⚠️
+Le TITRE II (CONDITIONS PARTICULIÈRES) DÉROGE au TITRE I (CONDITIONS GÉNÉRALES).
+- Si le Titre I dit "parfait état" et le Titre II dit "bon état" → retenir "bon état"
+- Si le Titre I dit "trois mois" et le Titre II dit "quatre mois" → retenir "quatre mois"
+- TOUJOURS chercher d'abord dans le Titre II les modifications/dérogations aux articles du Titre I
+
 CHAMPS À EXTRAIRE :
 
 1. RESTITUTION :
 - restitutionConditions : Conditions générales de restitution
-  FORMAT ATTENDU - résumé concis des obligations :
-  - État attendu : "bon état", "très bon état", "configuration initiale"
-  - Ex: "Restituer les Locaux Loués dans leur configuration initiale et en très bon état"
-  - Ex: "Le preneur devra rendre les locaux loués en bon état d'entretien"
-
+  ⚠️ ATTENTION - VÉRIFIER LE TITRE II :
+  - Chercher d'abord dans le Titre II si l'article de restitution est modifié
+  - Le Titre I peut mentionner "parfait état" mais le Titre II peut le modifier en "bon état"
+  - Préciser la SOURCE (Titre I ou Titre II) dans la réponse
+  
+  FORMAT ATTENDU :
+  - "Restituer les locaux en bon état d'entretien (TITRE II - article 10.8 modifiant TITRE I - article 12)"
+  - NE PAS mentionner les conditions du Titre I si elles sont modifiées par le Titre II
+  
 2. REMISE EN ÉTAT :
 - restorationConditions : Processus de remise en état
-  FORMAT ATTENDU - décrire le processus :
+  ⚠️ ATTENTION - VÉRIFIER LE TITRE II :
+  - Le délai de visite préalable peut être différent entre Titre I et Titre II
+  - Si Titre I dit "trois mois" et Titre II dit "quatre mois" → retenir "quatre mois"
+  - Préciser la SOURCE exacte (Titre II si modifié)
+  
+  FORMAT ATTENDU - décrire le processus avec les valeurs du Titre II :
+  - Délai de la visite préalable (tel que modifié par le Titre II si applicable)
   - Qui établit les devis
-  - À la suite de quel événement (pré-état des lieux, état des lieux de sortie)
-  - Qui supporte les frais
+  - Délai pour acquitter les travaux
+  - PRÉCISER : "(TITRE II - article X modifiant l'article Y du Titre I)"
   
   EXEMPLES :
-  - "À la suite du pré-état des lieux contradictoire, le Bailleur fera établir des devis de travaux de remise en état qu'il notifiera au Preneur"
-  - "Faculté pour le bailleur d'exiger la remise en état des locaux dans leur état initial à la date de prise d'effet"
-  - "Non mentionné" si aucune procédure détaillée
+  - "Visite préalable quatre mois avant la fin du bail (TITRE II - article 10.8). Le bailleur notifiera les travaux à effectuer."
+  - "Délai de 15 jours ouvrés pour acquitter le coût des travaux (TITRE II - article 10.8)"
 
-OÙ CHERCHER :
-- Article "restitution des locaux"
-- Article "fin de bail"
-- Article "remise en état"
+OÙ CHERCHER (ORDRE DE PRIORITÉ) :
+1. TITRE II - Articles modifiant les articles de restitution (ex: article 10.8)
+2. TITRE I - Article "restitution des locaux" (seulement si pas modifié par Titre II)
+3. Article "fin de bail", "remise en état"
 
 INDICES À RECHERCHER :
 - "restitution des locaux", "remise des clés"
 - "remise en état", "état d'origine", "configuration initiale"
-- "devis de travaux", "bureau d'études"
-- "très bon état", "bon état d'entretien"
-- "libre de tout occupant et de tout mobilier"
+- "par dérogation à l'article X du Titre I" → UTILISER la version du Titre II
+- "l'article X est modifié comme suit" → UTILISER la version du Titre II
+- "bon état" vs "parfait état" → vérifier quelle version s'applique
 
 Format de sortie JSON conforme à RestitutionData.`
 
