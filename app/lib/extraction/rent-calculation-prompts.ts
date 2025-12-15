@@ -19,6 +19,16 @@ VALEUR PAR DÉFAUT POUR LES INFORMATIONS ABSENTES :
 - FORMAT : rawText = "Non mentionné" (avec majuscules N et M)
 - NE PAS utiliser : "non précisé", "absent", "N/A", "non trouvé"
 
+⚠️⚠️⚠️ BAUX COMPLEXES - PRIORITÉ TITRE II ⚠️⚠️⚠️
+Certains baux sont structurés en deux parties :
+- TITRE I / CONDITIONS GÉNÉRALES : clauses types, mécanismes généraux
+- TITRE II / CONDITIONS PARTICULIÈRES : valeurs concrètes, montants, dates
+
+RÈGLE CRITIQUE : Les CONDITIONS PARTICULIÈRES (Titre II) PRÉVALENT sur les CONDITIONS GÉNÉRALES (Titre I).
+- Chercher d'abord dans le Titre II pour les montants et dates
+- Le Titre II contient souvent : "LOYER ANNUEL DE BASE", "DATE D'EFFET", "INDICE DE REFERENCE"
+- Ignorer les mentions dans le préambule/exposé préalable (souvent historiques)
+
 PRINCIPES :
 - Extraire UNIQUEMENT les valeurs explicitement présentes dans le document.
 - Ne JAMAIS inventer ou deviner des valeurs manquantes.
@@ -39,17 +49,27 @@ FORMAT DE SORTIE :
 {
   "value": <valeur ou null>,
   "confidence": "high" | "medium" | "low" | "missing",
-  "source": "page X ou section Y",
+  "source": "TITRE I/II - Article X" (TOUJOURS préciser le titre si applicable),
   "rawText": "extrait du texte original OU 'Non mentionné' si absent"
 }`
 
 export const RENT_CALCULATION_EXTRACTION_PROMPT = `Extraire les informations suivantes pour le calcul de loyer indexé.
 
+⚠️ BAUX COMPLEXES (TITRE I / TITRE II) :
+- Chercher PRIORITAIREMENT dans le TITRE II (CONDITIONS PARTICULIÈRES) pour :
+  - "LOYER ANNUEL DE BASE" → loyer annuel
+  - "DATE D'EFFET" → date de prise d'effet
+  - "INDICE DE REFERENCE" → type d'indice et trimestre de référence
+  - "FRANCHISE" → période de franchise
+- Le TITRE I contient les mécanismes généraux, le TITRE II contient les valeurs concrètes
+
 CHAMPS REQUIS :
 
 1. DATE DE DÉPART DU BAIL :
 - effectiveDate : Date de prise d'effet / entrée en jouissance (format ISO : YYYY-MM-DD)
+  ⚠️ Chercher dans TITRE II - "DATE D'EFFET" ou "PRISE D'EFFET"
 - signatureDate : Date de signature (fallback si effectiveDate absente)
+  ⚠️ Chercher en fin de document : "Fait à..., le..." ou "Signé le..."
 
 Indices : "à compter du", "prenant effet le", "entrée en jouissance", "date d'effet"
 
@@ -74,20 +94,38 @@ Indices : "durée de NEUF années", "bail de 9 ans", "3/6/9"
 
 4. FRÉQUENCE DE PAIEMENT :
 - paymentFrequency : "monthly" | "quarterly"
-
-Indices :
-- "mensuel", "par mois", "chaque mois" → "monthly"
-- "trimestriel", "par trimestre", "terme" → "quarterly"
-- "à terme échu", "d'avance" (contexte)
+  ⚠️ CHAMP OBLIGATOIRE - Chercher dans TOUT le document
+  
+  OÙ CHERCHER (PRIORITAIRE) :
+  - TITRE II - Section "MODALITÉS DE PAIEMENT" ou article sur le loyer
+  - TITRE I - Article "LOYER" ou "PAIEMENT"
+  - Mentions : "payable par trimestre", "exigible trimestriellement", "à terme échu"
+  
+  INDICES POUR "quarterly" (TRIMESTRIEL) :
+  - "trimestriel", "trimestriellement", "par trimestre"
+  - "exigible le premier jour de chaque trimestre civil"
+  - "à terme échu" (souvent trimestriel)
+  - "terme", "échéance trimestrielle"
+  
+  INDICES POUR "monthly" (MENSUEL) :
+  - "mensuel", "mensuellement", "par mois", "chaque mois"
+  - "exigible le premier de chaque mois"
+  
+  ⚠️ IMPORTANT : La plupart des baux commerciaux sont trimestriels.
+  Si le bail mentionne "terme" ou "à terme échu" sans précision, c'est généralement trimestriel.
 
 5. LOYER BUREAUX (HORS TAXES, HORS CHARGES) :
 - annualRentExclTaxExclCharges : Loyer annuel HTHC (en euros, nombre sans symbole)
+  ⚠️ PRIORITÉ : Chercher dans TITRE II - section "LOYER ANNUEL DE BASE" ou "6. LOYER"
 - quarterlyRentExclTaxExclCharges : Loyer trimestriel HTHC (si explicite, sinon null)
 - annualRentPerSqmExclTaxExclCharges : Loyer au m² /an HTHC (si explicite, sinon null)
 
 Indices : "loyer annuel", "€ HT/an", "HTHC", "hors taxes et hors charges"
 
-ATTENTION :
+⚠️ ATTENTION - BAUX COMPLEXES :
+- NE PAS confondre le loyer mentionné dans le PRÉAMBULE (souvent historique) avec le loyer actuel
+- Le loyer actuel se trouve dans le TITRE II (CONDITIONS PARTICULIÈRES)
+- Chercher spécifiquement "LOYER ANNUEL DE BASE" dans le Titre II
 - Extraire uniquement le loyer HORS TAXES et HORS CHARGES
 - Ne pas confondre loyer mensuel/trimestriel/annuel
 - Si seul le trimestriel est donné, laisser annuel à null
@@ -114,12 +152,24 @@ ATTENTION :
 - securities.securityDepositAmount : Montant du dépôt de garantie
 
 10. INDICE D'INDEXATION :
-- indexation.indexationType : Acronyme EXACT de l'indice utilisé (ILC, ILAT, ICC)
-- indexation.referenceQuarter : Trimestre de référence pour l'indexation (ex: "ILC 2ème trimestre 2016", "ILAT T1 2024")
-- Si l'indice n'est pas mentionné, retourner null avec rawText \"Non mentionné\"
-
-Indices pour indexationType : \"indexé sur l'ILC\", \"révision selon l'ILAT\", \"indice ICC\"
-Indices pour referenceQuarter : \"indice de base\", \"indice du Xème trimestre\", \"indice de référence\", \"T1/T2/T3/T4 20XX\"
+- indexation.indexationType : Acronyme EXACT de l'indice utilisé
+  ⚠️ VALEURS POSSIBLES (retourner l'acronyme EXACTEMENT) :
+  - "ILC" : Indice des Loyers Commerciaux
+  - "ILAT" : Indice des Loyers des Activités Tertiaires
+  - "ICC" : Indice du Coût de la Construction
+  
+  OÙ CHERCHER (PRIORITAIRE) :
+  - TITRE II - Section "INDICE DE REFERENCE" ou "9. INDICE"
+  - TITRE I - Article "CLAUSE D'INDEXATION" ou "RÉVISION DU LOYER"
+  - Mentions : "indexé sur l'ILAT", "révision selon l'ILC", "indice ILAT"
+  
+- indexation.referenceQuarter : Trimestre de référence AVEC valeur si mentionnée
+  ⚠️ FORMAT : "[ACRONYME] T[1-4] [ANNÉE] ([VALEUR])" si valeur connue
+  - Ex: "ILAT T3 15 (107,98)" ou "ILC T4 11 (104,60)"
+  - Chercher dans TITRE II - "INDICE DE REFERENCE"
+  
+Indices pour indexationType : "indexé sur l'ILC", "révision selon l'ILAT", "indice ICC", "ILAT", "ILC"
+Indices pour referenceQuarter : "indice de base", "indice du Xème trimestre", "indice de référence", valeur numérique entre parenthèses
 
 EXEMPLES :
 - "Bail de 9 ans à compter du 1er avril 2023, loyer de 120.000 € HT/an, payable trimestriellement"
