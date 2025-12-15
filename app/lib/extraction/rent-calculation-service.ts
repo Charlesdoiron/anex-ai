@@ -285,14 +285,13 @@ export class RentCalculationExtractionService {
         }
       }
 
-      const paymentFrequency = data.rent.paymentFrequency.value
-      if (paymentFrequency !== "monthly" && paymentFrequency !== "quarterly") {
-        return {
-          schedule: null,
-          scheduleInput: null,
-          errorMessage: "Fréquence de paiement manquante ou invalide",
-        }
-      }
+      // Fallback to quarterly if not found (most common for French commercial leases)
+      const DEFAULT_PAYMENT_FREQUENCY = "quarterly" as const
+      const extractedFrequency = data.rent.paymentFrequency.value
+      const paymentFrequency: "monthly" | "quarterly" =
+        extractedFrequency === "monthly" || extractedFrequency === "quarterly"
+          ? extractedFrequency
+          : DEFAULT_PAYMENT_FREQUENCY
 
       const indexType =
         toLeaseIndexType(data.indexation?.indexationType?.value) ??
@@ -523,6 +522,17 @@ export class RentCalculationExtractionService {
       rawText: "Non mentionné",
     }
 
+    // Normalize paymentFrequency - handle "Non mentionné" string as null
+    let paymentFrequencyField = parsed?.rent?.paymentFrequency ?? missing
+    if (
+      paymentFrequencyField.value &&
+      typeof paymentFrequencyField.value === "string" &&
+      paymentFrequencyField.value !== "monthly" &&
+      paymentFrequencyField.value !== "quarterly"
+    ) {
+      paymentFrequencyField = missing
+    }
+
     const extractedData: RentCalculationExtractedData = {
       calendar: {
         effectiveDate: parsed?.calendar?.effectiveDate ?? missing,
@@ -548,7 +558,7 @@ export class RentCalculationExtractionService {
           parsed?.rent?.quarterlyParkingRentExclCharges ?? missing,
         annualParkingRentPerUnitExclCharges:
           parsed?.rent?.annualParkingRentPerUnitExclCharges ?? missing,
-        paymentFrequency: parsed?.rent?.paymentFrequency ?? missing,
+        paymentFrequency: paymentFrequencyField,
       },
       indexation: {
         indexationType: parsed?.indexation?.indexationType ?? missing,
