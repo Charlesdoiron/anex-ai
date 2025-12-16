@@ -30,15 +30,21 @@ import { prepareDocumentText } from "./document-structure"
 const openai = getOpenAIClient()
 
 const MAX_RETRIES = 3
-const EXTRACTION_MODEL =
-  process.env.OPENAI_EXTRACTION_MODEL?.trim() || "gpt-5-mini"
+
+// Model strategy: fast model for simple extractions, powerful model for complex ones
+const FAST_MODEL = process.env.OPENAI_EXTRACTION_MODEL?.trim() || "gpt-5-mini"
+const COMPLEX_MODEL =
+  process.env.OPENAI_EXTRACTION_COMPLEX_MODEL?.trim() || "gpt-5.2"
+
+// Sections that benefit from the more powerful model (complex interpretation required)
+// Reduced to just securities for faster extraction - can be expanded if quality suffers
+const COMPLEX_SECTIONS: ExtractionSection[] = [
+  "securities", // Deposit calculation, guarantees - most critical for rent schedule
+]
+
 const EXTRACTION_CONCURRENCY = Math.max(
   1,
-  Number(process.env.EXTRACTION_CONCURRENCY || "8")
-)
-const SECTIONS_PER_CALL = Math.max(
-  1,
-  Number(process.env.EXTRACTION_SECTIONS_PER_CALL || "4")
+  Number(process.env.EXTRACTION_CONCURRENCY || "10")
 )
 
 // Max text per LLM call - gpt-5-mini has 400k token context window
@@ -53,15 +59,8 @@ const CONFIDENCE_VALUES: ConfidenceLevel[] = [
 ]
 
 type SectionExtractionValue = unknown
-type SectionExtractionMap = Record<string, SectionExtractionValue>
 type ExtractionSectionsMap = Pick<LeaseExtractionResult, ExtractionSection>
 type LeaseSectionKey = keyof ExtractionSectionsMap
-
-interface BatchExtractionResult {
-  data?: SectionExtractionMap
-  retries: number
-  error?: Error
-}
 
 interface SectionExtractionResult {
   data?: SectionExtractionValue
@@ -240,146 +239,89 @@ export class ExtractionService {
       }
 
       const totalSections = this.extractionPrompts.length
-      const groupedPrompts = chunkItems(
-        this.extractionPrompts,
-        SECTIONS_PER_CALL
-      )
       let completedSections = 0
 
       const extractionStart = Date.now()
+
+      // True parallel extraction: each prompt = 1 independent API call
+      // Complex sections use gpt-5.2, simple sections use gpt-5-mini
       await processWithConcurrency(
-        groupedPrompts,
+        this.extractionPrompts,
         EXTRACTION_CONCURRENCY,
-        async (promptGroup) => {
+        async (prompt) => {
           await this.ensureNotCancelled()
-          if (!promptGroup.length) {
-            return
-          }
 
-          const sectionResults: SectionExtractionMap = {}
-          const sectionErrors: Record<string, string | undefined> = {}
+          const statusKey = `extracting_${prompt.section}` as ExtractionStatus
+          const startProgress = this.computeSectionProgress(
+            completedSections,
+            totalSections
+          )
+          this.emitProgress(
+            statusKey,
+            `Extraction: ${this.getSectionLabel(prompt.section)}...`,
+            startProgress,
+            prompt.section
+          )
 
-          for (const { section } of promptGroup) {
-            const statusKey = `extracting_${section}` as ExtractionStatus
-            const startProgress = this.computeSectionProgress(
-              completedSections,
-              totalSections
-            )
-            this.emitProgress(
-              statusKey,
-              `Extraction: ${this.getSectionLabel(section)}...`,
-              startProgress,
-              section
-            )
-          }
+          // Select model based on section complexity
+          const model = COMPLEX_SECTIONS.includes(prompt.section)
+            ? COMPLEX_MODEL
+            : FAST_MODEL
 
-          const batchResult = await this.runBatchExtraction(
+          const result = await this.runSingleExtraction(
             preparedDoc.text,
-            promptGroup
+            prompt,
+            model
           )
           await this.ensureNotCancelled()
-          totalRetries += batchResult.retries
+          totalRetries += result.retries
 
-          const missingPrompts: ExtractionPrompt[] = []
+          const sectionKey = prompt.section as LeaseSectionKey
+          let sectionValue: ExtractionSectionsMap[typeof sectionKey]
 
-          if (batchResult.data) {
-            for (const prompt of promptGroup) {
-              const batchData = batchResult.data[prompt.section]
-              if (batchData === undefined) {
-                missingPrompts.push(prompt)
-                sectionErrors[prompt.section] = "Batch response missing data"
-              } else {
-                try {
-                  sectionResults[prompt.section] = this.validateSectionValue(
-                    batchData,
-                    prompt.section
-                  )
-                } catch (error) {
-                  missingPrompts.push(prompt)
-                  sectionErrors[prompt.section] =
-                    error instanceof Error
-                      ? error.message
-                      : "Invalid batch response"
-                }
-              }
-            }
+          if (result.data !== undefined) {
+            sectionValue =
+              result.data as ExtractionSectionsMap[typeof sectionKey]
           } else {
-            missingPrompts.push(...promptGroup)
-            if (batchResult.error) {
-              for (const prompt of promptGroup) {
-                sectionErrors[prompt.section] = batchResult.error.message
-              }
-            }
+            sectionValue = this.getDefaultSectionData(
+              prompt.section
+            ) as ExtractionSectionsMap[typeof sectionKey]
           }
 
-          for (const prompt of missingPrompts) {
-            const singleResult = await this.runSingleExtraction(
-              preparedDoc.text,
-              prompt
-            )
-            await this.ensureNotCancelled()
-            totalRetries += singleResult.retries
-            if (singleResult.data !== undefined) {
-              sectionResults[prompt.section] = singleResult.data
-              if (singleResult.error) {
-                sectionErrors[prompt.section] = singleResult.error.message
-              }
-            } else {
-              sectionResults[prompt.section] = this.getDefaultSectionData(
-                prompt.section
-              )
-              if (!sectionErrors[prompt.section]) {
-                sectionErrors[prompt.section] =
-                  singleResult.error?.message || "Extraction failed"
-              }
-            }
-          }
+          setSectionValue(sectionKey, sectionValue)
 
-          for (const prompt of promptGroup) {
-            const sectionKey = prompt.section as LeaseSectionKey
-            const sectionValue =
-              (sectionResults[prompt.section] as
-                | ExtractionSectionsMap[typeof sectionKey]
-                | undefined) ??
-              getSectionValue(sectionKey) ??
-              (this.getDefaultSectionData(
-                prompt.section
-              ) as ExtractionSectionsMap[typeof sectionKey])
-            setSectionValue(sectionKey, sectionValue)
+          completedSections++
+          const progressPercent = this.computeSectionProgress(
+            completedSections,
+            totalSections
+          )
+          this.emitProgress(
+            statusKey,
+            `Extraction: ${this.getSectionLabel(prompt.section)} terminée`,
+            progressPercent,
+            prompt.section,
+            result.error?.message
+          )
 
-            completedSections++
-            const progressPercent = this.computeSectionProgress(
-              completedSections,
-              totalSections
-            )
-            const statusKey = `extracting_${prompt.section}` as ExtractionStatus
-            this.emitProgress(
-              statusKey,
-              `Extraction: ${this.getSectionLabel(prompt.section)} terminée`,
-              progressPercent,
-              prompt.section,
-              sectionErrors[prompt.section]
-            )
-
-            if (this.partialResultCallback) {
-              this.partialResultCallback({
-                ...result,
-                extractionMetadata: {
-                  totalFields: 0,
-                  extractedFields: 0,
-                  missingFields: 0,
-                  lowConfidenceFields: 0,
-                  averageConfidence: 0,
-                  processingTimeMs: Date.now() - startTime,
-                  retries: totalRetries,
-                  stageDurations: {
-                    pdfProcessingMs: stageTimings.pdfProcessingMs,
-                    extractionMs: Date.now() - extractionStart,
-                    ingestionMs: 0,
-                  },
+          // Emit partial result for real-time UI updates
+          if (this.partialResultCallback) {
+            this.partialResultCallback({
+              ...result,
+              extractionMetadata: {
+                totalFields: 0,
+                extractedFields: 0,
+                missingFields: 0,
+                lowConfidenceFields: 0,
+                averageConfidence: 0,
+                processingTimeMs: Date.now() - startTime,
+                retries: totalRetries,
+                stageDurations: {
+                  pdfProcessingMs: stageTimings.pdfProcessingMs,
+                  extractionMs: Date.now() - extractionStart,
+                  ingestionMs: 0,
                 },
-              } as Partial<LeaseExtractionResult>)
-            }
+              },
+            } as Partial<LeaseExtractionResult>)
           }
         }
       )
@@ -468,47 +410,10 @@ export class ExtractionService {
     return 10 + Math.floor((completedSections / totalSections) * 80)
   }
 
-  private async runBatchExtraction(
-    documentText: string,
-    prompts: ExtractionPrompt[]
-  ): Promise<BatchExtractionResult> {
-    let attempts = 0
-    let retries = 0
-    let lastError: Error | undefined
-    const isRetryable = prompts.some((prompt) => prompt.retryable)
-
-    while (attempts < MAX_RETRIES) {
-      await this.ensureNotCancelled()
-      try {
-        const data = await this.extractSectionsBatch(documentText, prompts)
-        return { data, retries }
-      } catch (error) {
-        lastError = error as Error
-        attempts++
-        retries += prompts.length
-
-        console.warn(
-          `Batch extraction retry ${attempts}/${MAX_RETRIES} for sections [${prompts
-            .map((p) => p.section)
-            .join(", ")}]:`,
-          error
-        )
-
-        if (attempts >= MAX_RETRIES || !isRetryable) {
-          break
-        }
-
-        await this.ensureNotCancelled()
-        await this.delay(1000 * attempts)
-      }
-    }
-
-    return { retries, error: lastError }
-  }
-
   private async runSingleExtraction(
     documentText: string,
-    prompt: ExtractionPrompt
+    prompt: ExtractionPrompt,
+    model: string = FAST_MODEL
   ): Promise<SectionExtractionResult> {
     let attempts = 0
     let retries = 0
@@ -520,7 +425,8 @@ export class ExtractionService {
         const data = await this.extractSection(
           documentText,
           prompt.section,
-          prompt.prompt
+          prompt.prompt,
+          model
         )
         const validated = this.validateSectionValue(data, prompt.section)
         return { data: validated, retries, error: lastError }
@@ -530,7 +436,7 @@ export class ExtractionService {
         retries += 1
 
         console.warn(
-          `Retry ${attempts}/${MAX_RETRIES} for section ${prompt.section}:`,
+          `[${model}] Retry ${attempts}/${MAX_RETRIES} for section ${prompt.section}:`,
           error
         )
 
@@ -546,72 +452,24 @@ export class ExtractionService {
     return { retries, error: lastError }
   }
 
-  private async extractSectionsBatch(
-    documentText: string,
-    prompts: ExtractionPrompt[]
-  ): Promise<SectionExtractionMap> {
-    await this.ensureNotCancelled()
-    const sectionNames = prompts.map((prompt) => prompt.section)
-    const sectionsPrompt = prompts
-      .map(
-        ({ section, prompt }) =>
-          `SECTION "${section}":\n${prompt}\nReturn this section under the "${section}" key.`
-      )
-      .join("\n\n")
-
-    const response = await openai.responses.create({
-      model: EXTRACTION_MODEL,
-      instructions: this.systemInstructions,
-      input: [
-        {
-          role: "user",
-          content: `Document text:\n\n${documentText}\n\nExtract all sections simultaneously and respond with a single JSON object whose top-level keys exactly match: ${sectionNames
-            .map((name) => `"${name}"`)
-            .join(", ")}.\n\n${sectionsPrompt}`,
-        },
-      ],
-      text: {
-        format: {
-          type: "json_object",
-        },
-      },
-      reasoning: {
-        effort: "low",
-      },
-    })
-
-    await this.ensureNotCancelled()
-
-    const outputText = collectResponseText(response)
-
-    if (!outputText) {
-      throw new Error(
-        `No output received for sections [${sectionNames.join(", ")}]`
-      )
-    }
-
-    const parsed = JSON.parse(outputText)
-
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      throw new Error("Batch response is not a JSON object")
-    }
-    return parsed as SectionExtractionMap
-  }
-
   private async extractSection(
     documentText: string,
     section: string,
-    prompt: string
+    prompt: string,
+    model: string = FAST_MODEL
   ): Promise<SectionExtractionValue> {
     await this.ensureNotCancelled()
 
+    // Use higher reasoning effort for complex model
+    const reasoningEffort = model === COMPLEX_MODEL ? "medium" : "low"
+
     const response = await openai.responses.create({
-      model: EXTRACTION_MODEL,
+      model,
       instructions: this.systemInstructions,
       input: [
         {
           role: "user",
-          content: `Document text:\n\n${documentText}\n\n${prompt}`,
+          content: `Document text:\n\n${documentText}\n\n${prompt}\n\nRespond with a valid JSON object.`,
         },
       ],
       text: {
@@ -620,7 +478,7 @@ export class ExtractionService {
         },
       },
       reasoning: {
-        effort: "low",
+        effort: reasoningEffort,
       },
     })
 
@@ -1015,19 +873,4 @@ async function processWithConcurrency<T>(
     }
   )
   await Promise.all(workers)
-}
-
-function chunkItems<T>(items: T[], size: number): T[][] {
-  if (items.length === 0) {
-    return []
-  }
-
-  const groupSize = size <= 0 ? items.length : size
-  const groups: T[][] = []
-
-  for (let i = 0; i < items.length; i += groupSize) {
-    groups.push(items.slice(i, i + groupSize))
-  }
-
-  return groups
 }

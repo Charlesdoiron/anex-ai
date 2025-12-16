@@ -230,7 +230,7 @@ export class RentCalculationExtractionService {
               content: `Document text:\n\n${truncateText(
                 documentText,
                 40000
-              )}\n\n${RENT_CALCULATION_EXTRACTION_PROMPT}`,
+              )}\n\n${RENT_CALCULATION_EXTRACTION_PROMPT}\n\nRespond with a valid JSON object.`,
             },
           ],
           text: {
@@ -239,7 +239,7 @@ export class RentCalculationExtractionService {
             },
           },
           reasoning: {
-            effort: "minimal",
+            effort: "low",
           },
         })
 
@@ -302,13 +302,21 @@ export class RentCalculationExtractionService {
       const explicitReferenceQuarter =
         this.parseReferenceQuarter(referenceQuarterText)
 
+      // Extract explicit index value from lease if present (e.g., "ILAT T3 15 (107,98)" → 107.98)
+      const explicitIndexValue =
+        this.parseIndexValueFromReference(referenceQuarterText)
+
       const series = await getInseeRentalIndexSeries(indexType)
-      const { baseIndexValue, knownIndexPoints } = buildIndexInputsForLease(
-        startDate,
-        horizonYears,
-        series,
-        explicitReferenceQuarter
-      )
+      const { baseIndexValue: inseeBaseIndex, knownIndexPoints } =
+        buildIndexInputsForLease(
+          startDate,
+          horizonYears,
+          series,
+          explicitReferenceQuarter
+        )
+
+      // Priority: use explicit value from lease, then INSEE database
+      const baseIndexValue = explicitIndexValue ?? inseeBaseIndex
 
       if (!baseIndexValue) {
         return {
@@ -407,13 +415,26 @@ export class RentCalculationExtractionService {
     paymentFrequency: "monthly" | "quarterly"
   ): number | null {
     const annualParking = rent.annualParkingRentExclCharges.value
-    if (typeof annualParking !== "number") return null
+    const quarterlyParking = rent.quarterlyParkingRentExclCharges.value
 
-    return paymentFrequency === "quarterly"
-      ? annualParking / 4
-      : annualParking / 12
+    if (paymentFrequency === "quarterly") {
+      // Priority: quarterly if explicit, then annual / 4
+      if (typeof quarterlyParking === "number") return quarterlyParking
+      if (typeof annualParking === "number") return annualParking / 4
+    } else {
+      // Monthly: derive from annual or quarterly
+      if (typeof annualParking === "number") return annualParking / 12
+      if (typeof quarterlyParking === "number") return quarterlyParking / 3
+    }
+
+    return null
   }
 
+  /**
+   * Calculate end date as J-1 (day before anniversary).
+   * Example: start 01/01/2016 + 12 years = 31/12/2027 (not 01/01/2028)
+   * This follows French lease convention where the end date is the day before the anniversary.
+   */
   private toEndDate(startDateISO: string, durationYears: number): string {
     const start = new Date(startDateISO)
     const end = new Date(
@@ -423,6 +444,8 @@ export class RentCalculationExtractionService {
         start.getUTCDate()
       )
     )
+    // J-1: subtract one day to get the day before the anniversary
+    end.setUTCDate(end.getUTCDate() - 1)
     return end.toISOString().split("T")[0]!
   }
 
@@ -784,6 +807,33 @@ export class RentCalculationExtractionService {
       /[tq]4\b/i.test(text)
     ) {
       return 4
+    }
+
+    return null
+  }
+
+  /**
+   * Extract the index value from reference quarter text.
+   * Examples:
+   * - "ILAT T3 15 (107,98)" → 107.98
+   * - "ILAT 4ème trimestre 2011 (104,60)" → 104.60
+   * - "ILC T4 11 (104.60)" → 104.60
+   */
+  private parseIndexValueFromReference(
+    referenceQuarterText: string | null | undefined
+  ): number | null {
+    if (!referenceQuarterText) return null
+
+    // Match number in parentheses, supporting both comma and dot as decimal separator
+    // Pattern: (number) at the end, with optional spaces
+    const match = referenceQuarterText.match(/\(\s*([\d.,]+)\s*\)\s*$/)
+    if (match && match[1]) {
+      // Replace comma with dot for parsing
+      const valueStr = match[1].replace(",", ".")
+      const value = parseFloat(valueStr)
+      if (!isNaN(value) && value > 0) {
+        return value
+      }
     }
 
     return null

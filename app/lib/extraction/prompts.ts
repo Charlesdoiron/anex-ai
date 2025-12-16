@@ -801,53 +801,45 @@ Format de sortie JSON avec valeurs numériques (pas de symbole €).`
 
 export const CHARGES_PROMPT = `Extraire les charges et honoraires de gestion.
 
+⚠️ PRIORITÉ DE RECHERCHE - CHERCHER ACTIVEMENT :
+1. CONDITIONS PARTICULIÈRES / TITRE II - Section "CHARGES" ou articles numérotés (8.x, 9.x)
+2. TITRE I - Article "CHARGES LOCATIVES" ou "CHARGES ET TAXES"
+3. Annexe "inventaire des charges" ou "état des charges"
+
 CHAMPS À EXTRAIRE :
 
 1. PROVISIONS POUR CHARGES :
-- annualChargesProvisionExclTax : Provision TOTALE annuelle HT (en euros)
-- quarterlyChargesProvisionExclTax : Provision trimestrielle HT (SEULEMENT si explicite)
-- annualChargesProvisionPerSqmExclTax : Provision au m² HT (SEULEMENT si explicite)
-  - Ne PAS calculer : sera déduit automatiquement si absent
+- annualChargesProvisionExclTax : Provision TOTALE annuelle HT
+  ⚠️ Chercher : "provision pour charges", "charges locatives"
+- quarterlyChargesProvisionExclTax : Provision trimestrielle HT (si explicite)
+- annualChargesProvisionPerSqmExclTax : Provision au m² HT (si explicite)
+  - Chercher : "€/m²/an", "HT/m²", "par m² et par an"
 
-2. REDEVANCE RIE (Règlement Intérieur d'Exploitation) :
-- annualRIEFeeExclTax : Redevance TOTALE annuelle HT
-- quarterlyRIEFeeExclTax : Redevance trimestrielle HT (SEULEMENT si explicite)
-- annualRIEFeePerSqmExclTax : Redevance au m² HT (SEULEMENT si explicite)
-  - Ne PAS calculer : sera déduit automatiquement si absent
+2. REDEVANCE RIE :
+- annualRIEFeeExclTax : Redevance annuelle HT
+- quarterlyRIEFeeExclTax : Redevance trimestrielle HT (si explicite)
+- annualRIEFeePerSqmExclTax : Redevance au m² HT (si explicite)
 
 3. HONORAIRES DE GESTION :
-- managementFeesOnTenant : Honoraires de gestion locative à charge du preneur (true/false/null)
-- rentManagementFeesOnTenant : Honoraires de gestion des loyers à charge du preneur (true/false/null)
-- managementFeesAnnualAmount : Montant ANNUEL des honoraires de gestion (en euros HT)
-  - Retourner null si non mentionné
-- managementFeesQuarterlyAmount : Montant TRIMESTRIEL des honoraires de gestion (en euros HT)
-  - Retourner null si non mentionné
-- managementFeesPerSqmAmount : Montant des honoraires de gestion au m² (en euros HT/m²/an)
-  - Retourner null si non mentionné
+- managementFeesOnTenant : Honoraires à charge du preneur (true/false)
+  ⚠️ CHERCHER ACTIVEMENT :
+  - Termes : "honoraires de gestion", "frais de gestion locative", "frais de gérance"
+  - "à la charge du preneur" → true
+  - Si les honoraires sont mentionnés comme à charge du preneur → true
+  - Si non mentionné → null (pas "Non")
+- rentManagementFeesOnTenant : Honoraires gestion des loyers à charge du preneur
+- managementFeesAnnualAmount : Montant ANNUEL HT
+- managementFeesQuarterlyAmount : Montant TRIMESTRIEL HT
+- managementFeesPerSqmAmount : Montant au m² HT
 
 ATTENTION - MONTANTS PAR M² vs MONTANTS TOTAUX :
-- Si le document donne "30 €/m²/an", ceci est un montant PAR M², pas le total
-- annualChargesProvisionExclTax doit contenir le montant TOTAL annuel
-- Si seul le montant par m² est donné :
-  - Mettre le montant par m² dans annualChargesProvisionPerSqmExclTax
-  - Laisser annualChargesProvisionExclTax à null (sera calculé automatiquement avec la surface)
+- "30 €/m²/an" = montant PAR M², pas le total
+- Mettre dans le champ approprié (PerSqm) et laisser le total à null
 
-INDICES À RECHERCHER :
-- "provisions pour charges", "charges locatives", "charges récupérables"
-- "régularisation annuelle", "au réel"
-- "€/m²/an", "euros HT/m2/an" = montant par mètre carré
-- "RIE", "règlement intérieur", "services généraux"
-- "honoraires de gestion", "frais de gérance"
-
-EXEMPLES :
-- "Provision pour charges : 50 €/m²/an HT"
-  → annualChargesProvisionPerSqmExclTax: 50, annualChargesProvisionExclTax: null
-- "Provision pour charges : 10.000 € HT/an pour 200 m²"
-  → annualChargesProvisionExclTax: 10000, annualChargesProvisionPerSqmExclTax: 50
-- "La provision s'élève à 30 euros HT/m2/an"
-  → annualChargesProvisionPerSqmExclTax: 30, annualChargesProvisionExclTax: null
-- "Redevance RIE : 2.000 € HT/trimestre"
-  → quarterlyRIEFeeExclTax: 2000
+OÙ CHERCHER :
+- CONDITIONS PARTICULIÈRES / TITRE II
+- Article "CHARGES LOCATIVES", "CHARGES ET TAXES"
+- Annexe "inventaire des charges"
 
 Format de sortie JSON avec valeurs numériques.`
 
@@ -857,159 +849,130 @@ CHAMPS À EXTRAIRE :
 
 1. ASSURANCE MULTIRISQUE :
 - annualInsuranceAmountExclTax : Prime annuelle HT (si mentionnée)
-- insurancePremiumRebilled : Prime refacturée au preneur (true/false)
+  - Extraire le montant numérique si explicitement indiqué
+  - Si non mentionné : null
+
+- insurancePremiumRebilled : Prime d'assurance immeuble refacturée au preneur (true/false)
+  ⚠️ CHERCHER ACTIVEMENT cette information :
+  - Chercher dans : article "CHARGES", "ASSURANCES", "TAXES", "IMPOTS ET CONTRIBUTIONS"
+  - Termes indiquant true : "prime d'assurance à la charge du preneur", "assurance immeuble refacturée", "quote-part assurance"
+  - Attention : il s'agit de l'assurance IMMEUBLE du bailleur refacturée, pas de l'assurance que le preneur doit souscrire
+  - Si le preneur paie une quote-part de l'assurance immeuble → true
+  - Si non mentionné → null (pas "Non")
 
 2. CLAUSES SPÉCIFIQUES :
 - hasWaiverOfRecourse : Renonciation à recours entre parties (true/false)
-  - Clause très courante dans les baux commerciaux
-  - Termes : "renonciation réciproque à recours", "abandon de recours"
+  ⚠️ CLAUSE TRÈS COURANTE - CHERCHER ACTIVEMENT :
+  - Chercher dans : article "ASSURANCES", "RECOURS", "RESPONSABILITÉ"
+  - Termes : "renonciation réciproque à recours", "abandon de recours", "renoncer à tout recours"
+  - Phrase type : "Les parties renoncent réciproquement à tout recours l'une contre l'autre"
+  - Si cette clause est présente → true
+  - Si non mentionné → null (pas "Non")
   
 - insuranceCertificateAnnexed : Attestation d'assurance EFFECTIVEMENT ANNEXÉE au bail (true/false)
-  ⚠️⚠️⚠️ DISTINCTION CRITIQUE ⚠️⚠️⚠️
-  - true UNIQUEMENT si l'attestation est RÉELLEMENT ANNEXÉE au moment de la signature
-    - Termes : "attestation annexée aux présentes", "ci-joint", "en annexe"
-    - Mention dans la liste des annexes
-  - false si l'attestation doit être FOURNIE SUR DEMANDE ou ULTÉRIEUREMENT
-    - Termes : "devra justifier", "devra présenter", "à première demande"
-    - "le preneur devra fournir annuellement" = false (obligation future, pas annexé)
-  
-  ⚠️ NE PAS CONFONDRE :
-  - "obligation de souscrire une assurance" = false (pas d'annexe)
-  - "devra remettre l'attestation au bailleur" = false (pas annexé, à fournir plus tard)
-  - "attestation d'assurance est annexée" = true (réellement annexée)
+  - true UNIQUEMENT si l'attestation est RÉELLEMENT ANNEXÉE (mentionnée dans liste des annexes)
+  - false si l'attestation doit être FOURNIE ULTÉRIEUREMENT
 
-INDICES À RECHERCHER :
-- "assurance multirisque", "police d'assurance"
-- "renonciation à recours", "abandon de recours réciproque"
-- "attestation d'assurance", "justificatif annuel"
-- "risques locatifs", "responsabilité civile"
+OÙ CHERCHER :
+- Article "ASSURANCES" ou "ASSURANCE ET RESPONSABILITÉ"
+- Article "CHARGES LOCATIVES" (pour refacturation)
+- Conditions particulières / TITRE II
 
 EXEMPLES :
-- "Le preneur devra justifier annuellement d'une assurance multirisque et fournir l'attestation au bailleur"
-  → insuranceCertificateAnnexed: false (obligation de fournir, pas annexé)
-- "Une attestation d'assurance est annexée aux présentes (Annexe 5)"
-  → insuranceCertificateAnnexed: true (réellement annexée)
-- "Les parties renoncent réciproquement à tout recours l'une contre l'autre et contre leurs assureurs respectifs"
+- "Les parties renoncent réciproquement à tout recours l'une contre l'autre et contre leurs assureurs"
   → hasWaiverOfRecourse: true
+- "Une quote-part de l'assurance immeuble est refacturée au preneur"
+  → insurancePremiumRebilled: true
+- "Le preneur devra souscrire une assurance et fournir l'attestation annuellement"
+  → insuranceCertificateAnnexed: false (obligation, pas annexé)
 
 Format de sortie JSON conforme à InsuranceData.`
 
 export const SECURITIES_PROMPT = `Extraire les sûretés et garanties.
 
+⚠️ PRIORITÉ DE RECHERCHE - CHAMPS OBLIGATOIRES À TROUVER :
+Le dépôt de garantie est TOUJOURS présent dans un bail commercial. Chercher ACTIVEMENT dans :
+1. CONDITIONS PARTICULIÈRES / TITRE II - Section "DEPOT DE GARANTIE" ou "GARANTIE"
+2. Article dédié "DÉPÔT DE GARANTIE" ou "SÛRETÉS"
+3. Section "LOYER" (le dépôt est souvent mentionné avec le loyer)
+
 CHAMPS À EXTRAIRE :
 
 1. DÉPÔT DE GARANTIE :
 - securityDepositDescription : Description COMPLÈTE du dépôt de garantie
-  ⚠️ FORMAT OBLIGATOIRE : "[Nombre] mois de loyer hors taxes hors charges soit [montant] €"
-  - TOUJOURS inclure :
-    1. Le nombre de mois (ex: "3 mois")
-    2. La précision "hors taxes hors charges" ou "HT HC"
-    3. Le montant en euros (ex: "soit 4200 €")
-  - Ex: "3 mois de loyer hors taxes hors charges soit 4200 €"
-  - Ex: "3 mois de loyer HT HC soit 28 117,5 €"
-  - ❌ NE PAS retourner seulement le montant : "4200 €"
+  ⚠️ FORMAT : "[Nombre] mois de loyer hors taxes hors charges soit [montant] €"
+  - Ex: "3 mois de loyer hors taxes hors charges soit 16 275 €"
   
-- securityDepositAmount : Montant numérique du dépôt de garantie (en euros, sans symbole)
-  - Extraire uniquement le nombre : 4200 (pas "4200 €", pas "4 200")
-  - Si non calculable : null
+- securityDepositAmount : Montant numérique du dépôt de garantie (en euros)
+  ⚠️ CHERCHER ACTIVEMENT :
+  - Termes : "dépôt de garantie", "garantie", "caution"
+  - Souvent exprimé en "X mois de loyer" - calculer le montant
+  - Ex: si loyer trimestriel = 16 275 € et dépôt = 3 mois → montant = 16 275 €
+  - Retourner le nombre uniquement : 16275 (pas "16 275 €")
 
-⚠️ ATTENTION - NE PAS CONFONDRE AVEC LE DÉPÔT DE GARANTIE :
-- Les clauses de RECONSTITUTION du dépôt de garantie → À INCLURE dans securityDepositDescription
-- Les conditions de RESTITUTION du dépôt → À INCLURE dans securityDepositDescription
-- La garantie solidaire en cas de CESSION du bail → Ce n'est PAS une sûreté du bail initial
-- Seules les garanties VRAIMENT ADDITIONNELLES au dépôt vont dans otherSecurities
-
-2. AUTRES SÛRETÉS (garanties additionnelles au dépôt) :
+2. AUTRES SÛRETÉS :
 - otherSecurities : Liste des autres garanties (tableau de chaînes)
-  
-  ⚠️ TYPES DE VRAIES SÛRETÉS ADDITIONNELLES :
-  - Cautionnement solidaire d'un TIERS (société mère, personne physique)
-    Ex: "Cautionnement solidaire émanant de [Société Mère] (Annexe X)"
+  - Cautionnement solidaire d'un tiers
   - Garantie bancaire à première demande (GAPD)
-  - Caution personnelle du dirigeant
   - Nantissement de fonds de commerce
-  
-  ⚠️ CE QUI N'EST PAS UNE "AUTRE SÛRETÉ" :
-  - "Reconstitution du dépôt de garantie" → NON, c'est une modalité du DG
-  - "Garantie solidaire du cédant" en cas de cession → NON, c'est une clause de cession
-  - "Assurances du preneur" → NON, c'est une obligation d'assurance
-  
-  Si AUCUNE vraie sûreté additionnelle : "Non"
+  - Si aucune sûreté additionnelle : retourner un tableau vide []
 
-INDICES À RECHERCHER :
-- Article ou sous-article "garantie", "dépôt de garantie", "sûretés"
-- "caution solidaire", "cautionnement"
-- "garantie à première demande", "GAPD"
-- "nantissement", "gage"
+OÙ CHERCHER :
+- CONDITIONS PARTICULIÈRES / TITRE II
+- Article "DÉPÔT DE GARANTIE", "SÛRETÉS", "GARANTIES"
+- Sections "LOYER" ou "CONDITIONS FINANCIÈRES"
 - Annexes listant les garanties
 
 EXEMPLES :
-- "Dépôt de garantie égal à 3 mois de loyer HT HC, soit 4.200 €"
-  → securityDepositDescription: "3 mois de loyer hors taxes hors charges soit 4 200 €"
-  → securityDepositAmount: 4200
-  → otherSecurities: "Non"
+- "Le dépôt de garantie est fixé à 3 mois de loyer HT HC, soit 16 275,00 €"
+  → securityDepositDescription: "3 mois de loyer hors taxes hors charges soit 16 275 €"
+  → securityDepositAmount: 16275
 
-- "Dépôt de 28.117,50 € (3 mois) + Cautionnement solidaire de Kouros SA (Annexe 6)"
-  → securityDepositDescription: "3 mois de loyer hors taxes hors charges soit 28 117,5 €"
-  → securityDepositAmount: 28117.5
-  → otherSecurities: ["Cautionnement solidaire émanant de Kouros SA (Annexe 6)"]
-
-- "Le dépôt devra être reconstitué en cas d'utilisation partielle"
-  → Ceci va dans securityDepositDescription, PAS dans otherSecurities
+- "Dépôt de garantie : un (1) trimestre de loyer HTHC"
+  → Si loyer trimestriel = 16 275 €
+  → securityDepositDescription: "1 trimestre de loyer HTHC soit 16 275 €"
+  → securityDepositAmount: 16275
 
 Format de sortie JSON avec securityDepositAmount en nombre et otherSecurities en tableau.`
 
 export const INVENTORY_PROMPT = `Extraire les informations sur les états des lieux.
 
+⚠️ CHERCHER ACTIVEMENT - Ces clauses sont TOUJOURS présentes dans un bail commercial :
+1. CONDITIONS PARTICULIÈRES / TITRE II - Chercher "ÉTAT DES LIEUX"
+2. TITRE I - Article "DÉLIVRANCE" ou "ÉTAT DES LIEUX"
+3. Article "RESTITUTION" pour les conditions de sortie
+
 CHAMPS À EXTRAIRE :
 
 1. ÉTAT DES LIEUX D'ENTRÉE :
-- entryInventoryConditions : Conditions et modalités (description complète)
-  - Mode d'établissement : contradictoire, par huissier/commissaire de justice
-  - Répartition des frais : partagés, à charge du preneur/bailleur
+- entryInventoryConditions : Conditions de l'EDL d'entrée
+  ⚠️ CHERCHER : "état des lieux d'entrée", "à l'entrée dans les lieux"
+  - Mode : contradictoire, par huissier/commissaire de justice
+  - Frais : partagés, à charge du preneur/bailleur
+  - Si référence à un EDL antérieur, mentionner la date
   
-  ⚠️ CAS PARTICULIER - RÉFÉRENCE À UN ÉTAT DES LIEUX ANTÉRIEUR :
-  Si le bail fait référence à un état des lieux antérieur comme SEULE RÉFÉRENCE :
-  - Mentionner explicitement la date de l'état des lieux de référence
-  - Préciser que c'est le SEUL état des lieux à prendre en considération
-  - Ex: "L'état des lieux du 08 février 2001 constitue le seul état des lieux à prendre en considération (Annexe 8)"
-  - Chercher : "état des lieux annexé en date du", "état des lieux de référence"
-  
-  FORMAT ATTENDU :
-  - Si EDL antérieur est la seule référence : "L'état des lieux du [date] constitue le seul état des lieux à prendre en considération ; [conditions de modification si mentionnées]"
-  - Si nouvel EDL : "État des lieux établi contradictoirement entre les Parties ou à défaut par huissier; frais partagés"
-
 2. ÉTAT DES LIEUX DE PRÉ-SORTIE :
-- hasPreExitInventory : Existence d'un pré-état des lieux
-  - Valeurs : "Oui, [délai]" / "Non" / "Non mentionné"
-  - Si oui, inclure le délai : "Oui, 3 mois au plus et 1 mois au moins avant le terme du bail"
-- preExitInventoryConditions : Conditions détaillées (si applicable)
+- hasPreExitInventory : Existence d'une visite préalable (true/false/null)
+  ⚠️ CHERCHER : "pré-état des lieux", "visite préalable", "X mois avant le terme"
+  - Retourner true avec le délai si mentionné : "Oui, 4 mois avant le terme"
+  - Retourner null si non mentionné
+- preExitInventoryConditions : Conditions détaillées si applicable
 
 3. ÉTAT DES LIEUX DE SORTIE :
-- exitInventoryConditions : Conditions de l'état des lieux de sortie
-  ⚠️ FORMAT ATTENDU : Inclure les DÉLAIS si mentionnés
-  - Quand : "au plus tard le jour de l'expiration du bail"
-  - Délai de remise en état : "dans un délai de 15 jours" si mentionné
-  - Qui paie les réparations
-  - Ex: "État des lieux dressé au plus tard le jour de l'expiration du bail. En cas de désordres, si le preneur n'effectue pas spontanément les réparations dans un délai de 15 jours, le bailleur les fera exécuter aux frais du preneur"
+- exitInventoryConditions : Conditions de l'EDL de sortie
+  ⚠️ CHERCHER : "état des lieux de sortie", "à la sortie", "restitution"
+  - Inclure les délais si mentionnés
 
-OÙ CHERCHER :
-- Article "état des lieux" ou "délivrance des locaux"
-- Article "restitution des locaux"
-- Début de bail pour les conditions d'entrée
+OÙ CHERCHER (PRIORITÉ) :
+1. TITRE II / CONDITIONS PARTICULIÈRES - sections modifiant le Titre I
+2. Article "ÉTAT DES LIEUX" ou "DÉLIVRANCE DES LOCAUX"
+3. Article "RESTITUTION DES LOCAUX"
 
 INDICES À RECHERCHER :
 - "état des lieux", "constat", "procès-verbal"
-- "contradictoire", "amiable", "par huissier", "par commissaire de justice"
-- "pré-état des lieux", "état des lieux préalable"
-- "frais partagés", "à la charge du preneur/bailleur"
-
-EXEMPLES :
-- "État des lieux d'entrée établi contradictoirement ou à défaut par huissier, frais partagés"
-  → entryInventoryConditions: "État des lieux établi contradictoirement entre les Parties ou à défaut par huissier; frais partagés"
-  
-- "Un pré-état des lieux sera dressé entre 3 mois et 1 mois avant la fin du bail"
-  → hasPreExitInventory: "Oui, 3 mois au plus et 1 mois au moins avant le terme du bail"
+- "contradictoire", "amiable", "par huissier", "commissaire de justice"
+- "pré-état des lieux", "visite préalable", "avant le terme"
+- "frais partagés", "à la charge du"
 
 Format de sortie JSON conforme à InventoryData.`
 
@@ -1132,7 +1095,7 @@ CHAMPS À EXTRAIRE :
   FORMAT ATTENDU :
   - "Restituer les locaux en bon état d'entretien (TITRE II - article 10.8 modifiant TITRE I - article 12)"
   - NE PAS mentionner les conditions du Titre I si elles sont modifiées par le Titre II
-  
+
 2. REMISE EN ÉTAT :
 - restorationConditions : Processus de remise en état
   ⚠️ ATTENTION - VÉRIFIER LE TITRE II :

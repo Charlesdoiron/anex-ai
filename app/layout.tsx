@@ -8,9 +8,9 @@ import { Header } from "./components/header"
 import { NavigationProgress } from "./components/navigation-progress"
 
 export const metadata: Metadata = {
-  title: "Anex AI - Agents intelligents",
+  title: "AxenIA - Agents immobiliers intelligents",
   description:
-    "Automatisez vos tâches complexes avec nos agents IA spécialisés",
+    "Extraction de données, calculs avancés et recommandations, automatisez vos tâches immobilières avec nos agents",
 }
 
 export default function RootLayout({

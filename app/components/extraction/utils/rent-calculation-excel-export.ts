@@ -4,7 +4,10 @@
  */
 
 import ExcelJS from "exceljs"
-import type { RentCalculationResult } from "@/app/lib/extraction/rent-calculation-service"
+import type {
+  RentCalculationResult,
+  RentCalculationExtractedData,
+} from "@/app/lib/extraction/rent-calculation-service"
 
 const MONTH_NAMES_FR = [
   "janvier",
@@ -192,17 +195,22 @@ export async function generateRentCalculationExcel(
           : `${indexType} ${referenceQuarter}`
         : indexType,
     ],
-    ["Dépôt de garantie (en mois)", depositMonths],
-    ["Franchise (en mois)", franchiseMonths],
-    [
-      "Échéance de paiement franchise",
-      "Mensuellement à compter de la date de prise d'effet",
-    ],
-    ["Autres mesures d'accompagnement", "—"],
-    [
-      "Échéance de paiement mesures d'accompagnement",
-      "Sur présentation de facture",
-    ],
+    ["Dépôt de garantie (en mois)", depositMonths || ""],
+    // Only show franchise fields if franchise is actually present
+    ...(franchiseMonths > 0
+      ? ([["Franchise (en mois)", franchiseMonths]] as Array<
+          [string, string | number]
+        >)
+      : []),
+    // Other support measures - only show if data is present
+    ...(hasOtherMeasures(extracted)
+      ? ([
+          [
+            "Autres mesures d'accompagnement",
+            getOtherMeasuresDescription(extracted),
+          ],
+        ] as Array<[string, string | number]>)
+      : []),
     [
       "Hypothèses augmentation charges et taxes (en %)",
       `${round(chargesGrowthRate * 100, 1)}%`,
@@ -730,4 +738,21 @@ export function isRentCalculationResult(
     "extractedData" in data &&
     "rentSchedule" in data
   )
+}
+
+function hasOtherMeasures(extracted: RentCalculationExtractedData): boolean {
+  const desc = extracted.supportMeasures?.otherMeasuresDescription?.value
+  return Boolean(
+    desc && desc !== "Non mentionné" && desc !== "Non" && desc !== "—"
+  )
+}
+
+function getOtherMeasuresDescription(
+  extracted: RentCalculationExtractedData
+): string {
+  const desc = extracted.supportMeasures?.otherMeasuresDescription?.value
+  if (!desc || desc === "Non mentionné" || desc === "Non") {
+    return ""
+  }
+  return desc
 }
