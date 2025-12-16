@@ -14,9 +14,9 @@ interface UploadFileProps {
   isSubmitting?: boolean
 }
 
-// Vercel serverless has ~4.5MB body limit - use 4MB for safety margin
-const MAX_FILE_SIZE = 4 * 1024 * 1024
-const MAX_FILE_SIZE_MB = 4
+// Vercel serverless has 4.5MB body limit
+const MAX_FILE_SIZE = 4.5 * 1024 * 1024
+const MAX_FILE_SIZE_MB = 4.5
 const ACCEPTED_FILE_TYPE = "application/pdf"
 
 export default function UploadFile({
@@ -38,7 +38,7 @@ export default function UploadFile({
     }
     if (file.size > MAX_FILE_SIZE) {
       const fileSizeMB = (file.size / (1024 * 1024)).toFixed(1)
-      return `Fichier trop volumineux (${fileSizeMB} Mo). Maximum: ${MAX_FILE_SIZE_MB} Mo`
+      return `Fichier trop volumineux (${fileSizeMB} Mo). Max: ${MAX_FILE_SIZE_MB} Mo`
     }
     return null
   }, [])

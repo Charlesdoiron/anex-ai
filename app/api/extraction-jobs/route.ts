@@ -4,8 +4,8 @@ import { extractionJobService } from "@/app/lib/jobs/extraction-job-service"
 import { rateLimiter, EXTRACTION_JOB_LIMITS } from "@/app/lib/rate-limit"
 import type { toolType } from "@/app/static-data/agent"
 
-// Vercel serverless has ~4.5MB body limit - use 4MB for safety
-const MAX_FILE_SIZE = 4 * 1024 * 1024
+// Vercel serverless has 4.5MB body limit
+const MAX_FILE_SIZE = 4.5 * 1024 * 1024
 const VALID_TOOL_TYPES: toolType[] = ["extraction-lease", "calculation-rent"]
 
 export async function POST(request: NextRequest) {
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error: "File too large",
-          message: `Fichier trop volumineux (${fileSizeMB} Mo). Maximum: 4 Mo`,
+          message: `Fichier trop volumineux (${fileSizeMB} Mo). Max: 4.5 Mo`,
         },
         { status: 400 }
       )
