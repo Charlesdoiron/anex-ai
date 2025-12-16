@@ -89,6 +89,11 @@ export function useExtraction(
         }
 
         if (!response.ok) {
+          if (response.status === 413) {
+            throw new Error(
+              "Fichier trop volumineux pour le serveur. Maximum: 4 Mo"
+            )
+          }
           throw new Error(data.message || `Erreur HTTP ${response.status}`)
         }
 

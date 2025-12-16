@@ -14,7 +14,9 @@ interface UploadFileProps {
   isSubmitting?: boolean
 }
 
-const MAX_FILE_SIZE = 30 * 1024 * 1024 // 30MB in bytes
+// Vercel serverless has ~4.5MB body limit - use 4MB for safety margin
+const MAX_FILE_SIZE = 4 * 1024 * 1024
+const MAX_FILE_SIZE_MB = 4
 const ACCEPTED_FILE_TYPE = "application/pdf"
 
 export default function UploadFile({
@@ -35,7 +37,8 @@ export default function UploadFile({
       return "Seul les fichiers PDF sont acceptés"
     }
     if (file.size > MAX_FILE_SIZE) {
-      return "Le fichier ne doit pas dépasser 30 Mo"
+      const fileSizeMB = (file.size / (1024 * 1024)).toFixed(1)
+      return `Fichier trop volumineux (${fileSizeMB} Mo). Maximum: ${MAX_FILE_SIZE_MB} Mo`
     }
     return null
   }, [])
@@ -170,7 +173,9 @@ export default function UploadFile({
               </span>
             </div>
 
-            <p className="text-[11px] text-gray-400 mt-4">PDF · 30 Mo max</p>
+            <p className="text-[11px] text-gray-400 mt-4">
+              PDF · {MAX_FILE_SIZE_MB} Mo max
+            </p>
           </label>
 
           {error && (
