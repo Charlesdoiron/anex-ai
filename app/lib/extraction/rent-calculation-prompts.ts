@@ -35,9 +35,9 @@ PRINCIPES :
 - Retourner null avec confidence "missing" et rawText "Non mentionné" si l'information est absente.
 
 GESTION OCR :
-- Confusions courantes : 0/O, 1/l/I, €/E
-- Formats de date français : "1er janvier 2024", "01/01/2024"
-- Séparateurs de milliers : "10.000" = 10000
+- Confusions courantes : O/0, I/1/l, symbole euro mal reconnu
+- Formats de date français : "JJ mois AAAA", "JJ/MM/AAAA"
+- Séparateurs de milliers : certains points/espaces peuvent être des séparateurs de milliers
 
 NIVEAUX DE CONFIANCE :
 - "high" : Valeur explicitement énoncée, sans ambiguïté
@@ -74,11 +74,27 @@ CHAMPS REQUIS :
 Indices : "à compter du", "prenant effet le", "entrée en jouissance", "date d'effet"
 
 2. DURÉE DU BAIL :
-- duration : Durée en années (typiquement 3, 6, 9 ou 12 ans)
+- duration : Durée en années (typiquement trois, six, neuf ou douze ans)
 
 Indices : "durée de NEUF années", "bail de 9 ans", "3/6/9"
 
-3. LOCAUX :
+3. INDICE D'INDEXATION (⚠️ CRITIQUE POUR LE CALCUL DES LOYERS) :
+
+- indexation.indexationType : L'acronyme de l'indice utilisé
+  Valeurs : "ILC" (loyers commerciaux), "ILAT" (activités tertiaires), "ICC" (coût construction)
+  Chercher : "ILAT", "ILC", "ICC", "loyers des activités tertiaires", "loyers commerciaux"
+  
+- indexation.referenceQuarter : Trimestre + valeur de l'indice de base
+  ⚠️ FORMAT REQUIS : "[ACRONYME] T[1-4] [ANNÉE] ([VALEUR])"
+  Exemple : "ILAT T3 15 (107,98)" signifie ILAT 3ème trimestre 2015, valeur 107,98
+  
+  OÙ CHERCHER (PRIORITAIRE) :
+  - TITRE II : Section "9. INDICE DE REFERENCE" ou "INDICE"
+  - TITRE I : Article "CLAUSE D'INDEXATION" ou "RÉVISION"
+  - Chercher "soit" + valeur numérique (ex: "soit 107,98")
+  - La valeur est souvent un nombre décimal proche de 100-130
+
+4. LOCAUX (surface et parkings) :
 - premises.designation : Nom de l'actif immobilier / désignation des locaux
   ⚠️ PRIORITÉ : Extraire le NOM DE L'ACTIF IMMOBILIER si mentionné (ex: "Immeuble Le Parc", "Centre Commercial Les Halles", "Bâtiment A")
   - Si le nom de l'actif n'est pas mentionné, utiliser la description des locaux (ex: "Bureaux", "Local commercial", "Entrepôt")
@@ -92,7 +108,7 @@ Indices : "durée de NEUF années", "bail de 9 ans", "3/6/9"
 - premises.surfaceArea : Surface totale en m²
 - premises.parkingSpaces : Nombre de places de parking
 
-4. FRÉQUENCE DE PAIEMENT :
+5. FRÉQUENCE DE PAIEMENT :
 - paymentFrequency : "monthly" | "quarterly"
   ⚠️ CHAMP CRITIQUE - Ce champ est OBLIGATOIRE pour le calcul. Chercher ACTIVEMENT dans TOUT le document.
   
@@ -143,7 +159,7 @@ Indices : "durée de NEUF années", "bail de 9 ans", "3/6/9"
   - Ne retourne "Non mentionné" QUE si tu as vraiment cherché partout et trouvé RIEN.
   - En cas de doute entre monthly/quarterly, privilégier quarterly pour les baux commerciaux français.
 
-5. LOYER BUREAUX (HORS TAXES, HORS CHARGES) :
+6. LOYER BUREAUX (HORS TAXES, HORS CHARGES) :
 - annualRentExclTaxExclCharges : Loyer annuel HTHC (en euros, nombre sans symbole)
   ⚠️ PRIORITÉ : Chercher dans TITRE II - section "LOYER ANNUEL DE BASE" ou "6. LOYER"
 - quarterlyRentExclTaxExclCharges : Loyer trimestriel HTHC (si explicite, sinon null)
@@ -159,67 +175,44 @@ Indices : "loyer annuel", "€ HT/an", "HTHC", "hors taxes et hors charges"
 - Ne pas confondre loyer mensuel/trimestriel/annuel
 - Si seul le trimestriel est donné, laisser annuel à null
 
-6. LOYER PARKING (OPTIONNEL) :
+7. LOYER PARKING (OPTIONNEL) :
 - annualParkingRentExclCharges : Loyer annuel parkings HTHC
 - quarterlyParkingRentExclCharges : Loyer trimestriel parkings HTHC
 - annualParkingRentPerUnitExclCharges : Loyer parking /unité/an HTHC
 
-7. CHARGES ET TAXES :
+8. CHARGES ET TAXES :
 - charges.annualChargesProvisionExclTax : Provision annuelle pour charges HT
 - charges.quarterlyChargesProvisionExclTax : Provision trimestrielle pour charges HT
 - charges.annualChargesProvisionPerSqmExclTax : Provision charges HT/m²/an
 - taxes.propertyTaxAmount : Montant annuel taxe foncière
 - taxes.officeTaxAmount : Montant annuel taxe bureaux
 
-8. MESURES D'ACCOMPAGNEMENT :
+9. MESURES D'ACCOMPAGNEMENT :
 - supportMeasures.rentFreePeriodMonths : Nombre de mois de franchise de loyer
 - supportMeasures.rentFreePeriodAmount : Montant total de la franchise en € HT
 - supportMeasures.otherMeasuresDescription : Description autres mesures
 
-9. DÉPÔT DE GARANTIE :
+10. DÉPÔT DE GARANTIE :
 - securities.securityDepositDescription : Description du dépôt
 - securities.securityDepositAmount : Montant du dépôt de garantie
 
-10. INDICE D'INDEXATION :
-- indexation.indexationType : Acronyme EXACT de l'indice utilisé
-  ⚠️ VALEURS POSSIBLES (retourner l'acronyme EXACTEMENT) :
-  - "ILC" : Indice des Loyers Commerciaux
-  - "ILAT" : Indice des Loyers des Activités Tertiaires
-  - "ICC" : Indice du Coût de la Construction
-  
-  OÙ CHERCHER (PRIORITAIRE) :
-  - TITRE II - Section "INDICE DE REFERENCE" ou "9. INDICE"
-  - TITRE I - Article "CLAUSE D'INDEXATION" ou "RÉVISION DU LOYER"
-  - Mentions : "indexé sur l'ILAT", "révision selon l'ILC", "indice ILAT"
-  
-- indexation.referenceQuarter : Trimestre de référence AVEC valeur si mentionnée
-  ⚠️ FORMAT : "[ACRONYME] T[1-4] [ANNÉE] ([VALEUR])" si valeur connue
-  - Ex: "ILAT T3 15 (107,98)" ou "ILC T4 11 (104,60)"
-  - Chercher dans TITRE II - "INDICE DE REFERENCE"
-  
-Indices pour indexationType : "indexé sur l'ILC", "révision selon l'ILAT", "indice ICC", "ILAT", "ILC"
-Indices pour referenceQuarter : "indice de base", "indice du Xème trimestre", "indice de référence", valeur numérique entre parenthèses
-
-EXEMPLES CONCRETS :
+EXEMPLES (PLACEHOLDERS — NE PAS COPIER LES VALEURS, UNIQUEMENT LE RAISONNEMENT) :
 
 1. FRÉQUENCE DE PAIEMENT EXPLICITE :
-   - "Bail de 9 ans à compter du 1er avril 2023, loyer de 120.000 € HT/an, payable trimestriellement"
-     → paymentFrequency: { "value": "quarterly", "confidence": "high", "source": "TITRE II - Article LOYER", "rawText": "payable trimestriellement" }
+   - "Bail de <DURÉE> ans à compter du <DATE>, loyer de <MONTANT> € HT/an, payable trimestriellement"
+     → paymentFrequency: { "value": "quarterly", "confidence": "high", "source": "TITRE II - Article <X>", "rawText": "payable trimestriellement" }
    
    - "Le loyer est exigible mensuellement, le premier de chaque mois"
-     → paymentFrequency: { "value": "monthly", "confidence": "high", "source": "TITRE I - Article 4", "rawText": "exigible mensuellement, le premier de chaque mois" }
+     → paymentFrequency: { "value": "monthly", "confidence": "high", "source": "TITRE I - Article <Y>", "rawText": "exigible mensuellement, le premier de chaque mois" }
 
 2. FRÉQUENCE DE PAIEMENT IMPLICITE (terme échu) :
    - "Le loyer est payable à terme échu"
-     → paymentFrequency: { "value": "quarterly", "confidence": "medium", "source": "TITRE I - Article LOYER", "rawText": "payable à terme échu" }
+     → paymentFrequency: { "value": "quarterly", "confidence": "medium", "source": "TITRE I - Article <Z>", "rawText": "payable à terme échu" }
      ⚠️ Note : "terme" = trimestre dans les baux commerciaux français
-   
-   - "Le loyer est payable par avance, à terme"
-     → paymentFrequency: { "value": "quarterly", "confidence": "medium", "source": "TITRE I - Article 4", "rawText": "payable par avance, à terme" }
 
 3. LOYER AVEC FRÉQUENCE :
-   - "Loyer trimestriel : 30.000 € HTHC, exigible le 1er de chaque trimestre"
-     → quarterlyRent: 30000, paymentFrequency: { "value": "quarterly", "confidence": "high", "source": "TITRE II - Article LOYER", "rawText": "Loyer trimestriel : 30.000 € HTHC, exigible le 1er de chaque trimestre" }
+   - "Loyer trimestriel : <MONTANT> € HTHC, exigible le <JOUR> de chaque trimestre"
+     → quarterlyRent: <MONTANT_NUMÉRIQUE>, paymentFrequency: { "value": "quarterly", "confidence": "high", "source": "TITRE II - Article <X>", "rawText": "Loyer trimestriel : <MONTANT> € HTHC, exigible le <JOUR> de chaque trimestre" }
 
 FORMAT DE SORTIE JSON :
 {

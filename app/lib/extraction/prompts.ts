@@ -49,8 +49,8 @@ PRINCIPES FONDAMENTAUX :
 
 GESTION DE LA QUALITÉ OCR :
 Le texte provient souvent d'une reconnaissance optique de caractères (OCR) et peut contenir des erreurs :
-- Confusions courantes : 0/O, 1/l/I, 5/S, 8/B, €/E, é/e, etc.
-- Espacements incorrects : "10 000" vs "10000", "m 2" vs "m²"
+- Confusions courantes : O/0, I/1/l, S/5, B/8, symbole euro mal reconnu
+- Espacements incorrects : séparateurs de milliers incohérents, espaces au milieu des unités ("m 2" au lieu de "m²")
 - Mots coupés ou fusionnés : "bail commercial" vs "bailcommercial"
 - Caractères spéciaux altérés : "€" → "EUR", "²" → "2", "°" → "o"
 - Tableaux mal reconnus : colonnes mélangées, alignements cassés
@@ -59,16 +59,14 @@ ERREURS OCR SPÉCIFIQUES AUX SURFACES :
 - "m?" = "m²" (le point d'interrogation remplace souvent le ²)
 - "m'" = "m²" (l'apostrophe remplace souvent le ²)
 - "m 2" ou "m2" = "m²"
-- Les points dans les nombres français sont des séparateurs de milliers :
-  - "3.613 m²" = 3613 m² (trois mille six cent treize)
-  - "1.400 m²" = 1400 m² (mille quatre cents)
+- Dans certains OCR, un point peut être un séparateur de milliers (vérifier le contexte et l'ordre de grandeur)
 
 ERREURS OCR SPÉCIFIQUES AUX EMAILS :
 - "@" peut devenir "a", "©", "(a)", "[at]"
 - Les points peuvent disparaître : "exemplecom" au lieu de "exemple.com"
 
 Quand tu rencontres ces problèmes :
-- Interprète avec bon sens les erreurs évidentes (ex: "l0 000 €" = 10 000 €)
+- Interprète avec bon sens les erreurs évidentes (ex: "lO OOO €" peut correspondre à un montant avec séparateurs mal reconnus)
 - Si l'ambiguïté est trop forte, utilise confidence "low" ou "missing"
 - Mentionne les problèmes OCR dans le champ rawText si pertinent
 
@@ -122,7 +120,7 @@ EXEMPLES DE FORMAT DE SORTIE :
 {
   "value": "Bail commercial",
   "confidence": "high",
-  "source": "page 1",
+  "source": "page <N>",
   "rawText": "BAIL COMMERCIAL entre les soussignés"
 }
 
@@ -169,7 +167,7 @@ EXEMPLES :
 - "Le présent BAIL COMMERCIAL est consenti..." → regime: "Bail commercial"
 - "statut des baux commerciaux" → regime: "Bail commercial"
 - "Convention d'occupation précaire..." → regime: "Convention d'occupation précaire"
-- "Bail dérogatoire de 23 mois en application de l'article L.145-5..." → regime: "Bail dérogatoire"
+- "Bail dérogatoire d'une durée inférieure à trois ans (article L.145-5)..." → regime: "Bail dérogatoire"
 
 IMPORTANT - Format de sortie EXACT :
 {
@@ -199,10 +197,10 @@ INFORMATIONS À EXTRAIRE POUR CHAQUE PARTIE :
 - address : Adresse postale complète (siège social pour les sociétés)
 
 EXTRACTION DU SIREN/SIRET :
-- Le SIREN est un identifiant à 9 chiffres : XXX XXX XXX
-- Le SIRET est un identifiant à 14 chiffres : XXX XXX XXX XXXXX
+- Le SIREN est un identifiant à neuf chiffres : XXX XXX XXX
+- Le SIRET est un identifiant à quatorze chiffres : XXX XXX XXX XXXXX
 - Chercher dans : "RCS", "SIRET", "SIREN", "immatriculée sous le numéro"
-- Format possible : "123 456 789", "123456789", "RCS Paris 123 456 789"
+- Format possible : "XXX XXX XXX", "XXXXXXXXX", "RCS <Ville> XXX XXX XXX"
 - Extraire uniquement les chiffres, sans espaces
 
 GESTION DES NOMS ILLISIBLES OU MASQUÉS :
@@ -232,13 +230,13 @@ INDICES COURANTS POUR IDENTIFIER LES PARTIES :
 - "domicile élu", "adresse de notification"
 
 EXEMPLES :
-- "La SCI IMMOBILIER, RCS Paris 123 456 789, dont le gérant est M. Jean DUPONT"
-  → landlord.name: "SCI IMMOBILIER", landlord.siren: "123456789"
+- "La <SOCIÉTÉ>, RCS <Ville> XXX XXX XXX, dont le représentant légal est <Nom>"
+  → landlord.name: "<SOCIÉTÉ>", landlord.siren: "<SIREN_SANS_ESPACES>"
   → landlordRepresentative: null (le gérant n'est pas un mandataire externe)
 - "La SCI IMMOBILIER, représentée par la société GESTION IMMO, administrateur de biens"
   → landlord.name: "SCI IMMOBILIER", landlordRepresentative.name: "GESTION IMMO"
-- "Article 25 - Notifications : par email à contact@exemple.fr pour le Bailleur"
-  → landlord.email: "contact@exemple.fr"
+- "Article <N> - Notifications : par email à <email> pour le Bailleur"
+  → landlord.email: "<email>"
 - Email non trouvé dans le document
   → landlord.email: { value: null, confidence: "missing", source: "", rawText: "Non mentionné" }
 - "La société @@@@@, au capital de..." (nom masqué)
@@ -279,7 +277,7 @@ CHAMPS À EXTRAIRE :
   - Si le nom de l'actif n'est pas mentionné, utiliser la description des locaux
   - Format attendu : "[Nom de l'actif]" ou "[Type de local] et [éléments annexes]"
   - Exemples de noms d'actifs : "Immeuble Le Parc", "Centre Commercial Les Halles", "Bâtiment A", "Résidence Les Jardins"
-  - Exemples de descriptions : "Local mixte activités/bureaux et 4 places de parking (n°1,2,3,4)"
+  - Exemples de descriptions : "Local mixte activités/bureaux et <N> places de parking"
   - OÙ CHERCHER :
     * En-tête du document ou préambule : "bail portant sur l'immeuble X", "bâtiment Y", "centre commercial Z"
     * Article "DÉSIGNATION" ou "DÉFINITION DES LOCAUX" : chercher le nom propre de l'actif AVANT la description des locaux
@@ -297,7 +295,7 @@ CHAMPS À EXTRAIRE :
   
 - address : Adresse des locaux (ville et code postal)
   - Format préféré : "[Ville] [Code postal]" ou adresse complète
-  - Ex: "Les Pennes Mirabeau 13170" ou "10, Rue Guy de Maupassant 13170 LES PENNES MIRABEAU"
+  - Ex: "<Ville> <Code postal>" ou "<Numéro>, <Rue> <Code postal> <Ville>"
 
 2. CARACTÉRISTIQUES DU BÂTIMENT :
 - buildingYear : Année de construction (important pour diagnostics amiante si avant 1997)
@@ -318,11 +316,11 @@ CHAMPS À EXTRAIRE :
   
   CORRECTION DES ERREURS OCR :
   - "m?" → "m²", "m'" → "m²", "m 2" → "m²", "m2" → "m²"
-  - Les points dans les nombres (3.613) sont des séparateurs de milliers = 3613
+  - Dans certains OCR, un point peut être un séparateur de milliers (vérifier le contexte)
   
   EXEMPLES :
-  - "surface totale de 218 m²" → surfaceArea: 218
-  - "Bureaux : 278 m² et 41 m², Activités : 117 m² et 542 m²" → surfaceArea: 978
+  - "surface totale de <SURFACE> m²" → surfaceArea: <SURFACE>
+  - "Bureaux : <S1> m² et <S2> m², Activités : <S3> m² et <S4> m²" → surfaceArea: <S1+S2+S3+S4>
   - "0 m²" ou surface non trouvée → mentionner dans rawText les surfaces partielles trouvées
 
 4. AMÉNAGEMENTS :
@@ -432,7 +430,7 @@ CHAMPS À EXTRAIRE :
 - earlyAccessDate : Date de mise à disposition anticipée (si différente de effectiveDate)
 - endDate : Date de fin du bail
   - IMPORTANT : la date de fin est la VEILLE de l'anniversaire, pas le jour même
-  - Exemple : bail du 10/10/2025 pour 10 ans → fin le 09/10/2035 (J-1)
+  - Exemple (placeholder) : bail du JJ/MM/AAAA pour <DURÉE> ans → fin la veille de la date anniversaire (J-1)
 
 2. DURÉE :
 - duration : Durée du bail en années (nombre entier : 3, 6, 9, 10, 12...)
@@ -441,7 +439,7 @@ CHAMPS À EXTRAIRE :
 3. ÉCHÉANCES :
 - nextTriennialDate : Prochaine échéance triennale
   - IMPORTANT : l'échéance est la VEILLE de l'anniversaire triennal
-  - Exemple : bail du 10/10/2025 → première échéance le 09/10/2028 (J-1 du 3ème anniversaire)
+  - Exemple (placeholder) : bail du JJ/MM/AAAA → première échéance triennale la veille du 3ème anniversaire (J-1)
   - Ne PAS calculer toi-même si non explicitement mentionnée
 
 4. PRÉAVIS ET RÉSILIATION :
@@ -462,16 +460,16 @@ CHAMPS À EXTRAIRE :
 
 IMPORTANT - CALCUL DES DATES (J-1) :
 - La date de fin de bail et les échéances triennales sont calculées comme la VEILLE de l'anniversaire
-- Bail commençant le 19/12/2016 pour 9 ans : fin le 18/12/2025 (pas le 19/12/2025)
-- Bail commençant le 10/10/2025 : 1ère échéance triennale le 09/10/2028
+- Bail commençant le JJ/MM/AAAA pour <DURÉE> ans : fin la veille de la date anniversaire (J-1)
+- Bail commençant le JJ/MM/AAAA : 1ère échéance triennale la veille du 3ème anniversaire (J-1)
 
 ATTENTION AUX FORMATS DE DATE :
-- Formats français : "1er janvier 2024", "01/01/2024", "1 janvier 2024"
+- Formats français : "JJ mois AAAA", "JJ/MM/AAAA", "JJ mois AAAA" (sans "er")
 - OCR peut altérer : "1er" → "1 er", "janvier" → "janvler"
 
 EXEMPLES :
-- "bail de 9 ans à compter du 19 décembre 2016"
-  → duration: "9 ans", effectiveDate: "2016-12-19", endDate: "2025-12-18"
+- "bail de <DURÉE> ans à compter du <DATE>"
+  → duration: "<DURÉE> ans", effectiveDate: "<AAAA-MM-JJ>", endDate: "<AAAA-MM-JJ (J-1)>"
 - "préavis de six mois avant l'échéance par lettre recommandée AR"
   → noticePeriod: "6 mois", terminationConditions: "Par lettre recommandée AR"
 - "renouvellement pour 9 ans au loyer de marché"
@@ -647,12 +645,12 @@ ATTENTION AUX CONFUSIONS :
 - Loyer mensuel vs trimestriel vs annuel
 
 EXEMPLES :
-- "Loyer annuel : 120.000 € HT HC, payable trimestriellement d'avance"
-  → annualRent: 120000, quarterlyRent: 30000, paymentFrequency: "Trimestriel d'avance"
-- Loyer 16800€ sans mention parking séparé avec 4 parkings
-  → annualRent: 16800, annualParkingRent: "Inclus dans le loyer initial des locaux"
-- "À défaut de paiement, 10% des sommes dues après 15 jours"
-  → latePaymentPenaltyConditions: "10% de toutes les sommes exigibles à l'expiration d'un délai de 15 jours"
+- "Loyer annuel : <MONTANT> € HT HC, payable trimestriellement d'avance"
+  → annualRent: <MONTANT_NUMÉRIQUE>, quarterlyRent: <MONTANT_NUMÉRIQUE>, paymentFrequency: "Trimestriel d'avance"
+- Loyer <MONTANT> € sans mention parking séparé avec <N> parkings
+  → annualRent: <MONTANT_NUMÉRIQUE>, annualParkingRent: "Inclus dans le loyer initial des locaux"
+- "À défaut de paiement, <TAUX> des sommes dues après <DÉLAI>"
+  → latePaymentPenaltyConditions: "<TAUX> de toutes les sommes exigibles à l'expiration d'un délai de <DÉLAI>"
 
 Format : valeurs numériques SANS symbole € ni séparateurs de milliers.`
 
@@ -680,15 +678,23 @@ CHAMPS À EXTRAIRE :
 2. RÉFÉRENCES ET FRÉQUENCE :
 - referenceQuarter : Trimestre de référence AVEC la valeur de l'indice
   ⚠️ FORMAT OBLIGATOIRE : "[ACRONYME] T[1-4] [ANNÉE 2 CHIFFRES] ([VALEUR])"
-  - Format exact avec valeur : "ILAT T3 15 (107,98)" ou "ILC T4 11 (104,60)"
-  - Si la valeur n'est pas mentionnée : "ILAT T3 15" (sans parenthèses)
+  ⚠️ LA VALEUR ENTRE PARENTHÈSES EST CRITIQUE POUR LE CALCUL DES LOYERS
+  
+  COMMENT CONSTRUIRE LA VALEUR :
   - Acronyme : ILC, ILAT, ou ICC
-  - Trimestre : T1, T2, T3, ou T4 (1er, 2ème, 3ème, 4ème trimestre)
-  - Année : deux derniers chiffres (ex: 23 pour 2023, 15 pour 2015)
-  - Valeur : nombre décimal entre parenthèses si mentionné (ex: 107,98)
-  - Chercher SPÉCIFIQUEMENT dans CONDITIONS PARTICULIÈRES : "Indice de référence: ..."
-  - La valeur de l'indice est souvent entre parenthèses après le trimestre
-  - Chercher : "indice de base", "indice de référence", trimestre et année, valeur numérique
+  - Trimestre : T1, T2, T3, ou T4 (convertir "3ème trimestre" → T3)
+  - Année : deux derniers chiffres (convertir "2015" → 15)
+  - Valeur : CHERCHER ACTIVEMENT le nombre décimal associé à l'indice
+  
+  OÙ CHERCHER LA VALEUR DE L'INDICE :
+  - CONDITIONS PARTICULIÈRES / TITRE II : "Indice de référence: ILAT 3T15 (107,98)"
+  - "indice de base : 107,98", "valeur de l'indice : 104,60"
+  - Souvent entre parenthèses juste après la mention du trimestre
+  
+  EXEMPLES DE CONVERSION :
+  - "ILAT du 3ème trimestre 2015 soit 107,98" → "ILAT T3 15 (107,98)"
+  - "indice ILC T4 2011 valeur 104,60" → "ILC T4 11 (104,60)"
+  - Si AUCUNE valeur trouvée : "ILAT T3 15" (sans parenthèses)
   
 - firstIndexationDate : Date RÉCURRENTE de l'indexation (pas une date unique)
   ⚠️ FORMAT OBLIGATOIRE : "Le [jour] [mois] de chaque année"
@@ -915,14 +921,14 @@ CHAMPS À EXTRAIRE :
 1. DÉPÔT DE GARANTIE :
 - securityDepositDescription : Description COMPLÈTE du dépôt de garantie
   ⚠️ FORMAT : "[Nombre] mois de loyer hors taxes hors charges soit [montant] €"
-  - Ex: "3 mois de loyer hors taxes hors charges soit 16 275 €"
+  - Utiliser le format exact trouvé dans le document
   
 - securityDepositAmount : Montant numérique du dépôt de garantie (en euros)
   ⚠️ CHERCHER ACTIVEMENT :
   - Termes : "dépôt de garantie", "garantie", "caution"
-  - Souvent exprimé en "X mois de loyer" - calculer le montant
-  - Ex: si loyer trimestriel = 16 275 € et dépôt = 3 mois → montant = 16 275 €
-  - Retourner le nombre uniquement : 16275 (pas "16 275 €")
+  - Souvent exprimé en "X mois de loyer" - CALCULER le montant réel basé sur le loyer du bail
+  - Si dépôt = N mois et loyer mensuel = M €, alors montant = N × M
+  - Retourner UNIQUEMENT le nombre calculé, sans symbole € ni séparateurs
 
 2. AUTRES SÛRETÉS :
 - otherSecurities : Liste des autres garanties (tableau de chaînes)
@@ -938,14 +944,14 @@ OÙ CHERCHER :
 - Annexes listant les garanties
 
 EXEMPLES :
-- "Le dépôt de garantie est fixé à 3 mois de loyer HT HC, soit 16 275,00 €"
-  → securityDepositDescription: "3 mois de loyer hors taxes hors charges soit 16 275 €"
-  → securityDepositAmount: 16275
+- "Le dépôt de garantie est fixé à <N> mois de loyer HT HC, soit <MONTANT> €"
+  → securityDepositDescription: "<N> mois de loyer hors taxes hors charges soit <MONTANT> €"
+  → securityDepositAmount: <MONTANT_NUMÉRIQUE>
 
-- "Dépôt de garantie : un (1) trimestre de loyer HTHC"
-  → Si loyer trimestriel = 16 275 €
-  → securityDepositDescription: "1 trimestre de loyer HTHC soit 16 275 €"
-  → securityDepositAmount: 16275
+- "Dépôt de garantie : un trimestre de loyer HTHC"
+  → Si loyer trimestriel = <MONTANT> €
+  → securityDepositDescription: "1 trimestre de loyer HTHC soit <MONTANT> €"
+  → securityDepositAmount: <MONTANT_NUMÉRIQUE>
 
 Format de sortie JSON avec securityDepositAmount en nombre et otherSecurities en tableau.`
 
