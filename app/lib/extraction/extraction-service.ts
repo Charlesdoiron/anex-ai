@@ -37,9 +37,13 @@ const COMPLEX_MODEL =
   process.env.OPENAI_EXTRACTION_COMPLEX_MODEL?.trim() || "gpt-5.2"
 
 // Sections that benefit from the more powerful model (complex interpretation required)
-// Reduced to just securities for faster extraction - can be expanded if quality suffers
+// These sections require complex legal interpretation or searching through the entire document
 const COMPLEX_SECTIONS: ExtractionSection[] = [
-  "securities", // Deposit calculation, guarantees - most critical for rent schedule
+  "securities", // Deposit calculation, guarantees - critical for rent schedule
+  "other", // Civil code and commercial code derogations - requires exhaustive document search
+  "insurance", // Complex boolean fields, subtle distinctions between true/false/null
+  "charges", // Management fees require careful interpretation
+  "environmentalAnnexes", // Multiple annexes to verify
 ]
 
 const EXTRACTION_CONCURRENCY = Math.max(
