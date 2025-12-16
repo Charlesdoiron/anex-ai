@@ -27,6 +27,9 @@ export function postProcessExtraction(
   // Normalize rent field structure (LLM sometimes returns nested format)
   processed.rent = normalizeRentField(processed.rent)
 
+  // Normalize numeric values that may be returned as strings
+  processed.rent = normalizeRentNumericValues(processed.rent)
+
   // Normalize payment frequency and calendar duration values
   processed.rent = normalizeRentPaymentFrequency(processed.rent)
   processed.calendar = normalizeCalendarDuration(processed.calendar)
@@ -191,16 +194,59 @@ function normalizeRentField(
 }
 
 /**
+ * Normalize numeric values that LLM may return as strings
+ * Example: "79000" → 79000
+ */
+function normalizeRentNumericValues(
+  rent: LeaseExtractionResult["rent"]
+): LeaseExtractionResult["rent"] {
+  if (!rent) return rent
+
+  const numericFields = [
+    "annualRentExclTaxExclCharges",
+    "quarterlyRentExclTaxExclCharges",
+    "annualRentPerSqmExclTaxExclCharges",
+    "annualParkingRentExclCharges",
+    "quarterlyParkingRentExclCharges",
+    "annualParkingRentPerUnitExclCharges",
+    "latePaymentPenaltyAmount",
+  ] as const
+
+  const normalized = { ...rent }
+
+  for (const field of numericFields) {
+    const fieldData = normalized[field]
+    if (fieldData && typeof fieldData.value === "string") {
+      const stringValue = fieldData.value as string
+      const parsed = parseFloat(
+        stringValue.replace(/[^\d.,]/g, "").replace(",", ".")
+      )
+      if (!isNaN(parsed)) {
+        normalized[field] = {
+          ...fieldData,
+          value: parsed,
+        }
+      }
+    }
+  }
+
+  return normalized
+}
+
+/**
  * Normalize payment frequency to standardized values
+ * Also infers frequency from contextual signals if not explicitly extracted
  */
 function normalizeRentPaymentFrequency(
   rent: LeaseExtractionResult["rent"]
 ): LeaseExtractionResult["rent"] {
-  if (!rent?.paymentFrequency?.value) return rent
+  if (!rent) return rent
 
-  const value = rent.paymentFrequency.value
+  const value = rent.paymentFrequency?.value
+  const rawText = rent.paymentFrequency?.rawText?.toLowerCase() || ""
   const normalized = { ...rent.paymentFrequency }
 
+  // First, try to normalize string values to standard format
   if (typeof value === "string") {
     const lowerValue = value.toLowerCase()
 
@@ -217,7 +263,49 @@ function normalizeRentPaymentFrequency(
     }
   }
 
+  // If still no valid frequency, infer from contextual signals
+  if (normalized.value !== "monthly" && normalized.value !== "quarterly") {
+    const inferred = inferPaymentFrequencyFromContext(rent, rawText)
+    normalized.value = inferred
+    normalized.confidence = "medium"
+    normalized.source =
+      "Inféré à partir du contexte (loyer trimestriel mentionné ou défaut)"
+  }
+
   return { ...rent, paymentFrequency: normalized }
+}
+
+/**
+ * Infer payment frequency from contextual signals when not explicitly extracted
+ */
+function inferPaymentFrequencyFromContext(
+  rent: LeaseExtractionResult["rent"],
+  rawText: string
+): "monthly" | "quarterly" {
+  // Check rawText for indicators
+  const quarterlyIndicators = [
+    "trimestriel",
+    "trimestre",
+    "terme",
+    "par trimestre",
+  ]
+  const monthlyIndicators = ["mensuel", "mois", "par mois", "mensuellement"]
+
+  if (quarterlyIndicators.some((ind) => rawText.includes(ind))) {
+    return "quarterly"
+  }
+  if (monthlyIndicators.some((ind) => rawText.includes(ind))) {
+    return "monthly"
+  }
+
+  // Check if quarterly rent was explicitly extracted (suggests quarterly payment)
+  const quarterlyRent = rent?.quarterlyRentExclTaxExclCharges?.value
+  if (typeof quarterlyRent === "number" && quarterlyRent > 0) {
+    return "quarterly"
+  }
+
+  // Default: French commercial leases are typically quarterly
+  return "quarterly"
 }
 
 /**

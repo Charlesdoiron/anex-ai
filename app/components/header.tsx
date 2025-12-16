@@ -32,7 +32,7 @@ export function Header({ showLogo = true, className = "" }: HeaderProps) {
               <span className="text-white font-bold text-lg">A</span>
             </div>
             <span className="font-semibold text-gray-900 text-lg tracking-tight">
-              Axen AI
+              AxenIA
             </span>
           </Link>
         )}
