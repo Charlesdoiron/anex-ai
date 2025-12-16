@@ -376,9 +376,13 @@ CHAMPS À EXTRAIRE :
   - false : si explicitement mentionné qu'il n'y a PAS de local d'archives
   - null : si non mentionné (pas d'information dans le document)
   
-- parkingSpaces : Nombre de places de parking voitures (nombre entier, 0 si absent)
-- twoWheelerSpaces : Places deux-roues motorisés
-- bikeSpaces : Places vélos
+- parkingSpaces : Nombre de places de parking voitures
+  ⚠️ IMPORTANT : Si AUCUN parking n'est mentionné dans le bail, retourner 0 (zéro), PAS null
+  - Si des parkings sont mentionnés avec un nombre → ce nombre
+  - Si explicitement "sans parking", "aucun parking" → 0
+  - Si le bail ne parle PAS du tout de parking → 0
+- twoWheelerSpaces : Places deux-roues motorisés (0 si non mentionné)
+- bikeSpaces : Places vélos (0 si non mentionné)
 
 6. TANTIÈMES / QUOTE-PART :
 - shareWithCommonAreas : Quote-part parties communes
@@ -820,13 +824,17 @@ CHAMPS À EXTRAIRE :
 - quarterlyRIEFeeExclTax : Redevance trimestrielle HT (si explicite)
 - annualRIEFeePerSqmExclTax : Redevance au m² HT (si explicite)
 
-3. HONORAIRES DE GESTION :
-- managementFeesOnTenant : Honoraires à charge du preneur (true/false)
-  ⚠️ CHERCHER ACTIVEMENT :
-  - Termes : "honoraires de gestion", "frais de gestion locative", "frais de gérance"
-  - "à la charge du preneur" → true
-  - Si les honoraires sont mentionnés comme à charge du preneur → true
-  - Si non mentionné → null (pas "Non")
+3. HONORAIRES DE GESTION LOCATIVE :
+- managementFeesOnTenant : Honoraires de gestion LOCATIVE à charge du preneur (true/false)
+  ⚠️ ATTENTION - DISTINCTION IMPORTANTE :
+  - Il s'agit des honoraires de GESTION LOCATIVE du bailleur (property management)
+  - CE N'EST PAS les charges communes ou les frais d'entretien courant
+  
+  → true UNIQUEMENT si : "honoraires de gestion locative à la charge du preneur", "frais de gérance refacturés"
+  → false si : honoraires à la charge du bailleur, ou si les charges n'incluent PAS d'honoraires de gestion
+  → null si : non mentionné explicitement
+  
+  ⚠️ ERREUR FRÉQUENTE : Ne pas confondre charges locatives (eau, électricité, entretien) avec honoraires de gestion locative
 - rentManagementFeesOnTenant : Honoraires gestion des loyers à charge du preneur
 - managementFeesAnnualAmount : Montant ANNUEL HT
 - managementFeesQuarterlyAmount : Montant TRIMESTRIEL HT
@@ -852,22 +860,28 @@ CHAMPS À EXTRAIRE :
   - Extraire le montant numérique si explicitement indiqué
   - Si non mentionné : null
 
-- insurancePremiumRebilled : Prime d'assurance immeuble refacturée au preneur (true/false)
-  ⚠️ CHERCHER ACTIVEMENT cette information :
-  - Chercher dans : article "CHARGES", "ASSURANCES", "TAXES", "IMPOTS ET CONTRIBUTIONS"
-  - Termes indiquant true : "prime d'assurance à la charge du preneur", "assurance immeuble refacturée", "quote-part assurance"
-  - Attention : il s'agit de l'assurance IMMEUBLE du bailleur refacturée, pas de l'assurance que le preneur doit souscrire
-  - Si le preneur paie une quote-part de l'assurance immeuble → true
-  - Si non mentionné → null (pas "Non")
+- insurancePremiumRebilled : Prime d'assurance IMMEUBLE refacturée au preneur (true/false)
+  ⚠️ ATTENTION - DISTINCTION IMPORTANTE :
+  - Il s'agit de l'assurance IMMEUBLE souscrite PAR LE BAILLEUR et REFACTURÉE au preneur
+  - CE N'EST PAS l'assurance que le preneur doit souscrire pour ses propres risques
+  
+  → true UNIQUEMENT si : "assurance immeuble refacturée", "quote-part assurance immeuble à charge du preneur"
+  → false si : seule l'obligation pour le preneur de souscrire SA PROPRE assurance est mentionnée
+  → null si : non mentionné
+  
+  ⚠️ ERREUR FRÉQUENTE : Ne pas confondre "le preneur doit souscrire une assurance" (= sa propre assurance, pas refacturation) avec "l'assurance immeuble est refacturée"
 
 2. CLAUSES SPÉCIFIQUES :
-- hasWaiverOfRecourse : Renonciation à recours entre parties (true/false)
-  ⚠️ CLAUSE TRÈS COURANTE - CHERCHER ACTIVEMENT :
-  - Chercher dans : article "ASSURANCES", "RECOURS", "RESPONSABILITÉ"
-  - Termes : "renonciation réciproque à recours", "abandon de recours", "renoncer à tout recours"
-  - Phrase type : "Les parties renoncent réciproquement à tout recours l'une contre l'autre"
-  - Si cette clause est présente → true
-  - Si non mentionné → null (pas "Non")
+- hasWaiverOfRecourse : Renonciation RÉCIPROQUE à recours entre parties (true/false)
+  ⚠️ ATTENTION - CLAUSE SPÉCIFIQUE :
+  - Il s'agit d'une renonciation RÉCIPROQUE (les DEUX parties renoncent à recours l'une contre l'autre)
+  - Phrase type EXACTE : "Les parties renoncent réciproquement à tout recours l'une contre l'autre"
+  
+  → true UNIQUEMENT si : clause de renonciation RÉCIPROQUE explicite
+  → false si : une seule partie renonce (pas réciproque)
+  → null si : non mentionné ou clause non trouvée
+  
+  ⚠️ Ne pas confondre avec d'autres clauses de responsabilité ou de recours non réciproques
   
 - insuranceCertificateAnnexed : Attestation d'assurance EFFECTIVEMENT ANNEXÉE au bail (true/false)
   - true UNIQUEMENT si l'attestation est RÉELLEMENT ANNEXÉE (mentionnée dans liste des annexes)

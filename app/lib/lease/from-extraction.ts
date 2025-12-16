@@ -99,12 +99,19 @@ async function buildScheduleInputFromExtraction(
     indexStartDate
   )
 
-  const { baseIndexValue, knownIndexPoints } = buildIndexInputsForLease(
-    indexStartDate,
-    horizonYears,
-    series,
-    referenceQuarter
-  )
+  // Extract explicit index value from lease if present (e.g., "ILAT T3 15 (107,98)" → 107.98)
+  const explicitIndexValue = parseIndexValueFromReference(referenceQuarterText)
+
+  const { baseIndexValue: inseeBaseIndex, knownIndexPoints } =
+    buildIndexInputsForLease(
+      indexStartDate,
+      horizonYears,
+      series,
+      referenceQuarter
+    )
+
+  // Priority: use explicit value from lease document, then fall back to INSEE database
+  const baseIndexValue = explicitIndexValue ?? inseeBaseIndex
 
   if (!baseIndexValue) {
     console.warn(
@@ -362,6 +369,33 @@ function parseReferenceQuarter(
     /[tq]4\b/i.test(text)
   ) {
     return 4
+  }
+
+  return null
+}
+
+/**
+ * Extract explicit index value from reference quarter text.
+ * Examples:
+ * - "ILAT T3 15 (107,98)" → 107.98
+ * - "ILAT 4ème trimestre 2011 (104,60)" → 104.60
+ * - "ILC T4 11 (104.60)" → 104.60
+ */
+function parseIndexValueFromReference(
+  referenceQuarterText: string | null | undefined
+): number | null {
+  if (!referenceQuarterText) return null
+
+  // Match number in parentheses, supporting both comma and dot as decimal separator
+  // Pattern: (number) at the end, with optional spaces
+  const match = referenceQuarterText.match(/\(\s*([\d.,]+)\s*\)\s*$/)
+  if (match && match[1]) {
+    // Replace comma with dot for parsing
+    const valueStr = match[1].replace(",", ".")
+    const value = parseFloat(valueStr)
+    if (!isNaN(value) && value > 0) {
+      return value
+    }
   }
 
   return null
