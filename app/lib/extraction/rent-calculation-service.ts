@@ -28,8 +28,8 @@ import {
 
 const openai = getOpenAIClient()
 
-const EXTRACTION_MODEL =
-  process.env.OPENAI_EXTRACTION_MODEL?.trim() || "gpt-5-mini"
+// Use gpt-5.2 for rent calculation as it requires accurate extraction of critical values
+const EXTRACTION_MODEL = process.env.OPENAI_RENT_CALC_MODEL?.trim() || "gpt-5.2"
 const MAX_RETRIES = 2
 
 export interface RentCalculationExtractedData {
@@ -229,7 +229,7 @@ export class RentCalculationExtractionService {
               role: "user",
               content: `Document text:\n\n${truncateText(
                 documentText,
-                40000
+                150000
               )}\n\n${RENT_CALCULATION_EXTRACTION_PROMPT}\n\nRespond with a valid JSON object.`,
             },
           ],
@@ -239,7 +239,7 @@ export class RentCalculationExtractionService {
             },
           },
           reasoning: {
-            effort: "low",
+            effort: "medium",
           },
         })
 
@@ -249,7 +249,36 @@ export class RentCalculationExtractionService {
         }
 
         const parsed = JSON.parse(outputText) as RentCalculationExtractedData
-        return { data: this.normalizeExtractedData(parsed), retries }
+        const normalized = this.normalizeExtractedData(parsed)
+
+        // Fallback: if indexation not extracted, try dedicated extraction
+        if (
+          !normalized.indexation?.indexationType?.value &&
+          !normalized.indexation?.referenceQuarter?.value
+        ) {
+          console.log(
+            "[RentCalc] Indexation not found, trying dedicated extraction..."
+          )
+          const indexFallback = await this.extractIndexationOnly(documentText)
+          if (indexFallback.indexationType || indexFallback.referenceQuarter) {
+            normalized.indexation = {
+              indexationType: {
+                value: indexFallback.indexationType,
+                confidence: indexFallback.indexationType ? "high" : "missing",
+                source: "Extraction dédiée (fallback)",
+                rawText: indexFallback.indexationType || "Non mentionné",
+              },
+              referenceQuarter: {
+                value: indexFallback.referenceQuarter,
+                confidence: indexFallback.referenceQuarter ? "high" : "missing",
+                source: "Extraction dédiée (fallback)",
+                rawText: indexFallback.referenceQuarter || "Non mentionné",
+              },
+            }
+          }
+        }
+
+        return { data: normalized, retries }
       } catch (error) {
         lastError = error as Error
         attempts++
@@ -265,6 +294,67 @@ export class RentCalculationExtractionService {
 
     console.error("Rent data extraction failed:", lastError)
     return { data: this.getDefaultExtractedData(), retries }
+  }
+
+  /**
+   * Dedicated extraction for indexation only - called as fallback if main extraction fails
+   */
+  private async extractIndexationOnly(
+    documentText: string
+  ): Promise<{
+    indexationType: string | null
+    referenceQuarter: string | null
+  }> {
+    const INDEXATION_PROMPT = `Extraire UNIQUEMENT les informations d'indexation du bail.
+
+CHERCHER DANS :
+- Section "9. INDICE DE REFERENCE" ou "INDICE" dans le TITRE II
+- Article "CLAUSE D'INDEXATION" dans le TITRE I
+- Mentions de "ILAT", "ILC", "ICC"
+
+CHAMPS À EXTRAIRE :
+
+1. indexationType : L'acronyme de l'indice ("ILC", "ILAT", ou "ICC")
+   - "loyers des activités tertiaires" ou "ILAT" → "ILAT"
+   - "loyers commerciaux" ou "ILC" → "ILC"
+   - "coût de la construction" ou "ICC" → "ICC"
+
+2. referenceQuarter : Trimestre de référence au format "[ACRONYME] T[1-4] [ANNÉE 2 CHIFFRES] ([VALEUR])"
+   Exemple : "ILAT 3T 2015, soit 107,98" → "ILAT T3 15 (107,98)"
+
+RÉPONDRE AU FORMAT JSON :
+{
+  "indexationType": "ILAT" | "ILC" | "ICC" | null,
+  "referenceQuarter": "ILAT T3 15 (107,98)" | null
+}
+
+Respond with a valid JSON object.`
+
+    try {
+      const response = await openai.responses.create({
+        model: EXTRACTION_MODEL,
+        instructions:
+          "Tu es un expert en analyse de baux commerciaux. Extrais uniquement les informations d'indexation.",
+        input: [
+          {
+            role: "user",
+            content: `Document:\n\n${truncateText(documentText, 150000)}\n\n${INDEXATION_PROMPT}`,
+          },
+        ],
+        text: { format: { type: "json_object" } },
+        reasoning: { effort: "medium" },
+      })
+
+      const outputText = collectResponseText(response)
+      const parsed = JSON.parse(outputText)
+      return {
+        indexationType: parsed.indexationType || null,
+        referenceQuarter: parsed.referenceQuarter || null,
+      }
+    } catch (error) {
+      console.error("Indexation fallback extraction failed:", error)
+      return { indexationType: null, referenceQuarter: null }
+    }
   }
 
   private async computeSchedule(data: RentCalculationExtractedData): Promise<{
