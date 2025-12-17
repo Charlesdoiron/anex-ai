@@ -32,6 +32,11 @@ const openai = getOpenAIClient()
 const EXTRACTION_MODEL = process.env.OPENAI_RENT_CALC_MODEL?.trim() || "gpt-5.2"
 const MAX_RETRIES = 2
 
+// Max characters to send to the model
+// gpt-5.2 has a large context window (200k+ tokens), so we can be generous
+// 600k chars ≈ 150k tokens, leaving room for prompts (~10k) and response (~20k)
+const MAX_DOCUMENT_CHARS = 600_000
+
 export interface RentCalculationExtractedData {
   calendar: {
     effectiveDate: ExtractedValue<string | null>
@@ -229,7 +234,7 @@ export class RentCalculationExtractionService {
               role: "user",
               content: `Document text:\n\n${truncateText(
                 documentText,
-                150000
+                MAX_DOCUMENT_CHARS
               )}\n\n${RENT_CALCULATION_EXTRACTION_PROMPT}\n\nRespond with a valid JSON object.`,
             },
           ],
@@ -299,9 +304,7 @@ export class RentCalculationExtractionService {
   /**
    * Dedicated extraction for indexation only - called as fallback if main extraction fails
    */
-  private async extractIndexationOnly(
-    documentText: string
-  ): Promise<{
+  private async extractIndexationOnly(documentText: string): Promise<{
     indexationType: string | null
     referenceQuarter: string | null
   }> {
@@ -338,7 +341,7 @@ Respond with a valid JSON object.`
         input: [
           {
             role: "user",
-            content: `Document:\n\n${truncateText(documentText, 150000)}\n\n${INDEXATION_PROMPT}`,
+            content: `Document:\n\n${truncateText(documentText, MAX_DOCUMENT_CHARS)}\n\n${INDEXATION_PROMPT}`,
           },
         ],
         text: { format: { type: "json_object" } },
@@ -392,10 +395,6 @@ Respond with a valid JSON object.`
       const explicitReferenceQuarter =
         this.parseReferenceQuarter(referenceQuarterText)
 
-      // Extract explicit index value from lease if present (e.g., "ILAT T3 15 (107,98)" → 107.98)
-      const explicitIndexValue =
-        this.parseIndexValueFromReference(referenceQuarterText)
-
       const series = await getInseeRentalIndexSeries(indexType)
       const { baseIndexValue: inseeBaseIndex, knownIndexPoints } =
         buildIndexInputsForLease(
@@ -405,8 +404,12 @@ Respond with a valid JSON object.`
           explicitReferenceQuarter
         )
 
-      // Priority: use explicit value from lease, then INSEE database
-      const baseIndexValue = explicitIndexValue ?? inseeBaseIndex
+      // NOTE: We do NOT use the explicit index value from the lease document (e.g., "107,98")
+      // because INSEE rebased these series multiple times (base 2004 → 2010 → etc.).
+      // The document value may be on a different base than our database, which would
+      // corrupt the ratios (base vs. future indices). We must use INSEE DB values
+      // consistently for both base AND subsequent indices.
+      const baseIndexValue = inseeBaseIndex
 
       if (!baseIndexValue) {
         return {
@@ -700,7 +703,148 @@ Respond with a valid JSON object.`
       },
     }
 
-    return extractedData
+    return this.normalizePeriodicAmounts(extractedData)
+  }
+
+  private normalizePeriodicAmounts(
+    data: RentCalculationExtractedData
+  ): RentCalculationExtractedData {
+    const cloned: RentCalculationExtractedData = {
+      ...data,
+      charges: data.charges ? { ...data.charges } : undefined,
+      taxes: data.taxes ? { ...data.taxes } : undefined,
+    }
+
+    // Charges: compute annual from quarterly when missing (no LLM arithmetic)
+    if (cloned.charges) {
+      const annual = cloned.charges.annualChargesProvisionExclTax
+      const quarterly = cloned.charges.quarterlyChargesProvisionExclTax
+      if (
+        (annual?.value === null || annual?.value === undefined) &&
+        typeof quarterly?.value === "number" &&
+        quarterly.value > 0
+      ) {
+        cloned.charges.annualChargesProvisionExclTax = {
+          ...annual,
+          value: this.roundCurrency(quarterly.value * 4),
+          confidence: annual?.confidence ?? quarterly.confidence,
+          source: quarterly.source
+            ? `${quarterly.source} (annualisé ×4)`
+            : "Annualisé (×4) à partir du montant trimestriel",
+          rawText: quarterly.rawText ?? annual?.rawText,
+        }
+      }
+    }
+
+    // Taxes: normalize to ANNUAL amounts based on periodicity in rawText
+    if (cloned.taxes) {
+      cloned.taxes.propertyTaxAmount = this.annualizeIfPeriodic(
+        cloned.taxes.propertyTaxAmount
+      )
+      cloned.taxes.officeTaxAmount = this.annualizeIfPeriodic(
+        cloned.taxes.officeTaxAmount
+      )
+    }
+
+    return cloned
+  }
+
+  private annualizeIfPeriodic(
+    field: ExtractedValue<number | null>
+  ): ExtractedValue<number | null> {
+    if (typeof field.value !== "number" || field.value <= 0) {
+      return field
+    }
+
+    const period = this.detectAmountPeriod(field.rawText)
+    const factor = period === "quarter" ? 4 : period === "month" ? 12 : 1
+
+    if (factor === 1) {
+      return field
+    }
+
+    const parsed = this.parseMoneyFromRawText(field.rawText)
+    if (typeof parsed === "number") {
+      // Guardrail: avoid double-annualising if the model already returned an annual value.
+      if (this.isClose(field.value, parsed * factor, 0.02)) {
+        return field
+      }
+      // Prefer annualising only when the extracted value matches the amount in rawText.
+      if (!this.isClose(field.value, parsed, 0.02)) {
+        return field
+      }
+    }
+
+    return {
+      ...field,
+      value: this.roundCurrency(field.value * factor),
+      source: field.source
+        ? `${field.source} (annualisé ×${factor})`
+        : `Annualisé (×${factor})`,
+    }
+  }
+
+  private detectAmountPeriod(
+    rawText: ExtractedValue<unknown>["rawText"]
+  ): "year" | "quarter" | "month" | null {
+    if (typeof rawText !== "string") return null
+    const text = rawText.toLowerCase()
+
+    // Prefer explicit periodicity markers
+    if (
+      text.includes("par trimestre") ||
+      text.includes("trimestriel") ||
+      text.includes("trimestrielle") ||
+      /\b\/\s*trimestre\b/.test(text)
+    ) {
+      return "quarter"
+    }
+    if (
+      text.includes("par mois") ||
+      text.includes("mensuel") ||
+      text.includes("mensuelle") ||
+      text.includes("mensuellement") ||
+      /\b\/\s*mois\b/.test(text)
+    ) {
+      return "month"
+    }
+    if (
+      text.includes("par an") ||
+      text.includes("annuel") ||
+      text.includes("annuelle") ||
+      text.includes("annuellement") ||
+      /\b\/\s*an\b/.test(text)
+    ) {
+      return "year"
+    }
+    return null
+  }
+
+  private parseMoneyFromRawText(
+    rawText: ExtractedValue<unknown>["rawText"]
+  ): number | null {
+    if (typeof rawText !== "string" || !rawText.trim()) return null
+
+    const euroMatch =
+      rawText.match(/([\d\s\u00A0.,]+)\s*(?:€|euros?|eur)\b/i) ?? null
+    const genericMatch = rawText.match(/(\d[\d\s\u00A0.,]*)/) ?? null
+    const captured = (euroMatch?.[1] || genericMatch?.[1] || "").trim()
+    if (!captured) return null
+
+    let normalized = captured.replace(/[\s\u00A0]/g, "")
+
+    // French OCR often uses "." as thousands and "," as decimals (e.g., "1.917,35")
+    if (normalized.includes(",") && normalized.includes(".")) {
+      normalized = normalized.replace(/\./g, "")
+    }
+
+    normalized = normalized.replace(",", ".")
+    const num = Number.parseFloat(normalized)
+    return Number.isFinite(num) ? num : null
+  }
+
+  private isClose(a: number, b: number, epsilon: number): boolean {
+    return Math.abs(a - b) <= epsilon
   }
 
   private getDefaultExtractedData(): RentCalculationExtractedData {
@@ -902,30 +1046,5 @@ Respond with a valid JSON object.`
     return null
   }
 
-  /**
-   * Extract the index value from reference quarter text.
-   * Examples:
-   * - "ILAT T3 15 (107,98)" → 107.98
-   * - "ILAT 4ème trimestre 2011 (104,60)" → 104.60
-   * - "ILC T4 11 (104.60)" → 104.60
-   */
-  private parseIndexValueFromReference(
-    referenceQuarterText: string | null | undefined
-  ): number | null {
-    if (!referenceQuarterText) return null
-
-    // Match number in parentheses, supporting both comma and dot as decimal separator
-    // Pattern: (number) at the end, with optional spaces
-    const match = referenceQuarterText.match(/\(\s*([\d.,]+)\s*\)\s*$/)
-    if (match && match[1]) {
-      // Replace comma with dot for parsing
-      const valueStr = match[1].replace(",", ".")
-      const value = parseFloat(valueStr)
-      if (!isNaN(value) && value > 0) {
-        return value
-      }
-    }
-
-    return null
-  }
+  // Intentionally no "parseIndexValueFromReference": we avoid mixing index bases.
 }

@@ -745,11 +745,15 @@ CHAMPS À EXTRAIRE :
   - Ex: "Non mentionné" (si pas de clause)
 
 2. PROVISIONS POUR TAXES (montants si mentionnés) :
-- propertyTaxAmount : Provision annuelle pour taxe foncière (en euros, valeur numérique)
+- propertyTaxAmount : Montant de provision pour taxe foncière / impôt foncier (en euros, valeur numérique)
   ⚠️ Chercher dans TITRE II articles sur les taxes (ex: article 8.1)
   - Retourner null si pas de montant indiqué
+  ⚠️ IMPORTANT :
+  - Le montant peut être exprimé "par trimestre" OU "par an" : extraire le montant tel qu'il apparaît.
+  - NE PAS annualiser / multiplier : le système post-traite ensuite.
+  - Le champ rawText doit inclure la mention de périodicité si elle existe (ex: "par trimestre", "par an").
   
-- teomAmount : Provision annuelle pour TEOM (en euros, valeur numérique)
+- teomAmount : Montant de provision pour TEOM (en euros, valeur numérique)
   ⚠️ TRÈS IMPORTANT - DÉFINITION :
   TEOM = Taxe d'Enlèvement des Ordures Ménagères
   Cette taxe peut être mentionnée sous différents noms dans les baux :
@@ -781,12 +785,16 @@ CHAMPS À EXTRAIRE :
   - Chercher dans sections "CHARGES", "TAXES", "IMPOTS"
   - Format possible : "taxe sur les bureaux : provision annuelle de X €"
   - Retourner null si pas de montant indiqué
+  ⚠️ IMPORTANT :
+  - Si le montant est "par trimestre", extraire le montant tel quel (pas de calcul) et inclure "par trimestre" dans rawText.
 
 - parkingTaxAmount : Provision annuelle pour taxe sur les emplacements de parking (en euros, valeur numérique)
   ⚠️ Aussi appelée : "taxe parking", "taxe sur les emplacements de stationnement"
   - Chercher dans CONDITIONS PARTICULIÈRES articles numérotés
   - Chercher dans sections "CHARGES", "TAXES", "IMPOTS", "PARKING"
   - Retourner null si pas de montant indiqué ou si pas de taxe parking mentionnée
+  ⚠️ IMPORTANT :
+  - Si le montant est "par trimestre", extraire le montant tel quel (pas de calcul) et inclure "par trimestre" dans rawText.
 
 OÙ CHERCHER (PRIORITAIRE) :
 1. CONDITIONS PARTICULIÈRES (TITRE II, CHAPITRE I, etc.) - articles numérotés (8.1, 8.2, 8.3, IV.3, etc.)
@@ -910,25 +918,42 @@ Format de sortie JSON conforme à InsuranceData.`
 
 export const SECURITIES_PROMPT = `Extraire les sûretés et garanties.
 
-⚠️ PRIORITÉ DE RECHERCHE - CHAMPS OBLIGATOIRES À TROUVER :
-Le dépôt de garantie est TOUJOURS présent dans un bail commercial. Chercher ACTIVEMENT dans :
-1. CONDITIONS PARTICULIÈRES / TITRE II - Section "DEPOT DE GARANTIE" ou "GARANTIE"
-2. Article dédié "DÉPÔT DE GARANTIE" ou "SÛRETÉS"
-3. Section "LOYER" (le dépôt est souvent mentionné avec le loyer)
+⚠️⚠️⚠️ RÈGLE CRITIQUE - BAUX AVEC PROTOCOLE OU NOUVEAU BAIL ⚠️⚠️⚠️
+Certains documents contiennent un PROTOCOLE D'ACCORD ou un NOUVEAU BAIL qui REMPLACE un bail antérieur.
+Dans ce cas, le document mentionne PLUSIEURS montants de dépôt :
+- Un montant ANCIEN (bail antérieur/résilié) → NE PAS UTILISER
+- Un montant NOUVEAU (nouveau bail/protocole) → UTILISER CELUI-CI
+
+INDICES pour identifier le montant ACTUEL :
+- "au titre du NOUVEAU BAIL" / "au titre du nouveau bail"
+- "le bailleur conserve" + montant
+- "dépôt de garantie conservé"
+- Le montant qui s'applique APRÈS la résiliation/modification
 
 CHAMPS À EXTRAIRE :
 
 1. DÉPÔT DE GARANTIE :
 - securityDepositDescription : Description COMPLÈTE du dépôt de garantie
-  ⚠️ FORMAT : "[Nombre] mois de loyer hors taxes hors charges soit [montant] €"
-  - Utiliser le format exact trouvé dans le document
+  Inclure le contexte (nouveau bail, mois de loyer, etc.)
   
-- securityDepositAmount : Montant numérique du dépôt de garantie (en euros)
-  ⚠️ CHERCHER ACTIVEMENT :
-  - Termes : "dépôt de garantie", "garantie", "caution"
-  - Souvent exprimé en "X mois de loyer" - CALCULER le montant réel basé sur le loyer du bail
-  - Si dépôt = N mois et loyer mensuel = M €, alors montant = N × M
-  - Retourner UNIQUEMENT le nombre calculé, sans symbole € ni séparateurs
+- securityDepositAmount : Montant numérique du dépôt de garantie EN EUROS
+  
+  ⚠️ ORDRE DE PRIORITÉ (du plus prioritaire au moins prioritaire) :
+  1. PROTOCOLE / NOUVEAU BAIL : Si le document contient un protocole ou nouveau bail,
+     utiliser le montant qui s'applique AU NOUVEAU BAIL (pas l'ancien montant)
+  2. MONTANT EXPLICITE EN EUROS dans le TITRE II / CONDITIONS PARTICULIÈRES
+  3. MONTANT EXPLICITE dans le corps du bail
+  4. Si aucun montant explicite → retourner null (ne pas calculer)
+  
+  Chercher les expressions :
+  - "soit la somme de X €"
+  - "d'un montant de X €"
+  - "le bailleur conserve ... la somme de X €"
+  - "dépôt de garantie de X €"
+  
+  Attention OCR : "421 104,49 €" peut être "21 104,49 €" (chiffre parasite au début)
+  
+  Retourner UNIQUEMENT le nombre, sans symbole € ni séparateurs
 
 2. AUTRES SÛRETÉS :
 - otherSecurities : Liste des autres garanties (tableau de chaînes)
@@ -937,21 +962,21 @@ CHAMPS À EXTRAIRE :
   - Nantissement de fonds de commerce
   - Si aucune sûreté additionnelle : retourner un tableau vide []
 
-OÙ CHERCHER :
-- CONDITIONS PARTICULIÈRES / TITRE II
-- Article "DÉPÔT DE GARANTIE", "SÛRETÉS", "GARANTIES"
-- Sections "LOYER" ou "CONDITIONS FINANCIÈRES"
-- Annexes listant les garanties
-
 EXEMPLES :
-- "Le dépôt de garantie est fixé à <N> mois de loyer HT HC, soit <MONTANT> €"
-  → securityDepositDescription: "<N> mois de loyer hors taxes hors charges soit <MONTANT> €"
-  → securityDepositAmount: <MONTANT_NUMÉRIQUE>
 
-- "Dépôt de garantie : un trimestre de loyer HTHC"
-  → Si loyer trimestriel = <MONTANT> €
-  → securityDepositDescription: "1 trimestre de loyer HTHC soit <MONTANT> €"
-  → securityDepositAmount: <MONTANT_NUMÉRIQUE>
+1. Bail avec PROTOCOLE modifiant le dépôt :
+   "Aux termes du BAIL, le PRENEUR a versé un dépôt de 21 104,49 €...
+    le BAILLEUR conserve une partie du montant, soit la somme de 16 275 € 
+    à titre de dépôt de garantie au titre du NOUVEAU BAIL."
+   → securityDepositAmount: 16275 ← UTILISER LE MONTANT DU NOUVEAU BAIL
+
+2. Bail simple avec montant explicite :
+   "Le dépôt de garantie s'élève à 21 104,49 €"
+   → securityDepositAmount: 21104.49
+
+3. Bail sans montant explicite :
+   "Le dépôt de garantie est fixé à 3 mois de loyer HT HC"
+   → securityDepositAmount: null (le système calculera si possible)
 
 Format de sortie JSON avec securityDepositAmount en nombre et otherSecurities en tableau.`
 

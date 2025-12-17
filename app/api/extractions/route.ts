@@ -39,6 +39,7 @@ interface FilterableExtractionSummary {
 export async function GET(request: NextRequest) {
   try {
     const skipAuth = process.env.SKIP_AUTH === "true"
+    let currentUserId: string | null = null
 
     if (!skipAuth) {
       const session = await auth.api.getSession({
@@ -51,6 +52,7 @@ export async function GET(request: NextRequest) {
           { status: 401 }
         )
       }
+      currentUserId = session.user.id
     }
 
     const { searchParams } = new URL(request.url)
@@ -70,11 +72,17 @@ export async function GET(request: NextRequest) {
         ? (toolTypeParam as toolType)
         : undefined
 
-    // Build where clause
+    // Build where clause with user filter for confidentiality
     const where: {
+      userId?: string
       toolType?: string
       fileName?: { contains: string; mode: "insensitive" }
     } = {}
+
+    // Filter by current user to ensure extractions are confidential per user
+    if (currentUserId) {
+      where.userId = currentUserId
+    }
 
     if (filterToolType) {
       where.toolType = filterToolType
