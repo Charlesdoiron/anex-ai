@@ -127,9 +127,18 @@ export function buildIndexInputsForLease(
   // Use explicit reference quarter from lease if provided, otherwise calculate from date
   const baseQuarter = explicitReferenceQuarter ?? getQuarter(baseDate)
 
+  // IMPORTANT: In French commercial leases, the reference index is typically
+  // from the PREVIOUS YEAR relative to the effective date.
+  // E.g., for a lease starting 01/01/2016, the base index is T3 2015.
+  // The baseRow should use the year from the explicit reference if available.
+  // Since the explicit reference already contains the correct year info,
+  // we need to detect the base index year from the reference quarter text.
+  // For now, we use baseYear - 1 as the typical pattern in French leases.
+  const baseIndexYear = baseYear - 1
+
   const baseRow =
     series.find(
-      (row) => row.year === baseYear && row.quarter === baseQuarter
+      (row) => row.year === baseIndexYear && row.quarter === baseQuarter
     ) ?? series[series.length - 1]
 
   const horizonEndYear = baseYear + Math.max(1, horizonYears)
@@ -138,13 +147,18 @@ export function buildIndexInputsForLease(
   const tcam = computeTcamFromSeries(series, baseQuarter)
 
   // Generate index points for anniversary dates (not base year)
+  // IMPORTANT: At each anniversary, we use the index from the PREVIOUS YEAR.
+  // E.g., for anniversary 01/01/2017, we use the T3 2016 index (not T3 2017).
+  // This matches standard French commercial lease indexation practice.
   const knownIndexPoints: KnownIndexPointInput[] = []
   let lastKnownIndex = baseRow.value
-  let lastKnownYear = baseYear
+  let lastKnownYear = baseIndexYear
 
   for (let year = baseYear + 1; year <= horizonEndYear; year++) {
+    // Use the index from the PREVIOUS YEAR (year - 1) for this anniversary
+    const indexYear = year - 1
     const indexRow = series.find(
-      (row) => row.year === year && row.quarter === baseQuarter
+      (row) => row.year === indexYear && row.quarter === baseQuarter
     )
 
     const anniversaryDate = new Date(
@@ -156,10 +170,10 @@ export function buildIndexInputsForLease(
       // Use actual INSEE data if available
       indexValue = indexRow.value
       lastKnownIndex = indexValue
-      lastKnownYear = year
+      lastKnownYear = indexYear
     } else if (tcam !== undefined) {
       // Extrapolate using TCAM from last known index
-      const yearsFromLastKnown = year - lastKnownYear
+      const yearsFromLastKnown = indexYear - lastKnownYear
       indexValue = lastKnownIndex * Math.pow(1 + tcam, yearsFromLastKnown)
     } else {
       // No TCAM available, use last known value

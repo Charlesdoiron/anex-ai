@@ -88,11 +88,9 @@ Indices : "durée de NEUF années", "bail de 9 ans", "3/6/9"
   ⚠️ FORMAT REQUIS : "[ACRONYME] T[1-4] [ANNÉE] ([VALEUR])"
   Exemple : "ILAT T3 15 (107,98)" signifie ILAT 3ème trimestre 2015, valeur 107,98
   
-  OÙ CHERCHER (PRIORITAIRE) :
-  - TITRE II : Section "9. INDICE DE REFERENCE" ou "INDICE"
-  - TITRE I : Article "CLAUSE D'INDEXATION" ou "RÉVISION"
-  - Chercher "soit" + valeur numérique (ex: "soit 107,98")
-  - La valeur est souvent un nombre décimal proche de 100-130
+  Chercher dans les sections "INDICE", "INDEXATION", "CLAUSE D'INDEXATION", "RÉVISION".
+  Indices : "indice de référence", "soit" + valeur numérique, "publié par l'INSEE"
+  La valeur est souvent un nombre décimal proche de 100-150.
 
 4. LOCAUX (surface et parkings) :
 - premises.designation : Nom de l'actif immobilier / désignation des locaux
@@ -180,12 +178,39 @@ Indices : "loyer annuel", "€ HT/an", "HTHC", "hors taxes et hors charges"
 - quarterlyParkingRentExclCharges : Loyer trimestriel parkings HTHC
 - annualParkingRentPerUnitExclCharges : Loyer parking /unité/an HTHC
 
-8. CHARGES ET TAXES :
-- charges.annualChargesProvisionExclTax : Provision annuelle pour charges HT
-- charges.quarterlyChargesProvisionExclTax : Provision trimestrielle pour charges HT
+8. CHARGES :
+- charges.annualChargesProvisionExclTax : Provision ANNUELLE pour charges HT (si explicitement indiquée comme annuelle)
+- charges.quarterlyChargesProvisionExclTax : Provision TRIMESTRIELLE pour charges HT (si explicitement indiquée comme trimestrielle)
 - charges.annualChargesProvisionPerSqmExclTax : Provision charges HT/m²/an
-- taxes.propertyTaxAmount : Montant annuel taxe foncière
-- taxes.officeTaxAmount : Montant annuel taxe bureaux
+
+Chercher dans les sections "CHARGES", "REMBOURSEMENT DES CHARGES", "CHARGES LOCATIVES".
+Indices : "provision pour charges", "charges hors assurances", "€ HT par trimestre", "€ HT/an"
+
+⚠️ IMPORTANT :
+- NE FAIS AUCUN CALCUL (pas de ×4 / ÷4).
+- Extraire le montant EXACT tel qu'écrit dans le document.
+- Le champ rawText doit inclure la mention de périodicité (ex: "par trimestre", "par an").
+
+9. TAXES :
+Les taxes sont CRITIQUES pour le calcul du loyer total. Chercher ACTIVEMENT dans TOUT le document.
+
+Chercher dans les sections "IMPOTS", "TAXES", "CONTRIBUTIONS", "REMBOURSEMENT", "CHARGES ET TAXES".
+Indices : "taxe foncière", "impôt foncier", "TEOM", "ordures ménagères", "taxe bureaux", "TSB", "provision"
+
+⚠️ IMPORTANT :
+- NE FAIS AUCUN CALCUL (pas de ×4 / ÷4).
+- Les montants peuvent être exprimés "par trimestre" OU "par an" : retourne le montant tel qu'il apparaît.
+- Le champ rawText doit inclure la mention de périodicité (ex: "par trimestre", "par an").
+- Le système convertira ensuite en annuel si nécessaire.
+
+- taxes.propertyTaxAmount : Montant (tel qu'écrit) de l'impôt foncier / taxe foncière
+  Chercher : "taxe foncière", "impôt foncier", "TEOM", "ordures ménagères"
+  Souvent libellé : "provision pour remboursement de l'impôt foncier" ou "taxe foncière en ce compris la TEOM"
+  Attention OCR : "impét" = "impôt", "ménagéres" = "ménagères"
+
+- taxes.officeTaxAmount : Montant (tel qu'écrit) de la taxe bureaux / TSB
+  Chercher : "taxe sur les bureaux", "TSB", "taxe annuelle sur les locaux à usage de bureaux"
+  Souvent libellé : "provision pour taxe bureaux" ou "taxe sur les surfaces de bureaux"
 
 9. MESURES D'ACCOMPAGNEMENT :
 - supportMeasures.rentFreePeriodMonths : Nombre de mois de franchise de loyer
@@ -194,7 +219,15 @@ Indices : "loyer annuel", "€ HT/an", "HTHC", "hors taxes et hors charges"
 
 10. DÉPÔT DE GARANTIE :
 - securities.securityDepositDescription : Description du dépôt
-- securities.securityDepositAmount : Montant du dépôt de garantie
+- securities.securityDepositAmount : Montant du dépôt de garantie EN EUROS
+
+⚠️ RÈGLE CRITIQUE - PRIORITÉ AU MONTANT EXPLICITE :
+1. Chercher un MONTANT CHIFFRÉ EXACT (ex: "21 104,49 €", "16 275 €")
+2. Si le bail a un PROTOCOLE ou AVENANT, le montant peut y être modifié
+3. Si aucun montant explicite n'est trouvé : retourner null (ne pas calculer)
+
+Chercher dans les sections "DÉPÔT DE GARANTIE", "GARANTIE", "SÛRETÉS", "PROTOCOLE".
+Indices : "dépôt de garantie", "garantie de X mois", "d'un montant de", "soit la somme de"
 
 EXEMPLES (PLACEHOLDERS — NE PAS COPIER LES VALEURS, UNIQUEMENT LE RAISONNEMENT) :
 

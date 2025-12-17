@@ -13,6 +13,7 @@ export async function GET(
 ) {
   try {
     const skipAuth = process.env.SKIP_AUTH === "true"
+    let currentUserId: string | null = null
 
     if (!skipAuth) {
       try {
@@ -26,6 +27,7 @@ export async function GET(
             { status: 401 }
           )
         }
+        currentUserId = session.user.id
       } catch (authError) {
         console.error("Auth error:", authError)
         return NextResponse.json(
@@ -45,8 +47,12 @@ export async function GET(
     }
 
     // Use database directly for production reliability
-    const extraction = await prisma.extraction.findUnique({
-      where: { documentId: id },
+    // Filter by userId to ensure extractions are confidential per user
+    const extraction = await prisma.extraction.findFirst({
+      where: {
+        documentId: id,
+        ...(currentUserId ? { userId: currentUserId } : {}),
+      },
     })
 
     if (!extraction) {
@@ -98,6 +104,7 @@ export async function DELETE(
 ) {
   try {
     const skipAuth = process.env.SKIP_AUTH === "true"
+    let currentUserId: string | null = null
 
     if (!skipAuth) {
       try {
@@ -111,6 +118,7 @@ export async function DELETE(
             { status: 401 }
           )
         }
+        currentUserId = session.user.id
       } catch (authError) {
         console.error("Auth error:", authError)
         return NextResponse.json(
@@ -129,10 +137,30 @@ export async function DELETE(
       )
     }
 
+    // Verify ownership before deletion
+    if (currentUserId) {
+      const extraction = await prisma.extraction.findFirst({
+        where: { documentId: id, userId: currentUserId },
+        select: { id: true },
+      })
+      if (!extraction) {
+        return NextResponse.json(
+          { error: "Not found", message: "Extraction result not found" },
+          { status: 404 }
+        )
+      }
+    }
+
     // Use database directly for production reliability
+    // Only delete if user owns the extraction
     await prisma.$transaction([
       prisma.rawText.deleteMany({ where: { documentId: id } }),
-      prisma.extraction.deleteMany({ where: { documentId: id } }),
+      prisma.extraction.deleteMany({
+        where: {
+          documentId: id,
+          ...(currentUserId ? { userId: currentUserId } : {}),
+        },
+      }),
     ])
 
     return NextResponse.json({

@@ -54,6 +54,9 @@ export function postProcessExtraction(
   // Charges computed fields (needs premises.surfaceArea)
   processed.charges = computeChargesFields(processed)
 
+  // Taxes normalization / computed fields
+  processed.taxes = computeTaxesFields(processed)
+
   // Support measures computed fields (needs rent)
   processed.supportMeasures = computeSupportMeasuresFields(processed)
 
@@ -61,6 +64,19 @@ export function postProcessExtraction(
   processed.securities = computeSecuritiesFields(processed)
 
   return processed
+}
+
+function computeTaxesFields(
+  result: LeaseExtractionResult
+): LeaseExtractionResult["taxes"] {
+  const taxes = { ...result.taxes }
+
+  taxes.propertyTaxAmount = annualizeIfPeriodic(taxes.propertyTaxAmount)
+  taxes.teomAmount = annualizeIfPeriodic(taxes.teomAmount)
+  taxes.officeTaxAmount = annualizeIfPeriodic(taxes.officeTaxAmount)
+  taxes.parkingTaxAmount = annualizeIfPeriodic(taxes.parkingTaxAmount)
+
+  return taxes
 }
 
 /**
@@ -948,4 +964,99 @@ function computeNextTriennialDate(effectiveDateISO: string): string | null {
 
 function roundCurrency(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100
+}
+
+type AmountPeriod = "year" | "quarter" | "month" | null
+
+function annualizeIfPeriodic(
+  field: ExtractedValue<number | null>
+): ExtractedValue<number | null> {
+  if (!hasValue(field)) return field
+  const value = field.value
+  if (typeof value !== "number" || value <= 0) return field
+
+  const period = detectAmountPeriod(field.rawText)
+  const factor = period === "quarter" ? 4 : period === "month" ? 12 : 1
+  if (factor === 1) return field
+
+  const parsed = parseMoneyFromRawText(field.rawText)
+  if (typeof parsed === "number") {
+    // Guardrail: avoid double-annualising if the model already returned an annual value.
+    if (isClose(value, parsed * factor, 0.02)) {
+      return field
+    }
+    // Prefer annualising only when the extracted value matches the amount in rawText.
+    if (!isClose(value, parsed, 0.02)) {
+      return field
+    }
+  }
+
+  return {
+    ...field,
+    value: roundCurrency(value * factor),
+    source: field.source
+      ? `${field.source} (annualisé ×${factor})`
+      : `Annualisé (×${factor})`,
+  }
+}
+
+function detectAmountPeriod(rawText: string | undefined): AmountPeriod {
+  if (!rawText?.trim()) return null
+  const text = rawText.toLowerCase()
+
+  if (
+    text.includes("par trimestre") ||
+    text.includes("trimestriel") ||
+    text.includes("trimestrielle") ||
+    /\b\/\s*trimestre\b/.test(text)
+  ) {
+    return "quarter"
+  }
+  if (
+    text.includes("par mois") ||
+    text.includes("mensuel") ||
+    text.includes("mensuelle") ||
+    text.includes("mensuellement") ||
+    /\b\/\s*mois\b/.test(text)
+  ) {
+    return "month"
+  }
+  if (
+    text.includes("par an") ||
+    text.includes("annuel") ||
+    text.includes("annuelle") ||
+    text.includes("annuellement") ||
+    /\b\/\s*an\b/.test(text)
+  ) {
+    return "year"
+  }
+
+  return null
+}
+
+function parseMoneyFromRawText(rawText: string | undefined): number | null {
+  if (!rawText?.trim()) return null
+
+  // Prefer numbers explicitly followed by € / EUR / euros
+  const euroMatch =
+    rawText.match(/([\d\s\u00A0.,]+)\s*(?:€|euros?|eur)\b/i) ?? null
+  const genericMatch = rawText.match(/(\d[\d\s\u00A0.,]*)/) ?? null
+  const captured = (euroMatch?.[1] || genericMatch?.[1] || "").trim()
+  if (!captured) return null
+
+  let normalized = captured.replace(/[\s\u00A0]/g, "")
+
+  // French OCR often uses "." as thousands and "," as decimals (e.g., "1.917,35")
+  if (normalized.includes(",") && normalized.includes(".")) {
+    normalized = normalized.replace(/\./g, "")
+  }
+
+  normalized = normalized.replace(",", ".")
+
+  const num = Number.parseFloat(normalized)
+  return Number.isFinite(num) ? num : null
+}
+
+function isClose(a: number, b: number, epsilon: number): boolean {
+  return Math.abs(a - b) <= epsilon
 }
