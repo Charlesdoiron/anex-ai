@@ -221,13 +221,31 @@ Indices : "taxe foncière", "impôt foncier", "TEOM", "ordures ménagères", "ta
 - securities.securityDepositDescription : Description du dépôt
 - securities.securityDepositAmount : Montant du dépôt de garantie EN EUROS
 
-⚠️ RÈGLE CRITIQUE - PRIORITÉ AU MONTANT EXPLICITE :
-1. Chercher un MONTANT CHIFFRÉ EXACT (ex: "21 104,49 €", "16 275 €")
-2. Si le bail a un PROTOCOLE ou AVENANT, le montant peut y être modifié
-3. Si aucun montant explicite n'est trouvé : retourner null (ne pas calculer)
+⚠️⚠️⚠️ RÈGLE CRITIQUE - BAUX AVEC PROTOCOLE OU NOUVEAU BAIL ⚠️⚠️⚠️
+Certains documents contiennent un PROTOCOLE D'ACCORD ou un NOUVEAU BAIL qui REMPLACE un bail antérieur.
+Dans ce cas, le document mentionne PLUSIEURS montants de dépôt :
+- Un montant ANCIEN (bail antérieur/résilié) → NE PAS UTILISER
+- Un montant NOUVEAU (nouveau bail/protocole) → UTILISER CELUI-CI
 
-Chercher dans les sections "DÉPÔT DE GARANTIE", "GARANTIE", "SÛRETÉS", "PROTOCOLE".
-Indices : "dépôt de garantie", "garantie de X mois", "d'un montant de", "soit la somme de"
+INDICES pour identifier le montant ACTUEL :
+- "au titre du NOUVEAU BAIL" / "à titre de dépôt de garantie au titre du nouveau bail"
+- "le bailleur conserve" + montant
+- "dépôt de garantie conservé"
+- Le montant qui s'applique APRÈS la résiliation/modification
+
+ORDRE DE PRIORITÉ :
+1. PROTOCOLE / NOUVEAU BAIL : Si le document contient un protocole ou nouveau bail,
+   utiliser le montant qui s'applique AU NOUVEAU BAIL (pas l'ancien montant)
+2. MONTANT EXPLICITE EN EUROS dans le TITRE II / CONDITIONS PARTICULIÈRES
+3. Si aucun montant explicite → retourner null
+
+EXEMPLE CONCRET :
+"Aux termes du BAIL, le PRENEUR a versé un dépôt de 21 104,49 €...
+ le BAILLEUR conserve une partie du montant, soit la somme de 16 275 € 
+ à titre de dépôt de garantie au titre du NOUVEAU BAIL."
+→ securityDepositAmount: 16275 ← UTILISER LE MONTANT DU NOUVEAU BAIL (pas 21 104,49)
+
+Chercher dans : "PROTOCOLE", "DÉPÔT DE GARANTIE", "GARANTIE", "SÛRETÉS".
 
 EXEMPLES (PLACEHOLDERS — NE PAS COPIER LES VALEURS, UNIQUEMENT LE RAISONNEMENT) :
 

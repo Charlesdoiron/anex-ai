@@ -343,27 +343,32 @@ function parseReferenceQuarter(
 
   // Match patterns like "T1", "1T", "1er trimestre", "2ème trimestre", "Q1", etc.
   // Order matters - check more specific patterns first
+  // Support both "T1" and "1T" formats (French documents use both)
   if (
     /\b(premier|1er)\s+(trimestre|quartier)/i.test(text) ||
-    /[tq]1\b/i.test(text)
+    /[tq]1\b/i.test(text) ||
+    /\b1[tq]\b/i.test(text)
   ) {
     return 1
   }
   if (
     /\b(deuxi[èe]me|2[èe]me)\s+(trimestre|quartier)/i.test(text) ||
-    /[tq]2\b/i.test(text)
+    /[tq]2\b/i.test(text) ||
+    /\b2[tq]\b/i.test(text)
   ) {
     return 2
   }
   if (
     /\b(troisi[èe]me|3[èe]me)\s+(trimestre|quartier)/i.test(text) ||
-    /[tq]3\b/i.test(text)
+    /[tq]3\b/i.test(text) ||
+    /\b3[tq]\b/i.test(text)
   ) {
     return 3
   }
   if (
     /\b(quatri[èe]me|4[èe]me)\s+(trimestre|quartier)/i.test(text) ||
-    /[tq]4\b/i.test(text)
+    /[tq]4\b/i.test(text) ||
+    /\b4[tq]\b/i.test(text)
   ) {
     return 4
   }
